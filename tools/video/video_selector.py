@@ -374,6 +374,9 @@ class VideoSelector(BaseTool):
         if inputs.get("operation") == "rank":
             rank_inputs = self._rank_inputs(inputs)
             task_context = self._prepare_task_context(rank_inputs)
+            allowed = set(inputs.get("allowed_providers") or [])
+            if allowed:
+                candidates = [tool for tool in candidates if tool.provider in allowed]
             candidates = self._filter_candidates(rank_inputs, candidates)
             rankings = rank_providers(candidates, task_context)
             return ToolResult(

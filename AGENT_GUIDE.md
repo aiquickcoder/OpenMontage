@@ -253,6 +253,7 @@ If the folder has tracks, the proposal and asset stages should present them as o
 | `cinematic` | Trailer, teaser, and mood-led edits | production |
 | `animation` | Motion-graphics and animation-first videos | production |
 | `character-animation` | Local rigged cartoon characters and reusable character acting | beta |
+| `cartoon-ad` | Generated Pixar-style 3D vertical cartoon with native brand integration (Google Flow subscription) | beta |
 | `hybrid` | Source footage plus support visuals | production |
 | `avatar-spokesperson` | Presenter-led avatar or lip-sync videos | production |
 | `localization-dub` | Subtitle, dub, and translated variants | beta |
@@ -645,6 +646,10 @@ For custom, atelier, brand, launch, or hero work, read `skills/meta/taste-direct
 ### Hand-drawn "doodle" animation → Ink Theater / Ink Puppet
 
 For any brief that wants a **hand-drawn ink doodle** look — "a sketch that comes to life", "a pencil / stick figure that walks or dances", "a little character that acts out the idea", whiteboard-doodle explainers — use the **Ink Theater** engine + **Ink Puppet** mocap system (`skills/creative/ink-theater.md`, `ink-theater/README.md`). It is a **style + reusable engine, not a new pipeline**: illustration / contraption pieces run on the `animation` pipeline; a mocap character (draws itself → walks / dances / waves via `InkPuppet.choreograph([...])`) runs on `character-animation`. Cross-tool entry points: **`/ink-art`** (create a vector doodle from scratch) and **`/animated-drawing`** (animate a *supplied* drawing with mocap — raster; `skills/creative/animated-drawing.md`). Never hand-tune character motion — the agent only chooses named mocap clips.
+
+### Generated cartoon with brand integration → `cartoon-ad`
+
+For a **cartoon / мультфильм / animated ad with a brand or product integration** (generated characters, not rigs), use the `cartoon-ad` pipeline (`pipeline_defs/cartoon-ad.yaml`, `skills/pipelines/cartoon-ad/`). Google image/video generation in this pipeline runs **only through provider `google_flow`** (Google AI Pro subscription via gflow-cli: `flow_image`, `flow_veo_video`, `flow_video_upscale`; pass `allowed_providers: ["google_flow"]` to selectors). Never fall back to a paid API provider (Veo/Gemini API, fal, Kling, …) silently — if Flow is unavailable, stop and ask the user.
 
 ## Layer Map
 

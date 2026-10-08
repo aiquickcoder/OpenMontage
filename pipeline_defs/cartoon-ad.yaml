@@ -1,0 +1,285 @@
+name: cartoon-ad
+version: "0.1"
+description: >
+  Short vertical (9:16, 30-90 s) Pixar-style 3D cartoon with a native brand
+  integration, generated through Google Flow on a Google AI Pro subscription
+  (provider google_flow: Nano Banana images + Veo 3.1 video with native Russian
+  dialogue audio). Quality comes from a locked character bible, keyframe-first
+  storyboarding (images are free, iterate there) and image-to-video animation
+  with take review, then a Remotion/HyperFrames finish with a composited
+  logo/CTA end card.
+category: generated
+stability: beta
+default_checkpoint_policy: guided
+
+reference_input:
+  supported: true
+  analysis_depth: standard
+  analysis_tools:
+    - video_analyzer
+    - transcript_fetcher
+    - video_downloader
+    - scene_detect
+    - frame_sampler
+
+orchestration:
+  mode: executive-producer
+  skill: pipelines/cartoon-ad/executive-producer
+  budget_default_usd: 0.00
+  max_revisions_per_stage: 3
+  max_send_backs: 3
+  max_wall_time_minutes: 180
+
+extensions:
+  custom_scripts: false
+  custom_playbooks: true
+  custom_skills: true
+  custom_tools: false
+
+required_skills:
+  - pipelines/cartoon-ad/executive-producer
+  - pipelines/cartoon-ad/idea-director
+  - pipelines/cartoon-ad/proposal-director
+  - pipelines/cartoon-ad/script-director
+  - pipelines/cartoon-ad/character-design-director
+  - pipelines/cartoon-ad/scene-director
+  - pipelines/cartoon-ad/asset-director
+  - pipelines/cartoon-ad/edit-director
+  - pipelines/cartoon-ad/compose-director
+  - pipelines/cartoon-ad/publish-director
+  - meta/reviewer
+  - meta/checkpoint-protocol
+  - meta/animation-runtime-selector
+
+compatible_playbooks:
+  recommended:
+    - clean-professional
+  also_works:
+    - flat-motion-graphics
+  custom_allowed: true
+
+stages:
+  - name: idea
+    skill: pipelines/cartoon-ad/idea-director
+    produces:
+      - brief
+    tools_available: []
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - Brand, product, audience, key message and CTA are explicit
+      - Forbidden claims and mandatory disclaimers are captured from the advertiser
+      - Real product photos (several angles) and the logo file are on disk
+      - Format is locked to 9:16 with a target duration between 30 and 90 seconds
+    success_criteria:
+      - Schema-valid brief artifact
+      - brief.metadata.advertiser block lists product photos, logo path, forbidden claims, legal advertiser name
+
+  - name: proposal
+    skill: pipelines/cartoon-ad/proposal-director
+    required_artifacts_in:
+      - brief
+    produces:
+      - proposal_packet
+      - decision_log
+    tools_available:
+      - flow_image
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - At least 3 story concepts where the product is a plot device, not a pause
+      - Product screen time planned at no more than 20-25 percent of runtime
+      - Flow credit estimate per shot and total is explicit and fits the remaining monthly credits
+      - Render runtime presented (Remotion and HyperFrames when both are available)
+      - Music plan is resolved
+    success_criteria:
+      - Schema-valid proposal_packet artifact
+      - Cost estimate lists Flow credits per shot (veo-fast 20, veo-quality 100) and states USD 0 API spend
+
+  - name: script
+    skill: pipelines/cartoon-ad/script-director
+    required_artifacts_in:
+      - proposal_packet
+    optional_artifacts_in:
+      - brief
+    produces:
+      - script
+    tools_available: []
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - 4-11 shots, each at most 8 seconds, total 30-90 seconds
+      - Every Russian dialogue line fits its shot (about 15 words or fewer per 8 seconds)
+      - The product solves the hero's problem inside the story; claims are truthful and approved
+      - Final packshot / CTA beat exists and its on-screen text is composited, not generated
+    success_criteria:
+      - Schema-valid script artifact
+      - Each section maps to exactly one generated shot
+
+  - name: character_design
+    skill: pipelines/cartoon-ad/character-design-director
+    required_artifacts_in:
+      - script
+      - brief
+    produces:
+      - character_bible
+    tools_available:
+      - flow_image
+      - image_selector
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - Style lock string is specific (look, materials, lighting, lens) and identical everywhere
+      - Each character has an approved turnaround sheet (front, 3/4, profile) on a plain background
+      - Each speaking character has a verbatim Russian voice descriptor
+      - Product sheet matches the real product photos in shape, color and proportions
+    success_criteria:
+      - Schema-valid character_bible artifact
+      - All referenced sheet files exist on disk
+
+  - name: scene_plan
+    skill: pipelines/cartoon-ad/scene-director
+    required_artifacts_in:
+      - script
+      - character_bible
+    produces:
+      - scene_plan
+    tools_available:
+      - flow_image
+      - image_selector
+      - frame_sampler
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - Every shot has an approved 9:16 keyframe generated with bible references
+      - Characters and product in keyframes match the bible (face, outfit, colors, product shape)
+      - Composition leaves room for subtitles in the lower safe zone
+      - Final Veo prompt per shot is assembled from the bible strings verbatim
+    success_criteria:
+      - Schema-valid scene_plan artifact
+      - scene_plan.metadata.storyboard has keyframe_path and veo_prompt for every scene
+
+  - name: assets
+    skill: pipelines/cartoon-ad/asset-director
+    required_artifacts_in:
+      - scene_plan
+      - character_bible
+    optional_artifacts_in:
+      - script
+      - brief
+    produces:
+      - asset_manifest
+    required_tools:
+      - flow_veo_video
+    optional_tools:
+      - video_selector
+      - flow_image
+      - frame_sampler
+      - music_gen
+      - pixabay_music
+      - freesound_music
+      - audio_enhance
+    tools_available:
+      - flow_veo_video
+      - video_selector
+      - flow_image
+      - frame_sampler
+      - music_gen
+      - pixabay_music
+      - freesound_music
+      - audio_enhance
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - Every shot is animated image-to-video from its approved keyframe (no text-to-video for character shots)
+      - Take review passed for faces, hands, product fidelity, lip-sync, voice consistency and Russian pronunciation
+      - Credit ledger stays within FLOW_CREDIT_BUDGET_PER_PROJECT
+      - Motion-required delivery is preserved; no still-image substitution
+    success_criteria:
+      - Schema-valid asset_manifest artifact
+      - All referenced asset files exist on disk and each video has an audio stream
+
+  - name: edit
+    skill: pipelines/cartoon-ad/edit-director
+    required_artifacts_in:
+      - scene_plan
+      - asset_manifest
+    optional_artifacts_in:
+      - script
+      - character_bible
+    produces:
+      - edit_decisions
+    tools_available: []
+    checkpoint_required: true
+    human_approval_default: false
+    review_focus:
+      - Cuts trim the first and last frames where Veo motion settles or artifacts appear
+      - Dialogue is never cut mid-word; music ducks under Veo dialogue
+      - End card with exact logo, product name, CTA and "Реклама" label is planned as a composited overlay
+      - Russian subtitles are timed to the actual spoken audio
+    success_criteria:
+      - Schema-valid edit_decisions artifact
+      - Edit decisions cover the full planned runtime
+
+  - name: compose
+    skill: pipelines/cartoon-ad/compose-director
+    required_artifacts_in:
+      - edit_decisions
+      - asset_manifest
+    optional_artifacts_in:
+      - scene_plan
+    produces:
+      - render_report
+      - final_review
+    required_tools:
+      - video_compose
+      - audio_mixer
+    optional_tools:
+      - flow_video_upscale
+      - hyperframes_compose
+      - video_stitch
+      - video_trimmer
+      - color_grade
+      - audio_enhance
+      - subtitle_gen
+    tools_available:
+      - video_compose
+      - audio_mixer
+      - flow_video_upscale
+      - hyperframes_compose
+      - video_stitch
+      - video_trimmer
+      - color_grade
+      - audio_enhance
+      - subtitle_gen
+    checkpoint_required: true
+    human_approval_default: false
+    review_focus:
+      - Output is 1080x1920, loudness around -14 LUFS integrated, true peak at most -1 dBTP
+      - No visible seams, frozen frames or color jumps between shots
+      - Logo and CTA are pixel-exact from the advertiser files
+      - "render_runtime in edit_decisions matches proposal_packet — silent swap is a CRITICAL governance violation"
+    success_criteria:
+      - Schema-valid render_report artifact
+      - Output file exists and passes ffprobe validation
+
+  - name: publish
+    skill: pipelines/cartoon-ad/publish-director
+    required_artifacts_in:
+      - render_report
+      - final_review
+    optional_artifacts_in:
+      - brief
+      - script
+    produces:
+      - publish_log
+    tools_available: []
+    checkpoint_required: true
+    human_approval_default: true
+    review_focus:
+      - Ad marking ("Реклама" + advertiser) is present in the video and in post metadata
+      - Platform exports (Reels / Shorts / TikTok / VK Clips) are labeled
+      - Cover frame is chosen and on-brand
+    success_criteria:
+      - Schema-valid publish_log artifact
+      - Export package contains video, cover and metadata

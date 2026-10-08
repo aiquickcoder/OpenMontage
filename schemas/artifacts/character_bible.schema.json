@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openmontage/artifacts/character_bible",
+  "title": "Character Bible",
+  "description": "Visual and vocal consistency anchors for generated (Flow / Veo) character films: a verbatim style lock, per-character turnaround sheets and voice descriptors, the advertised product sheet, and location references. Every shot prompt is assembled from these strings verbatim.",
+  "type": "object",
+  "required": ["version", "style_lock", "characters"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "style_lock": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Verbatim style string prepended to every image and video prompt (e.g. Pixar-style 3D look, lighting, materials)."
+    },
+    "negative_style": {
+      "type": "string",
+      "description": "Verbatim list of things every prompt must avoid (text on screen, subtitles, extra limbs, realism drift)."
+    },
+    "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9"], "default": "9:16" },
+    "characters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "role", "description", "turnaround_path", "voice", "prompt_tokens"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "role": { "type": "string", "description": "hero | sidekick | antagonist | extra | mascot" },
+          "description": { "type": "string", "description": "Full visual description: species/age, proportions, face, hair, outfit, colors, signature props." },
+          "turnaround_path": { "type": "string", "description": "Approved turnaround sheet (front, 3/4, profile; neutral pose; plain background)." },
+          "expression_sheet_path": { "type": "string" },
+          "flow_media_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Flow media UUIDs of the uploaded reference sheets, reusable as --ref without re-upload."
+          },
+          "voice": {
+            "type": "object",
+            "required": ["language", "description"],
+            "properties": {
+              "language": { "type": "string", "default": "ru" },
+              "description": { "type": "string", "description": "Verbatim voice descriptor repeated in every shot where the character speaks: gender, age, timbre, pace, manner." }
+            },
+            "additionalProperties": false
+          },
+          "prompt_tokens": {
+            "type": "string",
+            "description": "Short verbatim identity string inserted into every shot prompt featuring this character."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "product": {
+      "type": "object",
+      "required": ["name", "description", "sheet_path", "reference_photos"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string", "description": "Exact shape, colors, materials, proportions; verbatim prompt string." },
+        "sheet_path": { "type": "string", "description": "Approved stylized product sheet consistent with the style lock." },
+        "reference_photos": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "logo_path": { "type": "string", "description": "Vector/PNG logo used only in compositing (end card), never generated." },
+        "flow_media_ids": { "type": "array", "items": { "type": "string" } },
+        "must_show": { "type": "array", "items": { "type": "string" } },
+        "must_not": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "locations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "reference_path"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "reference_path": { "type": "string" },
+          "lighting": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "metadata": { "type": "object" }
+  },
+  "additionalProperties": false
+}
