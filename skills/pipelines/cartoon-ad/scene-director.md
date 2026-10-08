@@ -63,10 +63,15 @@ The product shot names the product with its `description` and `must_show`.
          "alternates": ["assets/images/s03_kf_b.png"],
          "end_frame_path": null,
          "veo_prompt": "…assembled template…",
+         "draft_model": "veo-lite-lp",
          "model_plan": "veo-fast",
          "duration_s": 8,
          "reference_images": ["assets/characters/masha_turnaround.png"]}}
 ```
+
+`draft_model` is `veo-lite-lp` on Ultra (free drafts) and `veo-fast` on Pro;
+`model_plan` is the final-pass model (`veo-fast`, or `veo-quality` for hero /
+product shots).
 
 ## Review
 

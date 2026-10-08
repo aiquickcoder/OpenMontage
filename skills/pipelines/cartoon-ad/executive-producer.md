@@ -47,14 +47,25 @@ Route elsewhere when:
 3. **Every prompt is assembled from verbatim bible strings** (style lock,
    character `prompt_tokens`, voice descriptor, product description). Never
    paraphrase them shot to shot — paraphrase is the main source of drift.
-4. **Draft cheap, finish expensive.** `veo-fast` (20 credits) for normal shots,
-   `veo-quality` (100 credits) only for the hero moment and the product shot,
-   after the fast take proved the prompt.
+4. **Draft free, finish paid.** On Ultra (`FLOW_PLAN=ultra`) explore every
+   shot on `veo-lite-lp` (0 credits, lower-priority queue): several draft takes
+   to prove timing, camera, action and the spoken line. Then render the final
+   take with the proven prompt + keyframe on `veo-fast` (20), and on
+   `veo-quality` (100) only for the hero moment and the product shot. Lite is
+   a weaker model — a lite-lp take ships only if it passes the full take
+   review and the user accepts it. On Pro there is no free tier: drafts on
+   `veo-fast`.
 
 ## Credit Governance
 
-- Google AI Pro ≈ 1000 Flow credits / month. Typical 60 s film:
-  8 shots × veo-fast × ~1.5 takes ≈ 240 + 2 × veo-quality ≈ 200 → **~450 credits**.
+- Plan comes from `FLOW_PLAN` (`flow_veo_video` dry run reports it).
+  - **Ultra** (10 000 / 25 000 credits per month): drafts on veo-lite-lp = 0;
+    finals 6 × veo-fast × ~1.2 + 2 × veo-quality ≈ 145 + 200 → **~350 credits**
+    per 60 s film (≈ 150 without quality shots).
+  - **Pro** (1000 / month): 8 × veo-fast × ~1.5 takes + 2 × veo-quality → **~450**.
+- veo-lite-lp is free but rate-limited and slow (lower-priority queue, minutes
+  per clip). Zero-credit does not mean unlimited: keep the anti-bot pacing and
+  stop on rate-limit errors (exit 4).
 - Read the balance (`gflow credits user`, or `flow_veo_video` dry run) at
   proposal and again before `assets`. If the plan exceeds the remaining
   balance or `FLOW_CREDIT_BUDGET_PER_PROJECT`, shrink the plan with the user.

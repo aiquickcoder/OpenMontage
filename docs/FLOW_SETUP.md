@@ -35,14 +35,23 @@ gflow credits user                                # shows the monthly balance
 
 ## Credits and budget
 
-Google AI Pro includes **1000 Flow credits per month** (no rollover).
+Google AI Pro includes **1000 Flow credits per month**, Ultra 10 000 (5x) or 25 000 (20x); no rollover.
 Approximate cost per clip (8 s, 720p, with audio):
 
-| Model | Credits | Use for |
-|---|---|---|
-| `veo-lite` | 10 | blocking / timing tests |
-| `veo-fast` | 20 | default for most shots |
-| `veo-quality` | 100 | hero and product shots only (no reference-to-video) |
+Set the plan with `FLOW_PLAN=pro|ultra`; it drives the ledger and blocks
+models the plan does not have before anything is submitted.
+
+| Model | Pro | Ultra | Use for |
+|---|---|---|---|
+| `veo-lite-lp` | — | **0** | Ultra only: free draft takes in a slower lower-priority queue (rate-limited) |
+| `veo-lite` | 10 | 5 | blocking / timing tests |
+| `veo-fast` | 20 | 20 | final take for most shots |
+| `veo-quality` | 100 | 100 | hero and product shots only (no reference-to-video) |
+
+Ultra subscribers and family plan managers get `veo-lite-lp`; family members
+do not. Ultra discounts on Fast/Quality are not published, so the ledger keeps
+Pro rates for them until measured. On Ultra the pipeline drafts every shot for
+free on `veo-lite-lp` and spends credits only on the final pass.
 
 Image generation uses a daily quota, not credits — iterate on character sheets
 and storyboard frames freely, then animate only approved frames.

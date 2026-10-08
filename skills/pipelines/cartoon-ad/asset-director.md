@@ -33,8 +33,18 @@ and parallel bursts trigger the WAF):
 
 - Use `first_last_frame_to_video` (`last_frame_path`) when the storyboard
   defines an end frame (exact landing pose, product reveal).
+- **Ultra two-pass flow** (`FLOW_PLAN=ultra`):
+  1. *Draft pass* — `model: "veo-lite-lp"` (0 credits), `count: 2-4`,
+     `output_path: .../s03_draft.mp4`. Run take review on drafts; fix prompt or
+     keyframe and re-draft until timing, camera, action and the line read right.
+     Drafts are free but slow (lower-priority queue) — queue them shot by shot.
+  2. *Final pass* — same keyframe + proven prompt verbatim on `veo-fast`
+     (`count: 1`), or `veo-quality` for hero / product shots. Re-review.
+  A lite-lp draft may ship as final only if it passes the full review and the
+  user accepts the lower model quality for that shot.
+- On Pro there is no free pass: draft directly on `veo-fast`.
 - `veo-quality` only for the planned hero / product shots, and only after the
-  same prompt produced a good `veo-fast` take (or the user approved spending).
+  same prompt produced a good draft (or the user approved spending).
 - `reference_to_video` is a fallback for shots with no usable keyframe; it is
   not available on `veo-quality`.
 - Never use `text_to_video` for a shot with a character or the product.

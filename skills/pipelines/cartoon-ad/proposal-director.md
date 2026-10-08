@@ -48,14 +48,16 @@ Optionally render one free concept frame per option with `flow_image`
 
 `cost_estimate` must state **USD 0 API spend** and the Flow credit plan:
 
-| Item | Credits |
-|---|---|
-| Images (bible, storyboard) | 0 (daily quota) |
-| veo-lite clip | 10 |
-| veo-fast clip | 20 |
-| veo-quality clip | 100 |
+| Item | Pro | Ultra |
+|---|---|---|
+| Images (bible, storyboard) | 0 (daily quota) | 0 |
+| veo-lite-lp draft clip | — | 0 (lower-priority queue) |
+| veo-lite clip | 10 | 5 |
+| veo-fast clip | 20 | 20 |
+| veo-quality clip | 100 | 100 |
 
-Example 60 s: 8 × 20 × 1.5 takes + 2 × 100 ≈ 440 credits. Compare against the
+Example 60 s on Ultra: drafts free, 6 × 20 × 1.2 + 2 × 100 ≈ 345 credits.
+On Pro: 8 × 20 × 1.5 takes + 2 × 100 ≈ 440 credits. Compare against the
 current balance and `FLOW_CREDIT_BUDGET_PER_PROJECT`; if it does not fit,
 offer a shorter cut or fewer quality shots.
 

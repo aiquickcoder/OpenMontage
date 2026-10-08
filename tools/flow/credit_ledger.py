@@ -23,16 +23,27 @@ from typing import Any, Iterator, Optional
 
 from lib.paths import REPO_ROOT
 
-# Credits per generated clip, by gflow model alias. Veo numbers match gflow's
-# own error table and Google's Flow pricing for AI Pro; omni-flash and
-# veo-lite-lp are not published — kept conservative until measured.
-VIDEO_CREDITS = {
-    "veo-lite": 10,
-    "veo-lite-lp": 10,
-    "veo-fast": 20,
-    "veo-quality": 100,
-    "omni-flash": 20,
+# Credits per generated clip, by subscription plan (FLOW_PLAN) and gflow model
+# alias. Pro numbers match gflow's own error table; Ultra halves Lite and adds
+# the zero-credit "Veo 3.1 - Lite [Lower Priority]" queue (Ultra subscribers
+# and family managers only). Fast/Quality Ultra discounts are not published,
+# and omni-flash is not priced anywhere — kept at Pro rates until measured.
+PLAN_VIDEO_CREDITS = {
+    "pro": {
+        "veo-lite": 10,
+        "veo-fast": 20,
+        "veo-quality": 100,
+        "omni-flash": 20,
+    },
+    "ultra": {
+        "veo-lite-lp": 0,
+        "veo-lite": 5,
+        "veo-fast": 20,
+        "veo-quality": 100,
+        "omni-flash": 20,
+    },
 }
+ALL_VIDEO_MODELS = sorted({m for costs in PLAN_VIDEO_CREDITS.values() for m in costs})
 EXTEND_CREDITS = 10
 
 DEFAULT_BUDGET = 500
@@ -43,10 +54,24 @@ class FlowBudgetExceeded(RuntimeError):
     pass
 
 
+def flow_plan() -> str:
+    plan = os.environ.get("FLOW_PLAN", "pro").strip().lower()
+    return plan if plan in PLAN_VIDEO_CREDITS else "pro"
+
+
+def video_credits() -> dict[str, int]:
+    """Per-clip credits for the models available on the configured plan."""
+    return PLAN_VIDEO_CREDITS[flow_plan()]
+
+
 def video_cost(model: str, count: int = 1) -> int:
-    if model not in VIDEO_CREDITS:
-        raise ValueError(f"Unknown Flow video model {model!r}; known: {sorted(VIDEO_CREDITS)}")
-    return VIDEO_CREDITS[model] * max(1, int(count))
+    credits = video_credits()
+    if model not in credits:
+        raise ValueError(
+            f"Flow video model {model!r} is not available on the {flow_plan()!r} plan "
+            f"(FLOW_PLAN); available: {sorted(credits)}"
+        )
+    return credits[model] * max(1, int(count))
 
 
 def project_budget() -> int:

@@ -26,10 +26,12 @@ from tools.base_tool import (
 )
 from tools.flow import gflow_client
 from tools.flow.credit_ledger import (
-    VIDEO_CREDITS,
+    ALL_VIDEO_MODELS,
     CreditLedger,
     FlowBudgetExceeded,
     video_cost,
+    flow_plan,
+    video_credits,
 )
 
 OPERATION_TO_COMMAND = {
@@ -117,10 +119,11 @@ class FlowVeoVideo(BaseTool):
             },
             "model": {
                 "type": "string",
-                "enum": sorted(VIDEO_CREDITS),
+                "enum": ALL_VIDEO_MODELS,
                 "default": "veo-fast",
-                "description": "gflow model alias. Credits per clip: "
-                + ", ".join(f"{k}={v}" for k, v in sorted(VIDEO_CREDITS.items())),
+                "description": "gflow model alias. Credits per clip depend on FLOW_PLAN: "
+                "Pro lite=10 fast=20 quality=100; Ultra lite-lp=0 (lower-priority "
+                "queue, drafts) lite=5 fast=20 quality=100. veo-lite-lp is Ultra-only.",
             },
             "duration": {
                 "description": "Seconds (4, 6, 8; 10 on omni-flash). '8s' also accepted.",
@@ -174,7 +177,9 @@ class FlowVeoVideo(BaseTool):
         return video_cost(inputs.get("model", "veo-fast"), inputs.get("count", 1))
 
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
-        per_clip = {"veo-quality": 240.0, "veo-fast": 120.0}.get(inputs.get("model", "veo-fast"), 90.0)
+        per_clip = {"veo-quality": 240.0, "veo-fast": 120.0, "veo-lite-lp": 600.0}.get(
+            inputs.get("model", "veo-fast"), 90.0
+        )
         return per_clip + gflow_client._min_interval()
 
     def dry_run(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -186,7 +191,8 @@ class FlowVeoVideo(BaseTool):
         except ValueError as exc:
             args, problem = None, str(exc)
         info.update({
-            "estimated_credits": self.estimate_credits(inputs),
+            "flow_plan": flow_plan(),
+            "estimated_credits": None if problem else self.estimate_credits(inputs),
             "ledger": CreditLedger(project_dir).summary(),
             "gflow_args": args,
             "would_execute": problem is None and self.get_status() == ToolStatus.AVAILABLE,
@@ -207,8 +213,9 @@ class FlowVeoVideo(BaseTool):
         if operation not in OPERATION_TO_COMMAND:
             raise ValueError(f"Unsupported operation {operation!r}")
         model = inputs.get("model") or "veo-fast"
-        if model not in VIDEO_CREDITS:
-            raise ValueError(f"Unknown model {model!r}; use one of {sorted(VIDEO_CREDITS)}")
+        if model not in video_credits():
+            # Also rejects Ultra-only veo-lite-lp on Pro before anything is submitted.
+            video_cost(model)
         count = int(inputs.get("count") or 1)
         command = OPERATION_TO_COMMAND[operation]
         args = ["video", command]

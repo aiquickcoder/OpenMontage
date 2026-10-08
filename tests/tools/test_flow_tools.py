@@ -167,3 +167,37 @@ def test_registry_and_selectors_see_google_flow(fake_gflow):
     assert "flow_image" in {t.name for t in registry.get_by_capability("image_generation")}
     assert {t.name for t in registry.get_by_provider("google_flow")} >= {
         "flow_veo_video", "flow_image", "flow_video_upscale"}
+
+
+def test_ultra_lower_priority_lite_is_free(fake_gflow, frame, tmp_path, monkeypatch):
+    monkeypatch.setenv("FLOW_PLAN", "ultra")
+    monkeypatch.setenv("FLOW_CREDIT_BUDGET_PER_PROJECT", "0")
+    project = tmp_path / "proj"
+    result = FlowVeoVideo().execute({
+        "prompt": "draft take", "operation": "image_to_video", "image_path": str(frame),
+        "model": "veo-lite-lp", "count": 4, "project_dir": str(project),
+        "output_path": str(project / "assets" / "video" / "s1_draft.mp4"),
+    })
+    assert result.success, result.error
+    args = fake_gflow()[0]
+    assert args[args.index("--model") + 1] == "veo-lite-lp"
+    assert CreditLedger(project).summary()["committed"] == 0
+
+
+def test_lower_priority_lite_rejected_on_pro(fake_gflow, frame, monkeypatch):
+    monkeypatch.setenv("FLOW_PLAN", "pro")
+    tool = FlowVeoVideo()
+    inputs = {"prompt": "x", "operation": "image_to_video", "image_path": str(frame), "model": "veo-lite-lp"}
+    result = tool.execute(inputs)
+    assert not result.success and "not available on the 'pro' plan" in result.error
+    assert tool.dry_run(inputs)["would_execute"] is False
+    assert fake_gflow() == []
+
+
+def test_ultra_halves_regular_lite(monkeypatch):
+    from tools.flow.credit_ledger import video_cost
+
+    monkeypatch.setenv("FLOW_PLAN", "ultra")
+    assert video_cost("veo-lite") == 5
+    monkeypatch.setenv("FLOW_PLAN", "pro")
+    assert video_cost("veo-lite") == 10

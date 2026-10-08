@@ -94,7 +94,7 @@ stages:
       - Music plan is resolved
     success_criteria:
       - Schema-valid proposal_packet artifact
-      - Cost estimate lists Flow credits per shot (veo-fast 20, veo-quality 100) and states USD 0 API spend
+      - Cost estimate lists Flow credits per shot for the FLOW_PLAN (Ultra drafts on veo-lite-lp = 0; veo-fast 20, veo-quality 100) and states USD 0 API spend
 
   - name: script
     skill: pipelines/cartoon-ad/script-director
