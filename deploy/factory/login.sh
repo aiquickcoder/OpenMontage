@@ -29,4 +29,5 @@ echo
 echo "Open http://localhost:6081/vnc.html → Connect. Sign in, then open flow.google.com."
 echo "(\"It looks like you don't have access\" without the bridge is expected; the worker patches it.)"
 echo "Press Ctrl+C here when done."
-"${SSH[@]}" -N -L 6081:127.0.0.1:6081
+# sshd on 155 has AllowTcpForwarding no → pipe each connection through an ssh exec of `nc`
+python3 "$(dirname "$0")/vnc_forward.py"
