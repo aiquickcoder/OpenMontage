@@ -59,7 +59,7 @@ systemctl daemon-reload
 systemctl enable --now factory-xvfb factory-vnc factory-novnc >/dev/null
 
 set -a; . "$APP/.env"; set +a
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+if { [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || [ -n "${ANTHROPIC_API_KEY:-}" ]; } && [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
   systemctl enable --now factory-bot factory-worker >/dev/null
   systemctl restart factory-bot factory-worker
   echo "worker + bot: started"
