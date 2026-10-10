@@ -35,6 +35,14 @@ PLAN_VIDEO_CREDITS = {
         "veo-quality": 100,
         "omni-flash": 20,
     },
+    # No paid plan (a monthly allowance of ~50 credits was observed via GetCredits on
+    # 2026-10-10). Per-clip prices not published; assume Pro rates, the agent driver
+    # books the measured spend.
+    "free": {
+        "veo-lite": 10,
+        "veo-fast": 20,
+        "omni-flash": 20,
+    },
     "ultra": {
         "veo-lite-lp": 0,
         "veo-lite": 5,
@@ -156,11 +164,16 @@ class CreditLedger:
             })
             return entry_id
 
-    def settle(self, entry_id: str, *, charged: bool, media_ids: Optional[list[str]] = None) -> None:
+    def settle(self, entry_id: str, *, charged: bool, media_ids: Optional[list[str]] = None,
+               credits: Optional[int] = None) -> None:
+        """Close a reservation. `credits` records the measured spend when the driver knows it."""
         with self._locked() as data:
             for entry in data["entries"]:
                 if entry["id"] == entry_id:
                     entry["status"] = "charged" if charged else "refunded"
+                    if credits is not None and charged:
+                        entry["estimated_credits"] = entry["credits"]
+                        entry["credits"] = int(credits)
                     entry["media_ids"] = list(media_ids or [])
                     entry["settled_at"] = _now()
                     return

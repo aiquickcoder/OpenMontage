@@ -1,0 +1,3 @@
+# OpenMontage factory (unattended server runs) — on top of requirements.txt
+playwright>=1.45        # FLOW_DRIVER=agent: drives Google Flow in system Chrome (channel="chrome")
+PySocks>=1.7            # Telegram over socks5h proxy from RU hosts

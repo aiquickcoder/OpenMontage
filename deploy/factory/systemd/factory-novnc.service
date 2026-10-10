@@ -1,0 +1,14 @@
+[Unit]
+Description=Factory noVNC web client on 127.0.0.1:6081 (for the Google login)
+Requires=factory-vnc.service
+After=factory-vnc.service
+
+[Service]
+Slice=factory.slice
+User=factory
+ExecStart=/usr/bin/websockify --web /usr/share/novnc 127.0.0.1:6081 127.0.0.1:5901
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

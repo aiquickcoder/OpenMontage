@@ -24,7 +24,7 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.flow import gflow_client
+from tools.flow import agent_backend, gflow_client
 from tools.flow.credit_ledger import (
     ALL_VIDEO_MODELS,
     CreditLedger,
@@ -167,7 +167,8 @@ class FlowVeoVideo(BaseTool):
     ]
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if gflow_client.is_installed() else ToolStatus.UNAVAILABLE
+        ok = agent_backend.is_available() if agent_backend.is_selected() else gflow_client.is_installed()
+        return ToolStatus.AVAILABLE if ok else ToolStatus.UNAVAILABLE
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         # Subscription-billed: no per-call USD. Credits are reported by estimate_credits().
@@ -283,6 +284,10 @@ class FlowVeoVideo(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         start = time.time()
         if self.get_status() != ToolStatus.AVAILABLE:
+            if agent_backend.is_selected():
+                return ToolResult(success=False, error=(
+                    "FLOW_DRIVER=agent but playwright or the Flow profile "
+                    f"({agent_backend.profile_name()}) is missing. See docs/FLOW_SETUP.md."))
             return ToolResult(success=False, error="gflow not installed. " + self.install_instructions)
         try:
             args = self._build_args(inputs)
@@ -301,6 +306,9 @@ class FlowVeoVideo(BaseTool):
             )
         except FlowBudgetExceeded as exc:
             return ToolResult(success=False, error=str(exc))
+
+        if agent_backend.is_selected():
+            return self._execute_agent(inputs, model, credits, ledger, entry_id, start)
 
         try:
             run = gflow_client.run(args)
@@ -356,6 +364,58 @@ class FlowVeoVideo(BaseTool):
                 "request": run.payload.get("request"),
             },
             artifacts=paths,
+            cost_usd=0.0,
+            duration_seconds=round(time.time() - start, 2),
+            model=model,
+        )
+
+    def _execute_agent(self, inputs: dict[str, Any], model: str, credits: int,
+                       ledger: CreditLedger, entry_id: str, start: float) -> ToolResult:
+        duration = _parse_duration(inputs.get("duration", 8))
+        if duration == 10 and model != "omni-flash":
+            duration = 8
+        brief, attachments = agent_backend.video_brief(inputs, model, duration)
+        count = int(inputs.get("count") or 1)
+        try:
+            gen = agent_backend.generate(
+                "video", brief, attachments, count=count,
+                output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
+                timeout=self.estimate_runtime(inputs) * 3 + 300,
+            )
+        except agent_backend.AgentGenerationError as exc:
+            ledger.settle(entry_id, charged=exc.charged)
+            return ToolResult(
+                success=False,
+                error=str(exc),
+                data={**exc.data, "driver": "agent", "credits_possibly_spent": credits if exc.charged else 0,
+                      "ledger": ledger.summary()},
+                duration_seconds=round(time.time() - start, 2),
+                model=model,
+            )
+        spent = credits if gen.credits_spent is None else gen.credits_spent
+        ledger.settle(entry_id, charged=True, media_ids=gen.media_ids, credits=spent)
+        wrong_model = bool(gen.models_mentioned) and model not in gen.models_mentioned
+        return ToolResult(
+            success=True,
+            data={
+                "provider": self.provider,
+                "driver": "agent",
+                "model": model,
+                "models_mentioned": gen.models_mentioned,
+                "model_mismatch_suspected": wrong_model,
+                "operation": inputs.get("operation") or "text_to_video",
+                "prompt": inputs["prompt"],
+                "brief": brief,
+                "output": gen.paths[0],
+                "output_path": gen.paths[0],
+                "outputs": gen.paths,
+                "media_id": gen.media_ids[0] if gen.media_ids else None,
+                "media_ids": gen.media_ids,
+                "flow_project": gen.flow_project,
+                "credits_spent": spent,
+                "ledger": ledger.summary(),
+            },
+            artifacts=gen.paths,
             cost_usd=0.0,
             duration_seconds=round(time.time() - start, 2),
             model=model,

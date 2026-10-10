@@ -41,6 +41,7 @@ music_library/
 # Environment & credentials
 .env
 .env.local
+factory_data/
 *.env
 .youtube-token.json
 # Google service-account / Vertex AI keys — never commit

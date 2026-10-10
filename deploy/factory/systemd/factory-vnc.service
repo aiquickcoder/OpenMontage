@@ -1,0 +1,14 @@
+[Unit]
+Description=Factory VNC on :99 (localhost only; reach it through an SSH tunnel)
+Requires=factory-xvfb.service
+After=factory-xvfb.service
+
+[Service]
+Slice=factory.slice
+User=factory
+ExecStart=/usr/bin/x11vnc -display :99 -localhost -nopw -forever -shared -rfbport 5901 -quiet
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

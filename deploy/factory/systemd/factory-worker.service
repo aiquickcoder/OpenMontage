@@ -1,0 +1,20 @@
+[Unit]
+Description=Factory worker: briefs → Claude Code headless → cartoon-ad → staged release
+Requires=factory-xvfb.service
+After=factory-xvfb.service network-online.target
+
+[Service]
+Slice=factory.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+Environment=HOME=/home/factory PATH=/opt/openmontage/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python -m factory worker
+# A run interrupted mid-pipeline is marked failed on restart, never replayed (credits).
+Restart=on-failure
+RestartSec=30
+KillMode=mixed
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

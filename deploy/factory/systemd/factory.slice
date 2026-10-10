@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenMontage factory (capped so prod sites and the VPN relay keep their headroom)
+
+[Slice]
+CPUQuota=200%
+MemoryHigh=5G
+MemoryMax=6G
+TasksMax=2048

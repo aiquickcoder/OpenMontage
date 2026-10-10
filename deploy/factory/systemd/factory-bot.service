@@ -1,0 +1,16 @@
+[Unit]
+Description=Factory Telegram bot: /brief in, approvals out
+After=network-online.target
+
+[Service]
+Slice=factory.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+Environment=HOME=/home/factory
+ExecStart=/opt/openmontage/.venv/bin/python -m factory bot
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

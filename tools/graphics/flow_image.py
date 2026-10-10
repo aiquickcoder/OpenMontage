@@ -24,7 +24,7 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
-from tools.flow import gflow_client
+from tools.flow import agent_backend, gflow_client
 
 MODEL_REFERENCE_CAPS = {"nano-pro": 10, "nano2": 10, "nano2-lite": 3, "image4": 3}
 ASPECTS = ["9:16", "16:9", "1:1", "4:3", "3:4"]
@@ -119,7 +119,8 @@ class FlowImage(BaseTool):
     user_visible_verification = ["Inspect images for on-model characters and correct product details"]
 
     def get_status(self) -> ToolStatus:
-        return ToolStatus.AVAILABLE if gflow_client.is_installed() else ToolStatus.UNAVAILABLE
+        ok = agent_backend.is_available() if agent_backend.is_selected() else gflow_client.is_installed()
+        return ToolStatus.AVAILABLE if ok else ToolStatus.UNAVAILABLE
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         return 0.0
@@ -171,6 +172,8 @@ class FlowImage(BaseTool):
             return ToolResult(success=False, error=str(exc))
 
         model = inputs.get("model") or "nano-pro"
+        if agent_backend.is_selected():
+            return self._execute_agent(inputs, model, start)
         try:
             run = gflow_client.run(args, timeout=10 * 60)
         except gflow_client.GflowError as exc:
@@ -210,5 +213,48 @@ class FlowImage(BaseTool):
             cost_usd=0.0,
             duration_seconds=round(time.time() - start, 2),
             seed=images[0].get("seed"),
+            model=model,
+        )
+
+    def _execute_agent(self, inputs: dict[str, Any], model: str, start: float) -> ToolResult:
+        aspect = inputs.get("aspect_ratio")
+        if not aspect and inputs.get("width") and inputs.get("height"):
+            aspect = _nearest_aspect(int(inputs["width"]), int(inputs["height"]))
+        count = int(inputs.get("number_of_images") or 1)
+        brief, attachments = agent_backend.image_brief(inputs, model, aspect or "9:16", count)
+        try:
+            gen = agent_backend.generate(
+                "image", brief, attachments, count=count,
+                output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
+                timeout=10 * 60,
+            )
+        except agent_backend.AgentGenerationError as exc:
+            return ToolResult(
+                success=False,
+                error=str(exc),
+                data={**exc.data, "driver": "agent"},
+                duration_seconds=round(time.time() - start, 2),
+                model=model,
+            )
+        return ToolResult(
+            success=True,
+            data={
+                "provider": self.provider,
+                "driver": "agent",
+                "model": model,
+                "models_mentioned": gen.models_mentioned,
+                "prompt": inputs["prompt"],
+                "brief": brief,
+                "output": gen.paths[0],
+                "output_path": gen.paths[0],
+                "outputs": gen.paths,
+                "media_ids": gen.media_ids,
+                "flow_project": gen.flow_project,
+                "credits_spent": gen.credits_spent,
+                "reference_count": len(attachments),
+            },
+            artifacts=gen.paths,
+            cost_usd=0.0,
+            duration_seconds=round(time.time() - start, 2),
             model=model,
         )
