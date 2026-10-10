@@ -17,7 +17,9 @@ apply() {  # $1 = config text; installs, tests, reloads or rolls back
   else "${SSH[@]}" "rm -f /etc/nginx/sites-enabled/$DOMAIN"; echo "!! nginx -t failed — vhost removed"; exit 1; fi
 }
 
-echo "== DNS"; dig +short "$DOMAIN" | grep -qx 155.212.156.162 || { echo "!! $DOMAIN does not resolve to 155.212.156.162"; exit 1; }
+echo "== DNS"  # DoH: plain dig often fails behind a VPN
+curl -s -m 15 "https://dns.google/resolve?name=$DOMAIN&type=A" | grep -q '"data":"155.212.156.162"' \
+  || { echo "!! $DOMAIN does not resolve to 155.212.156.162"; exit 1; }
 echo "== sites before"; check_sites
 
 if ! "${SSH[@]}" "test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem"; then
