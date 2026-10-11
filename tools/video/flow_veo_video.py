@@ -382,7 +382,8 @@ class FlowVeoVideo(BaseTool):
             gen = agent_backend.generate(
                 "video", brief, attachments, count=count,
                 output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
-                timeout=self.estimate_runtime(inputs) * 3 + 300,
+                # free-tier queue on the agent composer can take 15+ min per clip
+                timeout=max(1800, self.estimate_runtime(inputs) * 3 + 300),
                 confirm_up_to=max(credits * 2, credits + 10),
             )
         except agent_backend.AgentGenerationError as exc:

@@ -86,6 +86,7 @@ CONFIRM_ASK = re.compile(
     r"should i (?:go ahead|proceed|start)|ready to (?:kick off|start|generate)", re.I)
 QUOTED_COST = re.compile(r"cost(?:ing|s)?\s*(?:about|around|~)?\s*(\d+)\s*credits?", re.I)
 CONFIRM_REPLY = "Yes, go ahead."
+APPROVE_BUTTON = re.compile(r"^\s*(check\s+)?approve\s*$", re.I)  # not "Always approve"
 OVERLAY_ACCEPT = re.compile(r"^\s*(i agree|agree|accept|i understand|got it|continue|ok|done)\s*$", re.I)
 
 
@@ -296,6 +297,15 @@ class FlowAgentDriver:
         self.page.wait_for_timeout(600)
         self.page.keyboard.press("Enter")
 
+    def _approve(self) -> None:
+        # Flow asks for a go-ahead with inline Approve / Always approve / Reject buttons;
+        # a typed "yes" is treated as a new chat message. Approve once (never "Always").
+        button = self.page.get_by_role("button", name=APPROVE_BUTTON)
+        if button.count():
+            button.last.click(timeout=15_000)
+        else:
+            self._send(CONFIRM_REPLY)
+
     def _reply_text(self) -> str:
         # the visible chat ends with the agent's latest message, followed by the composer chrome
         text = self.page.evaluate("document.body.innerText")
@@ -341,7 +351,7 @@ class FlowAgentDriver:
                     break
                 result.confirmed_costs.append(cost)
                 turn_mark, turn_start = len(self._bodies), time.monotonic()
-                self._send(CONFIRM_REPLY)
+                self._approve()
                 continue
             media = self._new_media(mark, known, expect)
             if len(media) >= count:
