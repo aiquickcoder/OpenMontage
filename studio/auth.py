@@ -12,10 +12,11 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import time
 from collections import defaultdict, deque
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request
 
@@ -107,7 +108,24 @@ def settings_dep(request: Request) -> StudioSettings:
     return request.app.state.settings
 
 
+MIN_SECRET_LEN = 16
+_HTTP_URL = re.compile(r"^https?://", re.I)
+
+
+def http_url(value: Any) -> Optional[str]:
+    """Agent-supplied links go into <a href>: only http(s) passes (no javascript:)."""
+    return value if isinstance(value, str) and _HTTP_URL.match(value) else None
+
+
+
+def secret_ok(secret: str) -> bool:
+    """An empty/short STUDIO_SECRET would let anyone forge a session cookie."""
+    return len(secret or "") >= MIN_SECRET_LEN
+
+
 def require_user(request: Request, settings: StudioSettings = Depends(settings_dep)) -> str:
+    if not secret_ok(settings.secret):
+        raise HTTPException(status_code=401, detail="STUDIO_SECRET not set")
     user = read_session(settings.secret, request.cookies.get(COOKIE, ""))
     if not user or user != settings.admin_user:
         raise HTTPException(status_code=401, detail="not signed in")

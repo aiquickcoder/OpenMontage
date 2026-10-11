@@ -41,3 +41,8 @@ export function shortId(id: string): string {
   // 20261011-071918-kot-povar… → kot-povar… (the date is shown separately)
   return id.replace(/^\d{8}-\d{6}-/, "");
 }
+
+/** Links supplied by the farm agent go into <a href>: only http(s) is rendered (React 18 does not block javascript:). */
+export function isHttpUrl(url: string | null | undefined): url is string {
+  return typeof url === "string" && /^https?:\/\//i.test(url);
+}

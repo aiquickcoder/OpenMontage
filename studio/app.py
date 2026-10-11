@@ -2,7 +2,8 @@
 
     uvicorn studio.app:app --host 127.0.0.1 --port 4760
 
-All /api routes except /api/auth/login and /api/health need the owner's session.
+All /api routes except /api/auth/login, /api/auth/logout and /api/health need the owner's session;
+the phone-farm agent socket /api/farm/ws authenticates with FARM_AGENT_TOKEN instead.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from factory import actions
 from factory.db import BriefStore, InvalidTransition
 from factory.service import BAIT_MODES
 from factory.tg import Telegram
-from studio import auth, projects
+from studio import ads, auth, characters, farm, projects
 from studio import config as studio_config
 from studio.config import StudioSettings
 
@@ -45,6 +46,8 @@ class BriefOptions(BaseModel):
     duration: Optional[str] = Field(default=None, max_length=40)
     audience: Optional[str] = Field(default=None, max_length=300)
     style: Optional[str] = Field(default=None, max_length=300)
+    characters: Optional[str] = Field(default=None, max_length=500)  # comma-separated library ids
+    campaign: Optional[str] = Field(default=None, max_length=80)     # ads campaign id
 
 
 class BriefIn(BaseModel):
@@ -182,7 +185,7 @@ def login(body: LoginIn, request: Request, response: Response) -> dict:
     ip = auth.client_ip(request)
     if limiter.blocked(ip):
         raise HTTPException(status_code=429, detail="слишком много попыток, подождите 15 минут")
-    if not settings.admin_password_hash or not settings.secret:
+    if not settings.admin_password_hash or not auth.secret_ok(settings.secret):
         raise HTTPException(status_code=503, detail="STUDIO_ADMIN_PASSWORD_HASH / STUDIO_SECRET not set")
     ok = (body.username == settings.admin_user) & auth.verify_password(body.password, settings.admin_password_hash)
     if not ok:
@@ -229,12 +232,27 @@ def create_brief(body: BriefIn, request: Request) -> dict:
     opts = {k: v.strip() for k, v in body.options.model_dump().items() if isinstance(v, str) and v.strip()}
     if opts.get("comment_bait") not in (None, *BAIT_MODES):
         raise HTTPException(status_code=422, detail=f"comment_bait must be one of {sorted(BAIT_MODES)}")
+    if "characters" in opts:
+        ids = characters.normalize_ids(opts["characters"])
+        if ids:
+            opts["characters"] = ",".join(ids)
+        else:
+            opts.pop("characters")
+    if "campaign" in opts:
+        opts.update(_campaign_options(request, opts))
     brief_id = _store(request).add(body.text.strip(), opts)
     notify = _notify(request)
     if notify:
         with suppress(Exception):
             notify(f"📝 В очереди (из Studio): {brief_id}")
     return {"id": brief_id}
+
+
+def _campaign_options(request: Request, opts: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return ads.campaign_options(ads.store_for(request.app.state.settings), opts)
+    except ads.CampaignRejected as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from None
 
 
 @api.get("/briefs/{brief_id}")
@@ -394,6 +412,11 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     fs = settings.factory
     app.state.tg = Telegram(fs.tg_token, fs.tg_chat, fs.tg_proxy)
     app.include_router(public)
+    # add-on routers first (their paths are more specific than the core /api ones), then the core
+    app.include_router(farm.ws_router)  # /api/farm/ws (agent token) + /api/devices/{name}/live (cookie)
+    app.include_router(farm.router)
+    app.include_router(characters.router)
+    app.include_router(ads.router)
     app.include_router(api)
 
     dist = settings.web_dist

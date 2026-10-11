@@ -226,3 +226,16 @@ def test_one_line_never_contains_enter():
     flat = ad.one_line(brief)
     assert "\n" not in flat and "\r" not in flat
     assert flat.startswith("Generate exactly 1 image") and flat.endswith("kitchen with oven")
+
+
+def test_generate_quota_reached_says_stop(tmp_path):
+    import pytest
+
+    class Quota(_FakeDriver):
+        def ask(self, brief, *, expect, count, timeout, attachments, confirm_up_to=None):
+            return ad.AgentResult(project_url="p", credits_before=50, credits_after=50,
+                                  refused="PUBLIC_ERROR_USER_QUOTA_REACHED", confirmed_costs=[10])
+
+    with pytest.raises(ab.AgentGenerationError) as err:
+        ab.generate("video", "b", [], count=1, output_path=None, flow_project=None, timeout=1, driver_cls=Quota)
+    assert "AUTOPILOT_RESULT: BUDGET" in str(err.value) and err.value.charged is False

@@ -9,6 +9,17 @@ import { OverviewPage } from "./pages/Overview";
 import { BriefsPage } from "./pages/Briefs";
 import { BriefPage } from "./pages/Brief";
 import { VideosPage } from "./pages/Videos";
+import { CharactersPage } from "./pages/Characters";
+import { CharacterPage } from "./pages/Character";
+import { AdvertisersPage } from "./pages/Advertisers";
+import { AdvertiserPage } from "./pages/Advertiser";
+import { InsertsPage } from "./pages/Inserts";
+import { InsertPage } from "./pages/Insert";
+import { CampaignsPage } from "./pages/Campaigns";
+import { CampaignPage } from "./pages/Campaign";
+import { PublicationsPage } from "./pages/Publications";
+import { DevicesPage } from "./pages/Devices";
+import { AccountsPage } from "./pages/Accounts";
 import { useServerEvents } from "./useEvents";
 import "./styles.css";
 
@@ -59,6 +70,17 @@ function App() {
         <Route path="briefs" element={<BriefsPage />} />
         <Route path="briefs/:id" element={<BriefPage />} />
         <Route path="videos" element={<VideosPage />} />
+        <Route path="characters" element={<CharactersPage />} />
+        <Route path="characters/:id" element={<CharacterPage />} />
+        <Route path="campaigns" element={<CampaignsPage />} />
+        <Route path="campaigns/:id" element={<CampaignPage />} />
+        <Route path="inserts" element={<InsertsPage />} />
+        <Route path="inserts/:id" element={<InsertPage />} />
+        <Route path="advertisers" element={<AdvertisersPage />} />
+        <Route path="advertisers/:id" element={<AdvertiserPage />} />
+        <Route path="publications" element={<PublicationsPage />} />
+        <Route path="devices" element={<DevicesPage />} />
+        <Route path="accounts" element={<AccountsPage />} />
         <Route path="*" element={<OverviewPage />} />
       </Route>
     </Routes>

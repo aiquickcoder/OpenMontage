@@ -1,0 +1,25 @@
+/* advertising pages (Advertisers / Inserts / Campaigns) */
+.ads-logo { width: 40px; height: 40px; border-radius: 8px; object-fit: contain; background: var(--panel-2); border: 1px solid var(--line); }
+.ads-logo-lg { width: 120px; height: 120px; border-radius: var(--radius); object-fit: contain; background: var(--panel-2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.ads-files { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.ads-files .gallery { flex: 1; min-width: 200px; }
+.ads-upload { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.ads-upload input[type="file"] { display: none; }
+.ads-thumb { position: relative; }
+.ads-thumb .ads-del { position: absolute; top: 4px; right: 4px; padding: 2px 7px; font-size: 12px; background: rgb(0 0 0 / 0.6); color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+.ads-template { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 180px; }
+.ads-preview { background: var(--panel-2); border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-word; font-size: 14px; min-height: 60px; }
+.ads-marking { border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--panel-2); border-radius: 6px; font-size: 13px; }
+.ads-warn { color: var(--warn); font-size: 13px; }
+.ads-bad { color: var(--bad); font-size: 13px; }
+.ads-versions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ads-versions li { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 13px; }
+.ads-two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.ads-totals { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.ads-totals strong { color: var(--text); font-size: 18px; display: block; }
+.ads-pubs { margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.ads-check { flex-direction: row; align-items: center; gap: 8px; }
+.ads-check input { width: auto; }
+@media (max-width: 760px) {
+  .ads-two { grid-template-columns: 1fr; }
+}

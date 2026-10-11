@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type BriefRow, type BriefState } from "../api";
 import { Card, Empty, ErrorNote, Progress, StateBadge } from "../components/ui";
+import { CharacterPicker } from "../components/CharacterPicker";
+import type { Campaign } from "../types/ads";
 import { ago, STAGE_LABEL, STATE_LABEL, shortId } from "../format";
 
 const FILTERS: (BriefState | "")[] = ["", "queued", "running", "awaiting_approval", "failed", "budget", "approved", "rejected"];
@@ -15,7 +17,14 @@ const BAIT: { value: string; label: string }[] = [
 function NewBrief() {
   const qc = useQueryClient();
   const nav = useNavigate();
+  const [params] = useSearchParams();
   const [text, setText] = useState("");
+  const [characters, setCharacters] = useState<string[]>(() =>
+    (params.get("characters") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  );
+  const [campaign, setCampaign] = useState(() => params.get("campaign") ?? "");
+  const campaigns = useQuery({ queryKey: ["campaigns"], queryFn: () => api.get<Campaign[]>("/campaigns") });
+  const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === "active" || c.id === campaign);
   const [bait, setBait] = useState("none");
   const [product, setProduct] = useState("");
   const [duration, setDuration] = useState("");
@@ -24,7 +33,14 @@ function NewBrief() {
     mutationFn: () =>
       api.post<{ id: string }>("/briefs", {
         text,
-        options: { comment_bait: bait, product, duration, audience },
+        options: {
+          comment_bait: bait,
+          product,
+          duration,
+          audience,
+          ...(characters.length ? { characters: characters.join(",") } : {}),
+          ...(campaign ? { campaign } : {}),
+        },
       }),
     onSuccess: ({ id }) => {
       qc.invalidateQueries({ queryKey: ["briefs"] });
@@ -71,6 +87,22 @@ function NewBrief() {
             ))}
           </select>
         </label>
+        <label>
+          Рекламная кампания
+          <select value={campaign} onChange={(e) => setCampaign(e.target.value)}>
+            <option value="">Без рекламы</option>
+            {activeCampaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.advertiser_brand ? ` · ${c.advertiser_brand}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="span-2">
+          <span className="field-label">Персонажи из библиотеки</span>
+          <CharacterPicker value={characters} onChange={setCharacters} />
+        </div>
         <div className="span-2 form-foot">
           <ErrorNote error={create.error} />
           <button className="btn btn-primary" disabled={text.trim().length < 10 || create.isPending}>

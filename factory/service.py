@@ -16,7 +16,10 @@ from factory.tg import Telegram, approval_buttons
 
 log = logging.getLogger("factory")
 OPTION_KEYS = {"bait": "comment_bait", "comment_bait": "comment_bait", "product": "product",
-               "duration": "duration", "audience": "audience", "style": "style"}
+               "duration": "duration", "audience": "audience", "style": "style",
+               # Studio add-ons: character library ids (comma-separated) and ad campaigns
+               "characters": "characters", "campaign": "campaign",
+               "advertiser": "advertiser", "insert": "insert"}
 BAIT_MODES = {"hero_breaks_wall", "meta_joke", "none"}
 
 
@@ -47,6 +50,12 @@ def _ledger(project_dir: Optional[str]) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     spent = sum(e["credits"] for e in data.get("entries", []) if e.get("status") == "charged")
     return {"budget": data.get("budget"), "spent": spent}
+
+
+def apply_ad_marking(settings: Settings, brief: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:
+    """Append the advertising marking to the staged release (see actions.mark_release). Raises when
+    an ad brief's data cannot be resolved, so the brief fails instead of going out unmarked."""
+    return actions.mark_release(settings, brief, staged)
 
 
 def process_one(settings: Settings, store: BriefStore, tg: Telegram, run=runner.run_brief) -> Optional[str]:
@@ -81,6 +90,13 @@ def process_one(settings: Settings, store: BriefStore, tg: Telegram, run=runner.
             store.move(brief["id"], "failed", detail=f"release check: {exc}", project_dir=project)
             tg.send(f"❌ {brief['id']}: ролик не прошёл проверку — {exc}")
             return brief["id"]
+        try:
+            staged = apply_ad_marking(settings, brief, staged)
+        except Exception as exc:  # noqa: BLE001 — never publish an ad without its marking
+            log.exception("ad marking failed")
+            store.move(brief["id"], "failed", detail=f"ad marking: {exc}", project_dir=project)
+            tg.send(f"❌ {brief['id']}: не удалось добавить рекламную маркировку — {exc}")
+            return brief["id"]
         store.move(brief["id"], "awaiting_approval", detail=json.dumps(staged, ensure_ascii=False),
                    project_dir=project)
         caption = (f"🎬 {brief['id']} · {staged['duration']} с{spent}\n\n{staged['caption']}\n"
@@ -97,7 +113,19 @@ def worker_loop(settings: Settings, poll_s: float = 30) -> None:
         tg.send("⚠️ Воркер перезапущен, помечены как failed (проверьте кредиты): " + ", ".join(stuck))
     while True:
         if process_one(settings, store, tg) is None:
+            run_studio_tasks(settings)
             time.sleep(poll_s)
+
+
+def run_studio_tasks(settings: Settings) -> int:
+    """Studio background tasks (character sheet generation) — only between briefs."""
+    try:
+        from studio import characters
+
+        return characters.run_pending_tasks(settings)
+    except Exception:  # noqa: BLE001
+        log.exception("studio tasks failed")
+        return 0
 
 
 def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: dict[str, Any]) -> None:
@@ -131,6 +159,14 @@ def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: d
         except ValueError as exc:
             tg.send(f"Не принял: {exc}\nФормат:\n/brief\nbait: hero_breaks_wall\nproduct: …\nТекст брифа")
             return
+        if "campaign" in options:  # same checks and expansion as the Studio brief form
+            from studio import ads
+
+            try:
+                options.update(ads.campaign_options(ads.store_for(runner.studio_settings(settings)), options))
+            except ads.CampaignRejected as exc:
+                tg.send(f"Не принял: кампания «{options['campaign']}» — {exc.detail}")
+                return
         brief_id = store.add(brief, options)
         queued = len(store.list(("queued",), limit=1000))
         tg.send(f"📝 В очереди: {brief_id} (позиция {queued})")

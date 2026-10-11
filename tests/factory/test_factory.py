@@ -241,3 +241,28 @@ def test_bot_ignores_strangers_and_queues_brief(tmp_path):
                                                      "text": "/brief bait: meta_joke\nЛисёнок ищет сок"}})
     rows = store.list()
     assert len(rows) == 1 and rows[0]["options"] == {"comment_bait": "meta_joke"}
+
+
+def test_bot_campaign_brief_checked_like_studio(tmp_path):
+    from studio import ads
+
+    s = _settings(tmp_path)
+    store = BriefStore(s.db_path)
+    tg = FakeTg()
+    adstore = ads.store_for(runner.studio_settings(s))
+    live = adstore.save_campaign(None, {"name": "Осень", "advertiser_id": "adv-1", "insert_id": "ins-1",
+                                        "insert_version": 2, "product": "сок", "status": "active"})
+    done = adstore.save_campaign(None, {"name": "Лето", "advertiser_id": "adv-1", "insert_id": "ins-1",
+                                        "insert_version": 1, "status": "done"})
+
+    def brief(cmp):
+        service.handle_update(s, store, tg, {"message": {"chat": {"id": 42},
+                                                         "text": f"/brief campaign: {cmp}\nЛисёнок ищет сок"}})
+
+    brief("cmp-nope")
+    brief(done)
+    assert store.list() == [] and "unknown campaign" in tg.sent[-2] and "кампания завершена" in tg.sent[-1]
+    brief(live)
+    rows = store.list()
+    assert len(rows) == 1 and rows[0]["options"] == {"campaign": live, "advertiser": "adv-1", "insert": "ins-1",
+                                                     "insert_version": 2, "product": "сок"}

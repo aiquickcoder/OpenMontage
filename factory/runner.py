@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -13,6 +14,7 @@ from factory.config import Settings
 
 RESULT_LINE = re.compile(r"^AUTOPILOT_RESULT:\s*(READY|BUDGET|FAILED)\s+(\S+)(?:\s+(.*))?$", re.M)
 ALLOWED_TOOLS = "Bash Read Write Edit Glob Grep"
+log = logging.getLogger("factory")
 
 
 @dataclass
@@ -34,7 +36,38 @@ def completed_stages(project_dir: Path) -> list[str]:
     return sorted(found)
 
 
-def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None) -> str:
+def studio_settings(settings: Settings):
+    """StudioSettings wrapping the factory's Settings (Studio add-on hooks read only
+    `.factory`, `.db_path` and `.characters_dir`)."""
+    from studio.config import StudioSettings
+
+    return StudioSettings(factory=settings, admin_user="", admin_password_hash="", secret="",
+                          cookie_secure=True, session_days=1, web_dist=settings.repo / "studio" / "web" / "dist",
+                          farm_agent_token="")
+
+
+def addon_lines(settings: Optional[Settings], options: dict[str, Any]) -> list[str]:
+    """Prompt lines from the Studio add-ons (character library, ad inserts). A hook error is
+    logged and skipped — it must never kill a run."""
+    if settings is None:
+        return []
+    lines: list[str] = []
+    try:
+        ss = studio_settings(settings)
+    except Exception:  # noqa: BLE001
+        log.exception("studio settings unavailable; skipping add-on prompt hooks")
+        return []
+    for module in ("studio.characters", "studio.ads"):
+        try:
+            mod = __import__(module, fromlist=["prompt_lines"])
+            lines += mod.prompt_lines(ss, options) or []
+        except Exception:  # noqa: BLE001
+            log.exception("prompt hook %s failed", module)
+    return lines
+
+
+def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None,
+                 settings: Optional[Settings] = None) -> str:
     opts = brief.get("options") or {}
     lines = [
         "You are running OpenMontage unattended (no human will answer questions).",
@@ -49,6 +82,7 @@ def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None) -> str
     for key in ("product", "duration", "audience", "style"):
         if opts.get(key):
             lines.append(f"- {key}: {opts[key]}")
+    lines += addon_lines(settings, opts)
     if done:
         lines += ["", f"RESUME: this project already has checkpoints for: {', '.join(done)}. "
                   "Do NOT redo them or regenerate media that is already on disk — continue from the "
@@ -93,7 +127,7 @@ def run_brief(settings: Settings, brief: dict[str, Any], runner=subprocess.run) 
     project_dir = settings.projects_dir / brief["id"]
     project_dir.mkdir(parents=True, exist_ok=True)
     log_path = project_dir / "factory_run.log"
-    prompt = build_prompt(brief, completed_stages(project_dir))
+    prompt = build_prompt(brief, completed_stages(project_dir), settings)
     try:
         proc = runner(build_command(settings, prompt), cwd=settings.repo, env=build_env(settings),
                       capture_output=True, text=True, timeout=settings.run_timeout_s)

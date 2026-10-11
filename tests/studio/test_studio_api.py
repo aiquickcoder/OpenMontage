@@ -63,6 +63,16 @@ def test_api_requires_login(env):
     assert client.get("/api/auth/me").json() == {"user": "owner"}
 
 
+def test_empty_secret_rejects_forged_cookie(tmp_path):
+    from dataclasses import replace
+    settings = replace(_settings(tmp_path), secret="")
+    client = TestClient(create_app(settings))
+    client.cookies.set(auth.COOKIE, auth.sign_session("", "owner", 3600))
+    assert client.get("/api/overview").status_code == 401
+    assert client.post("/api/advertisers", json={"name": "x"}, headers=H).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "owner", "password": PASSWORD}).status_code == 503
+
+
 def test_login_rate_limit(env):
     _, client = env
     for _ in range(auth.LOGIN_MAX_FAILS):

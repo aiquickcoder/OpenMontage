@@ -72,9 +72,9 @@ img { display: block; max-width: 100%; }
 }
 .nav-link:hover { background: var(--panel-2); }
 .nav-link.active { background: var(--panel-2); font-weight: 600; }
-.nav-soon { color: var(--muted); cursor: default; }
-.nav-soon:hover { background: none; }
-.nav-soon small { font-size: 11px; }
+.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group-title { padding: 10px 10px 2px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.nav-sub { padding-left: 20px; }
 .nav-count { background: var(--accent); color: var(--accent-text); border-radius: 999px; padding: 0 7px; font-size: 12px; font-weight: 600; }
 .logout { margin-top: auto; }
 .content { padding: 24px 28px 60px; min-width: 0; }
@@ -107,6 +107,7 @@ img { display: block; max-width: 100%; }
 .chip-static { cursor: default; background: var(--panel-2); border-color: transparent; }
 .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .span-2 { grid-column: span 2; }
+.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
 .form-foot { display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
 label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 input, textarea, select {
@@ -209,10 +210,13 @@ details summary { cursor: pointer; margin-top: 10px; }
 /* mobile */
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { position: sticky; z-index: 30; height: auto; flex-direction: row; align-items: center; padding: 8px 12px; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); }
+  .sidebar { position: sticky; z-index: 30; height: auto; min-width: 0; max-width: 100vw; flex-direction: row; align-items: center; padding: 8px 12px; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--line); }
   .brand { padding: 0 8px 0 0; }
-  .sidebar nav { flex-direction: row; }
-  .nav-soon { display: none; }
+  .sidebar nav { flex-direction: row; flex-shrink: 0; gap: 2px; }
+  .brand, .logout, .nav-link { flex-shrink: 0; white-space: nowrap; }
+  .nav-group { flex-direction: row; gap: 2px; }
+  .nav-group-title { display: none; }
+  .nav-sub { padding-left: 10px; }
   .logout { margin: 0 0 0 auto; }
   .content { padding: 16px 16px 48px; }
   .tiles { grid-template-columns: repeat(3, 1fr); }

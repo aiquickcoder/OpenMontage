@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type VideoRow } from "../api";
 import { Card, Empty, ErrorNote } from "../components/ui";
+import { PublishDialog } from "../components/PublishDialog";
 import { ago, shortId } from "../format";
 
 const fileUrl = (id: string, name: string, w?: number) =>
@@ -37,8 +38,10 @@ function VideoPanel({ video, onClose }: { video: VideoRow; onClose: () => void }
     onSuccess: refresh,
   });
   const dirty = caption !== video.caption || tags !== video.hashtags.join(" ");
+  const [publishing, setPublishing] = useState(false);
 
   return (
+    <>
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
         <header className="drawer-head">
@@ -87,6 +90,11 @@ function VideoPanel({ video, onClose }: { video: VideoRow; onClose: () => void }
                 </button>
               </>
             )}
+            {video.state === "approved" && (
+              <button className="btn btn-primary" onClick={() => setPublishing(true)}>
+                Опубликовать
+              </button>
+            )}
             {video.available && (
               <a className="btn btn-ghost" href={fileUrl(video.id, "final.mp4")} download>
                 Скачать
@@ -99,6 +107,8 @@ function VideoPanel({ video, onClose }: { video: VideoRow; onClose: () => void }
         </div>
       </aside>
     </div>
+    {publishing && <PublishDialog briefId={video.id} onClose={() => setPublishing(false)} />}
+    </>
   );
 }
 

@@ -58,6 +58,9 @@ in `autopilot_log.md`.
 - When the budget can't cover the remaining shots
   (`FlowBudgetExceeded` or `ledger.remaining` too low), stop with
   `AUTOPILOT_RESULT: BUDGET` (see below). Never raise the budget yourself.
+- A Flow error mentioning `PUBLIC_ERROR_USER_QUOTA_REACHED` (daily generation limit of
+  the account) also ends the run with `AUTOPILOT_RESULT: BUDGET` at once: no retries,
+  no other model, no "test" generation — failed attempts count against the quota too.
 
 ## Failure and final line
 

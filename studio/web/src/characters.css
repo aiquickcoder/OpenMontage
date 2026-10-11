@@ -1,0 +1,48 @@
+/* Character library (pages/Characters.tsx, pages/Character.tsx, CharacterPicker, CharacterGeneration). */
+.char-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.char-toolbar input[type="search"] { flex: 1 1 220px; width: auto; }
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.char-card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; text-decoration: none; color: var(--text); }
+.char-card:hover { border-color: var(--muted); }
+.char-card-img { aspect-ratio: 16 / 9; background: var(--panel-2); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.char-card-img img { width: 100%; height: 100%; object-fit: cover; }
+.char-card-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.char-card-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.char-card-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.char-archived { opacity: 0.6; }
+.char-tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+
+.char-gen { display: flex; flex-direction: column; gap: 10px; }
+.char-gen-status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.char-task-running, .char-task-queued { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
+.char-task-done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.char-task-failed { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.char-variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.char-variant { border: 2px solid var(--line); border-radius: 8px; padding: 0; background: var(--panel-2); overflow: hidden; cursor: pointer; font: inherit; font-size: 12px; color: var(--muted); text-align: left; }
+.char-variant:hover:not(:disabled) { border-color: var(--accent); }
+.char-variant-on { border-color: var(--accent); }
+.char-variant img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.char-variant span { display: block; padding: 4px 8px; }
+
+.char-sheets { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.char-sheet { display: flex; flex-direction: column; gap: 8px; }
+.char-sheet-img { border-radius: 8px; background: var(--panel-2); aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 13px; }
+.char-sheet-img img { width: 100%; height: 100%; object-fit: contain; }
+.char-upload { position: relative; overflow: hidden; }
+.char-upload input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.char-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.char-zoom { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.75); display: grid; place-items: center; padding: 16px; cursor: zoom-out; }
+.char-zoom img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+
+.char-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.char-pick { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.char-pick img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: var(--panel-2); }
+.char-pick-on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+@media (max-width: 720px) {
+  .char-sheets { grid-template-columns: 1fr; }
+  .char-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+.char-gen-box { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.char-gen-box h3 { margin: 0 0 10px; font-size: 15px; }
+.char-refs { margin-top: 4px; }
