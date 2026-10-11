@@ -297,14 +297,18 @@ class FlowAgentDriver:
         self.page.wait_for_timeout(600)
         self.page.keyboard.press("Enter")
 
-    def _approve(self) -> None:
-        # Flow asks for a go-ahead with inline Approve / Always approve / Reject buttons;
-        # a typed "yes" is treated as a new chat message. Approve once (never "Always").
-        button = self.page.get_by_role("button", name=APPROVE_BUTTON)
-        if button.count():
-            button.last.click(timeout=15_000)
-        else:
-            self._send(CONFIRM_REPLY)
+    def _visible_approvals(self) -> int:
+        buttons = self.page.get_by_role("button", name=APPROVE_BUTTON)
+        return sum(1 for i in range(buttons.count()) if buttons.nth(i).is_visible())
+
+    def _approve_button(self) -> Any:
+        """Flow's inline go-ahead (Approve / Always approve / Reject); a typed "yes" is
+        taken as a new chat message. Returns the visible plain Approve button, or None."""
+        buttons = self.page.get_by_role("button", name=APPROVE_BUTTON)
+        for i in range(buttons.count() - 1, -1, -1):
+            if buttons.nth(i).is_visible():
+                return buttons.nth(i)
+        return None
 
     def _reply_text(self) -> str:
         # the visible chat ends with the agent's latest message, followed by the composer chrome
@@ -328,6 +332,7 @@ class FlowAgentDriver:
         self.attach(list(attachments or []))
         known = set(self._media_since(0))
         mark = len(self._bodies)
+        approve_seen = self._visible_approvals()  # stale buttons from earlier turns are ignored
         self._send(prompt)
 
         deadline = time.monotonic() + timeout
@@ -338,11 +343,25 @@ class FlowAgentDriver:
             stream = "".join(b for u, b in self._bodies[mark:] if "StreamChat" in u)
             if "PUBLIC_ERROR_" in stream:
                 break  # agent refused (anti-abuse / policy); waiting longer won't help
+            # The go-ahead request is itself a pending generate_* call, so look for its
+            # inline Approve button rather than for the absence of a tool call.
+            approve = self._approve_button() if self._visible_approvals() > approve_seen else None
+            if approve is not None:
+                cost = confirmation_request(self._reply_text()) or 0
+                if (confirm_up_to is not None and cost > confirm_up_to) or len(result.confirmed_costs) >= max_confirms:
+                    result.declined_cost = cost
+                    break
+                result.confirmed_costs.append(cost)
+                approve.click(timeout=15_000)
+                self.page.wait_for_timeout(3_000)
+                approve_seen = self._visible_approvals()  # if the clicked button lingers, never re-click
+                turn_mark, turn_start = len(self._bodies), time.monotonic()
+                continue
             turn = "".join(b for u, b in self._bodies[turn_mark:] if "StreamChat" in u)
             last_stream = max((i for i, (u, _) in enumerate(self._bodies) if "StreamChat" in u), default=-1)
             if (last_stream >= turn_mark and "generate_" not in turn
                     and time.monotonic() - turn_start > 90):
-                # agent answered without calling a generation tool: a go-ahead request or a question
+                # agent answered without calling a generation tool: a text go-ahead or a question
                 cost = confirmation_request(self._reply_text())
                 if cost is None:
                     break
@@ -351,7 +370,7 @@ class FlowAgentDriver:
                     break
                 result.confirmed_costs.append(cost)
                 turn_mark, turn_start = len(self._bodies), time.monotonic()
-                self._approve()
+                self._send(CONFIRM_REPLY)
                 continue
             media = self._new_media(mark, known, expect)
             if len(media) >= count:
