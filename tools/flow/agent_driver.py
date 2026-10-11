@@ -268,7 +268,8 @@ class FlowAgentDriver:
         box = self.page.locator(COMPOSER).last
         box.click()
         # typed "\n" is an Enter keypress → the composer would submit only the first line
-        box.type(one_line(text), delay=20)
+        # timeout=0: Playwright's default 30 s would abort briefs longer than ~1500 chars
+        box.type(one_line(text), delay=8, timeout=0)
         self.page.wait_for_timeout(600)
         self.page.keyboard.press("Enter")
 
