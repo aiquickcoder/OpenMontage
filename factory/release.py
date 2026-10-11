@@ -59,8 +59,16 @@ def check_video(video: Path, runner=subprocess.run) -> dict[str, float]:
     return p
 
 
+def locate(project: Path, rel: str) -> Path:
+    """`project/rel`, or `project/<id>/rel` when the agent nested its pipeline dir
+    (write_checkpoint(pipeline_dir=projects/<id>, project_id=<id>))."""
+    direct = project / rel
+    nested = project / project.name / rel
+    return nested if not direct.exists() and nested.exists() else direct
+
+
 def _publish_entries(project: Path) -> list[dict[str, Any]]:
-    path = project / "checkpoint_publish.json"
+    path = locate(project, "checkpoint_publish.json")
     if not path.is_file():
         raise ReleaseError(f"{path} missing")
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -73,7 +81,7 @@ def _publish_entries(project: Path) -> list[dict[str, Any]]:
 def stage(project: Path, releases_dir: Path, release_id: str, runner=subprocess.run) -> dict[str, Any]:
     """Validate the project and copy its deliverables to pending/<release_id>."""
     project = Path(project)
-    final = project / "renders" / "final.mp4"
+    final = locate(project, "renders/final.mp4")
     info = check_video(final, runner)
     entries = _publish_entries(project)
 

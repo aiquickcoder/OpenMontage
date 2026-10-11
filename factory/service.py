@@ -62,7 +62,10 @@ def process_one(settings: Settings, store: BriefStore, tg: Telegram, run=runner.
         tg.send(f"💥 {brief['id']}: сбой запуска — {exc}")
         return brief["id"]
 
-    project = str(outcome.project_dir)
+    project_path = Path(outcome.project_dir)
+    if not project_path.is_absolute():  # the agent reports "projects/<id>" relative to the repo
+        project_path = settings.repo / project_path
+    project = str(project_path)
     credits = _ledger(project)
     spent = f"\nКредиты: {credits.get('spent')} / {credits.get('budget')}" if credits else ""
     if outcome.status == "BUDGET":

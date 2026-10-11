@@ -144,6 +144,19 @@ def test_stage_and_approve(tmp_path):
         release.approve(rel, "b1")
 
 
+def test_stage_finds_nested_pipeline_dir(tmp_path):
+    # agent wrote checkpoints to projects/<id>/<id>/ while renders stayed at projects/<id>/
+    outer = tmp_path / "projects" / "b1"
+    inner = _project(outer, name="b1").parent.parent / "projects" / "b1"
+    nested = outer / "b1"
+    nested.mkdir(parents=True)
+    (inner / "checkpoint_publish.json").rename(nested / "checkpoint_publish.json")
+    (outer / "renders").mkdir()
+    (inner / "renders" / "final.mp4").rename(outer / "renders" / "final.mp4")
+    staged = release.stage(outer, tmp_path / "rel", "b1", runner=_ffprobe_ok())
+    assert staged["caption"] == "Лис и МУЛЬТ"
+
+
 def test_stage_rejects_horizontal(tmp_path):
     with pytest.raises(release.ReleaseError, match="vertical"):
         release.stage(_project(tmp_path), tmp_path / "rel", "b1", runner=_ffprobe_ok(1920, 1080))
