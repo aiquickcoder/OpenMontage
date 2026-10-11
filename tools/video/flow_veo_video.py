@@ -294,6 +294,8 @@ class FlowVeoVideo(BaseTool):
         except ValueError as exc:
             return ToolResult(success=False, error=str(exc))
 
+        if inputs.get("dry_run"):  # agents pass this as an input; never generate on it
+            return ToolResult(success=True, data={"dry_run": True, **self.dry_run(inputs)})
         model = inputs.get("model") or "veo-fast"
         credits = self.estimate_credits(inputs)
         ledger = CreditLedger(self._project_dir(inputs))
@@ -381,6 +383,7 @@ class FlowVeoVideo(BaseTool):
                 "video", brief, attachments, count=count,
                 output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
                 timeout=self.estimate_runtime(inputs) * 3 + 300,
+                confirm_up_to=max(credits * 2, credits + 10),
             )
         except agent_backend.AgentGenerationError as exc:
             ledger.settle(entry_id, charged=exc.charged)

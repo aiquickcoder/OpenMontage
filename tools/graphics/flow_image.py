@@ -171,6 +171,8 @@ class FlowImage(BaseTool):
         except ValueError as exc:
             return ToolResult(success=False, error=str(exc))
 
+        if inputs.get("dry_run"):  # agents pass this as an input; never generate on it
+            return ToolResult(success=True, data={"dry_run": True, **self.dry_run(inputs)})
         model = inputs.get("model") or "nano-pro"
         if agent_backend.is_selected():
             return self._execute_agent(inputs, model, start)
@@ -227,6 +229,7 @@ class FlowImage(BaseTool):
                 "image", brief, attachments, count=count,
                 output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
                 timeout=10 * 60,
+                confirm_up_to=10 * count,
             )
         except agent_backend.AgentGenerationError as exc:
             return ToolResult(

@@ -81,6 +81,22 @@ def models_mentioned(stream: str) -> list[str]:
     return found
 
 
+CONFIRM_ASK = re.compile(
+    r"would you like me to|shall i (?:go ahead|proceed|start)|do you want me to|"
+    r"should i (?:go ahead|proceed|start)|ready to (?:kick off|start|generate)", re.I)
+QUOTED_COST = re.compile(r"cost(?:ing|s)?\s*(?:about|around|~)?\s*(\d+)\s*credits?", re.I)
+CONFIRM_REPLY = "Yes, go ahead."
+
+
+def confirmation_request(reply: str) -> Optional[int]:
+    """Agent paused to ask for a go-ahead. Returns the quoted cost (0 if none), else None."""
+    tail = reply[-800:]
+    if not CONFIRM_ASK.search(tail):
+        return None
+    costs = [int(c) for c in QUOTED_COST.findall(tail)]
+    return max(costs) if costs else 0
+
+
 def unescape_urls(body: str) -> str:
     """Undo JSON escaping of '=' / '&' at any nesting depth (StreamChat double-escapes: \\\\u003d)."""
     return re.sub(r"\\+u0026", "&", re.sub(r"\\+u003d", "=", body))
@@ -109,6 +125,8 @@ class AgentResult:
     stream_log: str = ""
     models_mentioned: list[str] = field(default_factory=list)
     refused: Optional[str] = None
+    confirmed_costs: list[int] = field(default_factory=list)
+    declined_cost: Optional[int] = None
 
     @property
     def credits_spent(self) -> Optional[int]:
@@ -241,36 +259,60 @@ class FlowAgentDriver:
         inputs.last.set_input_files(files)
         self.page.wait_for_timeout(per_file_wait_ms * len(files))
 
+    def _send(self, text: str) -> None:
+        box = self.page.locator(COMPOSER).last
+        box.click()
+        box.type(text, delay=20)
+        self.page.wait_for_timeout(600)
+        self.page.keyboard.press("Enter")
+
+    def _reply_text(self) -> str:
+        # the visible chat ends with the agent's latest message, followed by the composer chrome
+        text = self.page.evaluate("document.body.innerText")
+        cut = text.rfind("What do you want to create?")
+        return (text[:cut] if cut > 0 else text)[-1500:]
+
     # -- main entry ------------------------------------------------------
     def ask(self, prompt: str, *, expect: str = "any", count: int = 1,
             timeout: float = 900, settle: float = 15,
-            attachments: Optional[list[str]] = None) -> AgentResult:
+            attachments: Optional[list[str]] = None,
+            confirm_up_to: Optional[int] = None, max_confirms: int = 2) -> AgentResult:
         """Send one request to the agent and wait for `count` new media of kind `expect`.
 
         Media already seen before submission (project history, uploaded attachments)
-        are never reported as results.
+        are never reported as results. When the agent pauses to ask for a go-ahead
+        ("…costing 15 credits?") it is confirmed if the quoted cost is <= `confirm_up_to`
+        (None = any cost), at most `max_confirms` times; otherwise the request ends.
         """
         result = AgentResult(project_url=self.page.url, credits_before=self._last_credits())
         self.attach(list(attachments or []))
         known = set(self._media_since(0))
         mark = len(self._bodies)
-        box = self.page.locator(COMPOSER).last
-        box.click()
-        box.type(prompt, delay=20)
-        self.page.wait_for_timeout(600)
-        self.page.keyboard.press("Enter")
+        self._send(prompt)
 
         deadline = time.monotonic() + timeout
+        turn_mark, turn_start = mark, time.monotonic()
         ready_at: Optional[float] = None
         while time.monotonic() < deadline:
             self.page.wait_for_timeout(5_000)
             stream = "".join(b for u, b in self._bodies[mark:] if "StreamChat" in u)
             if "PUBLIC_ERROR_" in stream:
                 break  # agent refused (anti-abuse / policy); waiting longer won't help
+            turn = "".join(b for u, b in self._bodies[turn_mark:] if "StreamChat" in u)
             last_stream = max((i for i, (u, _) in enumerate(self._bodies) if "StreamChat" in u), default=-1)
-            if (last_stream >= mark and "generate_" not in stream
-                    and time.monotonic() - deadline + timeout > 90):
-                break  # agent answered without calling a generation tool (e.g. asked a question)
+            if (last_stream >= turn_mark and "generate_" not in turn
+                    and time.monotonic() - turn_start > 90):
+                # agent answered without calling a generation tool: a go-ahead request or a question
+                cost = confirmation_request(self._reply_text())
+                if cost is None:
+                    break
+                if (confirm_up_to is not None and cost > confirm_up_to) or len(result.confirmed_costs) >= max_confirms:
+                    result.declined_cost = cost
+                    break
+                result.confirmed_costs.append(cost)
+                turn_mark, turn_start = len(self._bodies), time.monotonic()
+                self._send(CONFIRM_REPLY)
+                continue
             media = self._new_media(mark, known, expect)
             if len(media) >= count:
                 ready_at = ready_at or time.monotonic()
@@ -280,7 +322,7 @@ class FlowAgentDriver:
         result.stream_log = "\n".join(b for u, b in self._bodies[mark:] if "StreamChat" in u)
         result.models_mentioned = models_mentioned(result.stream_log)
         result.refused = refusal_code(result.stream_log)
-        result.reply_text = self.page.evaluate("document.body.innerText")[-1500:]
+        result.reply_text = self._reply_text()
         try:
             self.page.reload(wait_until="domcontentloaded")
             self.page.wait_for_timeout(8_000)

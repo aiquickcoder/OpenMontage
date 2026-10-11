@@ -116,7 +116,13 @@ class _FakeDriver:
     def open_project(self, url=None):
         return url or "https://flow.google.com/project/11111111-2222-3333-4444-555555555555"
 
-    def ask(self, brief, *, expect, count, timeout, attachments):
+    declined = None
+
+    def ask(self, brief, *, expect, count, timeout, attachments, confirm_up_to=None):
+        _FakeDriver.last_confirm_up_to = confirm_up_to
+        if self.declined is not None:
+            return ad.AgentResult(project_url="p", credits_before=50, credits_after=50,
+                                  declined_cost=self.declined)
         media = [ad.Media(kind=self.media_kind, media_id=f"m{i}", url="u") for i in range(count)]
         return ad.AgentResult(project_url="p", media=media, credits_before=50,
                               credits_after=50 - self.spent, models_mentioned=["veo-lite"])
@@ -162,3 +168,54 @@ def test_veo_tool_agent_branch_books_measured_credits(tmp_path, monkeypatch):
     assert res.data["driver"] == "agent" and res.data["credits_spent"] == 7
     assert res.data["ledger"]["committed"] == 7
     assert res.data["model_mismatch_suspected"] is False
+
+
+def test_confirmation_request():
+    asked = ("Generate exactly 1 video and nothing else.\n\nWould you like me to kick off this "
+             "1 video generation, costing 15 credits?\n\nthumb_up")
+    assert ad.confirmation_request(asked) == 15
+    assert ad.confirmation_request("Shall I go ahead?") == 0
+    assert ad.confirmation_request("Here's your cheerful cat chef! Let me know if you'd like more.") is None
+
+
+def test_generate_declined_quote_is_error_not_charged(tmp_path):
+    import pytest
+
+    _FakeDriver.declined = 40
+    try:
+        with pytest.raises(ab.AgentGenerationError) as err:
+            ab.generate("video", "b", [], count=1, output_path=None, flow_project=None,
+                        timeout=1, confirm_up_to=20, driver_cls=_FakeDriver)
+    finally:
+        _FakeDriver.declined = None
+    assert err.value.charged is False and "quoted 40" in str(err.value)
+
+
+def test_veo_tool_passes_confirm_cap(tmp_path, monkeypatch):
+    from tools.video.flow_veo_video import FlowVeoVideo
+
+    monkeypatch.setenv("FLOW_DRIVER", "agent")
+    monkeypatch.setenv("FLOW_PLAN", "free")
+    monkeypatch.setattr(ab, "is_available", lambda: True)
+    real_generate = ab.generate
+    monkeypatch.setattr(ab, "generate", lambda *a, **k: real_generate(*a, **{**k, "driver_cls": _FakeDriver}))
+    res = FlowVeoVideo().execute({"prompt": "fox", "model": "veo-lite", "project_dir": str(tmp_path),
+                                  "output_path": str(tmp_path / "s.mp4")})
+    assert res.success, res.error
+    assert _FakeDriver.last_confirm_up_to == 20  # veo-lite on free = 10 → cap max(20, 20)
+
+
+def test_dry_run_input_never_generates(tmp_path, monkeypatch):
+    from tools.graphics.flow_image import FlowImage
+    from tools.video.flow_veo_video import FlowVeoVideo
+
+    monkeypatch.setenv("FLOW_DRIVER", "agent")
+    monkeypatch.setattr(ab, "is_available", lambda: True)
+
+    def boom(*a, **k):
+        raise AssertionError("generate must not run on dry_run")
+
+    monkeypatch.setattr(ab, "generate", boom)
+    for tool in (FlowVeoVideo(), FlowImage()):
+        res = tool.execute({"prompt": "test", "dry_run": True, "project_dir": str(tmp_path)})
+        assert res.success and res.data["dry_run"] is True

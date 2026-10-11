@@ -136,7 +136,8 @@ def _place(downloaded: list[Path], output_path: Optional[str]) -> list[str]:
 
 def generate(kind: str, brief: str, attachments: list[str], *, count: int,
              output_path: Optional[str], flow_project: Optional[str],
-             timeout: float, driver_cls: Any = None) -> AgentGeneration:
+             timeout: float, confirm_up_to: Optional[int] = None,
+             driver_cls: Any = None) -> AgentGeneration:
     """Run one agent request. Raises AgentGenerationError; `charged` is True once submitted."""
     for path in attachments:
         if not Path(path).is_file():
@@ -148,10 +149,15 @@ def generate(kind: str, brief: str, attachments: list[str], *, count: int,
         with driver_cls(profile_name()) as drv:
             drv.credits()
             project_url = drv.open_project(_project_url(flow_project))
-            res = drv.ask(brief, expect=kind, count=count, timeout=timeout, attachments=attachments)
+            res = drv.ask(brief, expect=kind, count=count, timeout=timeout, attachments=attachments,
+                          confirm_up_to=confirm_up_to)
             data = {"project_url": project_url, "models_mentioned": res.models_mentioned,
                     "credits_before": res.credits_before, "credits_after": res.credits_after,
-                    "reply": res.reply_text[-600:]}
+                    "confirmed_costs": res.confirmed_costs, "reply": res.reply_text[-600:]}
+            if res.declined_cost is not None:
+                raise AgentGenerationError(
+                    f"Flow agent quoted {res.declined_cost} credits (> allowed {confirm_up_to}); "
+                    "not confirmed, nothing generated", charged=bool(res.credits_spent), data=data)
             if res.refused:
                 raise AgentGenerationError(f"Flow agent refused: {res.refused}",
                                            charged=bool(res.credits_spent), data=data)
