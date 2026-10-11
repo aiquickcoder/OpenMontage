@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from factory import release, runner
+from factory import actions, release, runner
 from factory.config import Settings
 from factory.db import BriefStore, InvalidTransition
 from factory.tg import Telegram, approval_buttons
@@ -106,19 +106,17 @@ def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: d
         if str(cq.get("message", {}).get("chat", {}).get("id")) != tg.chat:
             return
         action, _, brief_id = (cq.get("data") or "").partition(":")
+        notes: list[str] = []
         try:
             if action == "approve":
-                rec = release.approve(settings.releases_dir, brief_id)
-                store.move(brief_id, "approved")
-                note = f"✅ {brief_id} одобрен — ферма заберёт ({len(rec['files'])} файла)"
+                actions.approve(settings, store, brief_id, notify=notes.append)
             elif action == "reject":
-                release.discard(settings.releases_dir, brief_id)
-                store.move(brief_id, "rejected")
-                note = f"🗑 {brief_id} отклонён"
+                actions.reject(settings, store, brief_id, notify=notes.append)
             else:
                 return
-        except (release.ReleaseError, InvalidTransition, KeyError) as exc:
-            note = f"⚠️ {exc}"
+        except (actions.ActionError, InvalidTransition, KeyError) as exc:
+            notes.append(f"⚠️ {exc}")
+        note = notes[-1] if notes else "ok"
         tg.call("answerCallbackQuery", callback_query_id=cq["id"], text=note[:190])
         tg.send(note)
         return
@@ -142,9 +140,8 @@ def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: d
     elif text.startswith("/retry"):
         brief_id = text.split(maxsplit=1)[-1].strip()
         try:
-            store.move(brief_id, "queued", detail="manual retry")
-            tg.send(f"🔁 {brief_id} снова в очереди")
-        except (InvalidTransition, KeyError) as exc:
+            actions.retry(store, brief_id, notify=tg.send)
+        except (actions.ActionError, InvalidTransition, KeyError) as exc:
             tg.send(f"⚠️ {exc}")
     elif text.startswith(("/start", "/help")):
         tg.send("/brief <текст> — новый ролик (строки bait:/product:/duration: в начале — опции)\n"

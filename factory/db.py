@@ -112,19 +112,45 @@ class BriefStore:
             c.execute("COMMIT")
         return self.get(row["id"])
 
-    def move(self, brief_id: str, state: str, *, detail: Optional[str] = None,
-             project_dir: Optional[str] = None) -> None:
+    def check(self, brief_id: str, state: str) -> dict[str, Any]:
+        """Raise unless `state` is a valid next state; returns the current row."""
         current = self.get(brief_id)
         if current is None:
             raise KeyError(brief_id)
         if state not in TRANSITIONS[current["state"]]:
             raise InvalidTransition(f"{brief_id}: {current['state']} → {state} is not allowed")
+        return current
+
+    def move(self, brief_id: str, state: str, *, detail: Optional[str] = None,
+             project_dir: Optional[str] = None) -> None:
+        self.check(brief_id, state)
         now = _now()
         with self._conn() as c:
             c.execute("UPDATE briefs SET state = ?, detail = ?, project_dir = COALESCE(?, project_dir), "
                       "updated_at = ? WHERE id = ?", (state, detail, project_dir, now, brief_id))
             c.execute("INSERT INTO events (brief_id, state, detail, at) VALUES (?, ?, ?, ?)",
                       (brief_id, state, detail, now))
+
+    def set_detail(self, brief_id: str, detail: str) -> None:
+        with self._conn() as c:
+            c.execute("UPDATE briefs SET detail = ?, updated_at = ? WHERE id = ?", (detail, _now(), brief_id))
+
+    def events(self, brief_id: str) -> list[dict[str, Any]]:
+        with self._conn() as c:
+            rows = c.execute("SELECT state, detail, at FROM events WHERE brief_id = ? ORDER BY id",
+                             (brief_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def counts(self) -> dict[str, int]:
+        with self._conn() as c:
+            rows = c.execute("SELECT state, COUNT(*) AS n FROM briefs GROUP BY state").fetchall()
+        return {r["state"]: r["n"] for r in rows}
+
+    def signature(self) -> str:
+        """Cheap change marker for polling (SSE): last update + row count."""
+        with self._conn() as c:
+            row = c.execute("SELECT COALESCE(MAX(updated_at), ''), COUNT(*) FROM briefs").fetchone()
+        return f"{row[0]}|{row[1]}"
 
     def recover_running(self) -> list[str]:
         """After a crash: running briefs are failed, never re-run (credits may be spent)."""

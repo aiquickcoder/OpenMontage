@@ -24,7 +24,7 @@ echo "== sites before"; check_sites
 
 if ! "${SSH[@]}" "test -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem"; then
   echo "== phase 1: http-only vhost + certificate"
-  apply "$(sed -n '1,/^}/p' "$CONF")"
+  apply "$(awk '/^server \{/{p=1} p{print} p&&/^\}/{exit}' "$CONF")"   # the plain-http server block only
   "${SSH[@]}" "certbot certonly --webroot -w /var/www/letsencrypt -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring"
 fi
 

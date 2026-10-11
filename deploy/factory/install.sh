@@ -51,7 +51,19 @@ echo "==> .env"
 if [ ! -f "$APP/.env" ]; then
   sed "s|^RELEASE_TOKEN=.*|RELEASE_TOKEN=$(openssl rand -hex 24)|" "$APP/deploy/factory/env.example" > "$APP/.env"
 fi
+# keys added after the first install: append missing ones, generating secrets
+add_key() { grep -q "^$1=" "$APP/.env" || echo "$1=$2" >> "$APP/.env"; }
+add_key STUDIO_ADMIN_USER owner
+add_key STUDIO_ADMIN_PASSWORD_HASH ""
+add_key STUDIO_SECRET "$(openssl rand -hex 32)"
+add_key FARM_AGENT_TOKEN "$(openssl rand -hex 24)"
+grep -q '^STUDIO_SECRET=.\+' "$APP/.env" || sed -i "s|^STUDIO_SECRET=.*|STUDIO_SECRET=$(openssl rand -hex 32)|" "$APP/.env"
+grep -q '^FARM_AGENT_TOKEN=.\+' "$APP/.env" || sed -i "s|^FARM_AGENT_TOKEN=.*|FARM_AGENT_TOKEN=$(openssl rand -hex 24)|" "$APP/.env"
 chown factory:factory "$APP/.env"; chmod 600 "$APP/.env"
+
+echo "==> studio web"
+(cd "$APP/studio/web" && sudo -u factory npm ci --silent --no-fund --no-audit && sudo -u factory npm run build --silent) \
+  || echo "  [warn] studio web build failed — the API still runs, the SPA is missing"
 
 echo "==> systemd"
 install -m 644 "$APP"/deploy/factory/systemd/factory.slice "$APP"/deploy/factory/systemd/factory-*.service /etc/systemd/system/
@@ -59,6 +71,13 @@ systemctl daemon-reload
 systemctl enable --now factory-xvfb factory-vnc factory-novnc >/dev/null
 
 set -a; . "$APP/.env"; set +a
+if [ -n "${STUDIO_ADMIN_PASSWORD_HASH:-}" ]; then
+  systemctl enable --now factory-studio >/dev/null && systemctl restart factory-studio
+  echo "studio: started (127.0.0.1:4760)"
+else
+  echo "studio: NOT started — run: sudo -u factory $APP/.venv/bin/python -m studio hash-password, put the result into STUDIO_ADMIN_PASSWORD_HASH"
+fi
+
 if { [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || [ -n "${ANTHROPIC_API_KEY:-}" ]; } && [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
   systemctl enable --now factory-bot factory-worker >/dev/null
   systemctl restart factory-bot factory-worker

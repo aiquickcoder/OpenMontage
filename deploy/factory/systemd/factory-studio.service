@@ -1,0 +1,16 @@
+[Unit]
+Description=Studio web dashboard API (behind nginx at studio.luvael.ru)
+After=network-online.target
+
+[Service]
+Slice=factory.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+Environment=HOME=/home/factory
+ExecStart=/opt/openmontage/.venv/bin/python -m studio serve --host 127.0.0.1 --port 4760
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
