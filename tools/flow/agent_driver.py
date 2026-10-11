@@ -86,6 +86,7 @@ CONFIRM_ASK = re.compile(
     r"should i (?:go ahead|proceed|start)|ready to (?:kick off|start|generate)", re.I)
 QUOTED_COST = re.compile(r"cost(?:ing|s)?\s*(?:about|around|~)?\s*(\d+)\s*credits?", re.I)
 CONFIRM_REPLY = "Yes, go ahead."
+OVERLAY_ACCEPT = re.compile(r"^\s*(i agree|agree|accept|i understand|got it|continue|ok|done)\s*$", re.I)
 
 
 def confirmation_request(reply: str) -> Optional[int]:
@@ -148,6 +149,7 @@ class FlowAgentDriver:
         self.headless = headless
         self.bridge = bridge_enabled() if bridge is None else bridge
         self._bodies: list[tuple[str, str]] = []
+        self.overlay_log: list[str] = []
 
     # -- lifecycle -------------------------------------------------------
     def __enter__(self) -> "FlowAgentDriver":
@@ -260,9 +262,30 @@ class FlowAgentDriver:
                     upload.first.click()
                 chooser.value.set_files(files)
                 self.page.wait_for_timeout(per_file_wait_ms * len(files))
+                self._clear_overlays()
                 return
         inputs.last.set_input_files(files)
         self.page.wait_for_timeout(per_file_wait_ms * len(files))
+        self._clear_overlays()
+
+    def _clear_overlays(self, rounds: int = 4) -> None:
+        """Close dialogs left over the composer after an upload (first-upload consent,
+        the add-media menu). Consent-style buttons are accepted, anything else is escaped."""
+        for _ in range(rounds):
+            backdrop = self.page.locator(".cdk-overlay-backdrop-showing")
+            if backdrop.count() == 0:
+                return
+            pane = self.page.locator(".cdk-overlay-pane").last
+            text = (pane.inner_text(timeout=5_000) if pane.count() else "")[:300]
+            self.overlay_log.append(text)
+            accept = pane.get_by_role("button", name=OVERLAY_ACCEPT) if pane.count() else None
+            if accept is not None and accept.count():
+                accept.first.click(timeout=10_000)
+            else:
+                self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(1_500)
+        if self.page.locator(".cdk-overlay-backdrop-showing").count():
+            raise RuntimeError(f"a Flow dialog stays open over the composer: {self.overlay_log[-1]!r}")
 
     def _send(self, text: str) -> None:
         box = self.page.locator(COMPOSER).last
