@@ -35,6 +35,18 @@ def test_media_since_extracts_signed_urls():
     assert "&KeyName=" in m.url
 
 
+def test_media_since_double_escaped_keeps_signed_url():
+    # as seen on the server: StreamChat nests JSON, so '=' arrives as \\u003d
+    drv = ad.FlowAgentDriver.__new__(ad.FlowAgentDriver)
+    drv._bodies = [
+        ("a", 'll,null,1,\\"https://flow-content.google/image/34b84c67-4990-44a9-a525-99c46d4ea231?Expires\\\\u003d1791721469'
+              '\\\\u0026KeyName\\\\u003dlabs-flow-prod\\\\u0026Signature\\\\u003dsig\\"'),
+        ("b", 'https://flow-content.google/image/34b84c67-4990-44a9-a525-99c46d4ea231?Expires\\'),
+    ]
+    m = drv._media_since(0)["34b84c67-4990-44a9-a525-99c46d4ea231"]
+    assert m.url.endswith("?Expires=1791721469&KeyName=labs-flow-prod&Signature=sig")
+
+
 def test_last_credits():
     drv = ad.FlowAgentDriver.__new__(ad.FlowAgentDriver)
     drv._bodies = [("u", _frame("nzlxg", "[50,3,8,1,null,50,[1791724968,711746000]]"))]
