@@ -86,7 +86,10 @@ CONFIRM_ASK = re.compile(
     r"should i (?:go ahead|proceed|start)|ready to (?:kick off|start|generate)", re.I)
 QUOTED_COST = re.compile(r"cost(?:ing|s)?\s*(?:about|around|~)?\s*(\d+)\s*credits?", re.I)
 CONFIRM_REPLY = "Yes, go ahead."
-APPROVE_BUTTON = re.compile(r"^\s*(check\s+)?approve\s*$", re.I)  # not "Always approve"
+# Flow's go-ahead is a radiogroup inside <flow-permission-message>, not buttons:
+# <div role="radio" aria-label="Approve" aria-checked="false">. Never "Always approve".
+APPROVE_OPTION = ('flow-permission-message [role="radio"][aria-label="Approve"]'
+                  '[aria-checked="false"]:not([aria-disabled="true"])')
 OVERLAY_ACCEPT = re.compile(r"^\s*(i agree|agree|accept|i understand|got it|continue|ok|done)\s*$", re.I)
 
 
@@ -298,13 +301,13 @@ class FlowAgentDriver:
         self.page.keyboard.press("Enter")
 
     def _visible_approvals(self) -> int:
-        buttons = self.page.get_by_role("button", name=APPROVE_BUTTON)
+        buttons = self.page.locator(APPROVE_OPTION)
         return sum(1 for i in range(buttons.count()) if buttons.nth(i).is_visible())
 
     def _approve_button(self) -> Any:
         """Flow's inline go-ahead (Approve / Always approve / Reject); a typed "yes" is
-        taken as a new chat message. Returns the visible plain Approve button, or None."""
-        buttons = self.page.get_by_role("button", name=APPROVE_BUTTON)
+        taken as a new chat message. Returns the visible, unchecked Approve option, or None."""
+        buttons = self.page.locator(APPROVE_OPTION)
         for i in range(buttons.count() - 1, -1, -1):
             if buttons.nth(i).is_visible():
                 return buttons.nth(i)
