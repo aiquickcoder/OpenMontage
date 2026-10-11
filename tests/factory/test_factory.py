@@ -109,6 +109,19 @@ def test_prompt_mentions_addons():
     assert "addons/autopilot/README.md" in p and "projects/b1" in p and "meta_joke" in p and "сок" in p
 
 
+def test_prompt_resumes_existing_project(tmp_path):
+    proj = tmp_path / "b1"
+    (proj / "b1").mkdir(parents=True)
+    (proj / "checkpoint_idea.json").write_text("{}")
+    (proj / "b1" / "checkpoint_scene_plan.json").write_text("{}")
+    (proj / "b1" / "checkpoint_idea_20261011T0724255016960000.json").write_text("{}")
+    done = runner.completed_stages(proj)
+    assert done == ["idea", "scene_plan"]
+    p = runner.build_prompt({"id": "b1", "text": "Бриф", "detail": "Veo timeout"}, done)
+    assert "RESUME" in p and "idea, scene_plan" in p and "Veo timeout" in p
+    assert "RESUME" not in runner.build_prompt({"id": "b1", "text": "Бриф"}, [])
+
+
 def test_parse_result():
     out = "работаю...\nAUTOPILOT_RESULT: READY projects/b1\n"
     assert runner.parse_result(out, Path("d")) == ("READY", Path("projects/b1"), "")

@@ -23,7 +23,18 @@ class RunOutcome:
     returncode: int
 
 
-def build_prompt(brief: dict[str, Any]) -> str:
+def completed_stages(project_dir: Path) -> list[str]:
+    """Stages with a checkpoint on disk (also under the nested projects/<id>/<id>/ layout)."""
+    found = set()
+    for base in (project_dir, project_dir / project_dir.name):
+        for cp in base.glob("checkpoint_*.json"):
+            stem = cp.stem[len("checkpoint_"):]
+            if not re.search(r"_\d{8}T", stem):  # skip timestamped history copies
+                found.add(stem)
+    return sorted(found)
+
+
+def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None) -> str:
     opts = brief.get("options") or {}
     lines = [
         "You are running OpenMontage unattended (no human will answer questions).",
@@ -38,6 +49,11 @@ def build_prompt(brief: dict[str, Any]) -> str:
     for key in ("product", "duration", "audience", "style"):
         if opts.get(key):
             lines.append(f"- {key}: {opts[key]}")
+    if done:
+        lines += ["", f"RESUME: this project already has checkpoints for: {', '.join(done)}. "
+                  "Do NOT redo them or regenerate media that is already on disk — continue from the "
+                  "first stage that is not completed, reusing existing artifacts and assets. "
+                  f"Previous attempt ended with: {brief.get('detail') or 'unknown'}."]
     lines += ["", "BRIEF (from the owner):", brief["text"].strip()]
     return "\n".join(lines)
 
@@ -77,7 +93,7 @@ def run_brief(settings: Settings, brief: dict[str, Any], runner=subprocess.run) 
     project_dir = settings.projects_dir / brief["id"]
     project_dir.mkdir(parents=True, exist_ok=True)
     log_path = project_dir / "factory_run.log"
-    prompt = build_prompt(brief)
+    prompt = build_prompt(brief, completed_stages(project_dir))
     try:
         proc = runner(build_command(settings, prompt), cwd=settings.repo, env=build_env(settings),
                       capture_output=True, text=True, timeout=settings.run_timeout_s)
