@@ -219,3 +219,10 @@ def test_dry_run_input_never_generates(tmp_path, monkeypatch):
     for tool in (FlowVeoVideo(), FlowImage()):
         res = tool.execute({"prompt": "test", "dry_run": True, "project_dir": str(tmp_path)})
         assert res.success and res.data["dry_run"] is True
+
+
+def test_one_line_never_contains_enter():
+    brief, _ = ab.image_brief({"prompt": "kitchen\nwith oven"}, "nano-pro", "9:16", 1)
+    flat = ad.one_line(brief)
+    assert "\n" not in flat and "\r" not in flat
+    assert flat.startswith("Generate exactly 1 image") and flat.endswith("kitchen with oven")

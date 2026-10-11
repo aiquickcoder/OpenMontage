@@ -97,6 +97,11 @@ def confirmation_request(reply: str) -> Optional[int]:
     return max(costs) if costs else 0
 
 
+def one_line(text: str) -> str:
+    """Flatten a multi-line brief: lines become sentences separated by a space."""
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
+
+
 def unescape_urls(body: str) -> str:
     """Undo JSON escaping of '=' / '&' at any nesting depth (StreamChat double-escapes: \\\\u003d)."""
     return re.sub(r"\\+u0026", "&", re.sub(r"\\+u003d", "=", body))
@@ -262,7 +267,8 @@ class FlowAgentDriver:
     def _send(self, text: str) -> None:
         box = self.page.locator(COMPOSER).last
         box.click()
-        box.type(text, delay=20)
+        # typed "\n" is an Enter keypress → the composer would submit only the first line
+        box.type(one_line(text), delay=20)
         self.page.wait_for_timeout(600)
         self.page.keyboard.press("Enter")
 
