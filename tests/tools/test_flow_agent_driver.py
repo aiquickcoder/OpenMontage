@@ -28,8 +28,8 @@ def test_media_since_extracts_signed_urls():
                 '\\u0026KeyName\\u003dlabs-flow-prod-cdn-key\\u0026Signature\\u003dbXY2rOb0\\",'),
     ]
     media = drv._media_since(1)
-    assert list(media) == ["3c41c804-ad9e-4dfd-8af1-3407a07fe088"]
-    m = media["3c41c804-ad9e-4dfd-8af1-3407a07fe088"]
+    assert list(media) == [("video", "3c41c804-ad9e-4dfd-8af1-3407a07fe088")]
+    m = media[("video", "3c41c804-ad9e-4dfd-8af1-3407a07fe088")]
     assert m.kind == "video"
     assert m.url.endswith("Signature=bXY2rOb0")
     assert "&KeyName=" in m.url
@@ -43,8 +43,21 @@ def test_media_since_double_escaped_keeps_signed_url():
               '\\\\u0026KeyName\\\\u003dlabs-flow-prod\\\\u0026Signature\\\\u003dsig\\"'),
         ("b", 'https://flow-content.google/image/34b84c67-4990-44a9-a525-99c46d4ea231?Expires\\'),
     ]
-    m = drv._media_since(0)["34b84c67-4990-44a9-a525-99c46d4ea231"]
+    m = drv._media_since(0)[("image", "34b84c67-4990-44a9-a525-99c46d4ea231")]
     assert m.url.endswith("?Expires=1791721469&KeyName=labs-flow-prod&Signature=sig")
+
+
+def test_video_sharing_its_frame_id_is_a_new_result():
+    # a finished queued clip reuses its first frame's media id (seen 2026-10-12)
+    drv = ad.FlowAgentDriver.__new__(ad.FlowAgentDriver)
+    mid = "588c3653-aca8-4f65-b379-99aa3328ba8b"
+    drv._bodies = [
+        ("upload", f"https://flow-content.google/image/{mid}?Expires=1&Signature=long-image-signature-xxxx"),
+        ("done", f"https://flow-content.google/video/{mid}?Expires=1&Signature=v"),
+    ]
+    known = {("image", mid)}
+    vids = drv._new_media(0, known, "video")
+    assert [(m.kind, m.media_id) for m in vids] == [("video", mid)]
 
 
 def test_last_credits():

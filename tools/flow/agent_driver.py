@@ -212,19 +212,22 @@ class FlowAgentDriver:
             pass
 
     # -- helpers ---------------------------------------------------------
-    def _media_since(self, mark: int) -> dict[str, Media]:
-        found: dict[str, Media] = {}
+    def _media_since(self, mark: int) -> dict[tuple[str, str], Media]:
+        # Keyed by (kind, id): a generated clip reuses its preview frame's media id, so
+        # image/<id> and video/<id> are different results.
+        found: dict[tuple[str, str], Media] = {}
         for _, body in self._bodies[mark:]:
             for m in MEDIA_URL.finditer(unescape_urls(body)):
-                prev = found.get(m.group(2))
-                # the same id can appear truncated elsewhere; keep the fullest (signed) URL
+                key = (m.group(1), m.group(2))
+                prev = found.get(key)
+                # the same media can appear truncated elsewhere; keep the fullest (signed) URL
                 if prev is None or len(m.group(0)) > len(prev.url):
-                    found[m.group(2)] = Media(kind=m.group(1), media_id=m.group(2), url=m.group(0))
+                    found[key] = Media(kind=m.group(1), media_id=m.group(2), url=m.group(0))
         return found
 
-    def _new_media(self, mark: int, known: set[str], expect: str) -> list[Media]:
-        return [m for mid, m in self._media_since(mark).items()
-                if mid not in known and expect in ("any", m.kind)]
+    def _new_media(self, mark: int, known: set[tuple[str, str]], expect: str) -> list[Media]:
+        return [m for key, m in self._media_since(mark).items()
+                if key not in known and expect in ("any", m.kind)]
 
     def _last_credits(self) -> Optional[int]:
         for _, body in reversed(self._bodies):
