@@ -266,3 +266,10 @@ def test_bot_campaign_brief_checked_like_studio(tmp_path):
     rows = store.list()
     assert len(rows) == 1 and rows[0]["options"] == {"campaign": live, "advertiser": "adv-1", "insert": "ins-1",
                                                      "insert_version": 2, "product": "сок"}
+
+
+def test_music_option_reaches_prompt():
+    text, opts = service.parse_brief("music: none\nКот печёт пиццу")
+    assert opts == {"music": "none"}
+    prompt = runner.build_prompt({"id": "b1", "text": text, "options": opts})
+    assert "- music: none" in prompt

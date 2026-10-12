@@ -79,7 +79,7 @@ def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None,
     bait = opts.get("comment_bait")
     if bait:
         lines.append(f"4. Apply addons/comment-bait/README.md with mode `{bait}`.")
-    for key in ("product", "duration", "audience", "style"):
+    for key in ("product", "duration", "audience", "style", "music"):
         if opts.get(key):
             lines.append(f"- {key}: {opts[key]}")
     lines += addon_lines(settings, opts)

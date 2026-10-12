@@ -42,6 +42,23 @@ in `autopilot_log.md`.
 - Product integration is native to the plot (stage skills already require this).
 - Comment-bait: apply `addons/comment-bait` when the brief says
   `comment_bait: hero_breaks_wall|meta_joke`. With `none` or no field, skip it.
+- Background music: a licensed stock bed from `pixabay_music` (free, no key, Pixabay
+  Content License, no attribution needed). The brief's `music:` option overrides this:
+  `none` = Veo sound only; any other text is the mood/search query.
+  - In the proposal set `music_source.source_type` to the stock option with a mood
+    that fits the story (e.g. "playful kitchen ukulele"), not `none`, because the
+    music tools are not configured.
+  - In the assets stage, search 2–3 queries, prefer an instrumental track at least
+    as long as the cut, and save it under `assets/music/` with its title, Pixabay URL
+    and license in the asset manifest.
+  - In the edit, keep it under the Veo dialogue (ducked, about −18 dB under speech,
+    about −10 dB without it), fade in and out, and never let it mask the punchline
+    or the CTA.
+  - If a project resumed past the proposal has `source_type: "none"` only because
+    "music is not configured", fetch the track in the assets stage anyway and note
+    the change in `decision_log` (this costs no Flow credits).
+  - If Pixabay fails twice, continue without music and say so in `autopilot_log.md`;
+    never block a run on music.
 
 ## Credits
 
