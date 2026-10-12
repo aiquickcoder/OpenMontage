@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -10,6 +11,21 @@ import requests
 
 API = "https://api.telegram.org/bot{token}/{method}"
 VIDEO_LIMIT_BYTES = 49 * 1024 * 1024
+
+
+def video_meta(path: Path) -> dict[str, int]:
+    """width/height/duration for sendVideo; without them Telegram guesses a square preview."""
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=width,height:format=duration", "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=30, check=True).stdout
+        info = json.loads(out)
+        stream = info["streams"][0]
+        return {"width": int(stream["width"]), "height": int(stream["height"]),
+                "duration": round(float(info["format"]["duration"]))}
+    except Exception:
+        return {}
 
 
 class Telegram:
@@ -49,7 +65,8 @@ class Telegram:
         markup = {"inline_keyboard": buttons} if buttons else None
         with open(path, "rb") as f:
             self.call("sendVideo", http_timeout=600, files={"video": (path.name, f, "video/mp4")},
-                      chat_id=self.chat, caption=caption[:1000], reply_markup=markup, supports_streaming=True)
+                      chat_id=self.chat, caption=caption[:1000], reply_markup=markup, supports_streaming=True,
+                      **video_meta(path))
 
 
 def approval_buttons(brief_id: str) -> list[list[dict[str, str]]]:

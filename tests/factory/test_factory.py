@@ -273,3 +273,18 @@ def test_music_option_reaches_prompt():
     assert opts == {"music": "none"}
     prompt = runner.build_prompt({"id": "b1", "text": text, "options": opts})
     assert "- music: none" in prompt
+
+
+def test_send_video_passes_dimensions(tmp_path, monkeypatch):
+    from factory import tg
+
+    clip = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=108x192:d=2",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)
+    assert tg.video_meta(clip) == {"width": 108, "height": 192, "duration": 2}
+    sent = {}
+    bot = tg.Telegram("t", "1")
+    monkeypatch.setattr(bot, "call", lambda method, **kw: sent.update(kw))
+    bot.send_video(clip, "c")
+    assert sent["width"] == 108 and sent["height"] == 192 and sent["duration"] == 2
+    assert tg.video_meta(tmp_path / "missing.mp4") == {}
