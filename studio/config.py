@@ -33,6 +33,10 @@ class StudioSettings:
         return self.factory.data_dir / "characters"
 
     @property
+    def worlds_dir(self) -> Path:
+        return self.factory.data_dir / "worlds"
+
+    @property
     def uploads_dir(self) -> Path:
         return self.factory.data_dir / "studio_uploads"
 

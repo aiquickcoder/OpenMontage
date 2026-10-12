@@ -11,6 +11,9 @@ import { BriefPage } from "./pages/Brief";
 import { VideosPage } from "./pages/Videos";
 import { CharactersPage } from "./pages/Characters";
 import { CharacterPage } from "./pages/Character";
+import { WorldsPage } from "./pages/Worlds";
+import { WorldPage } from "./pages/World";
+import { PlannerPage } from "./pages/Planner";
 import { AdvertisersPage } from "./pages/Advertisers";
 import { AdvertiserPage } from "./pages/Advertiser";
 import { InsertsPage } from "./pages/Inserts";
@@ -72,6 +75,9 @@ function App() {
         <Route path="videos" element={<VideosPage />} />
         <Route path="characters" element={<CharactersPage />} />
         <Route path="characters/:id" element={<CharacterPage />} />
+        <Route path="worlds" element={<WorldsPage />} />
+        <Route path="worlds/:id" element={<WorldPage />} />
+        <Route path="planner" element={<PlannerPage />} />
         <Route path="campaigns" element={<CampaignsPage />} />
         <Route path="campaigns/:id" element={<CampaignPage />} />
         <Route path="inserts" element={<InsertsPage />} />

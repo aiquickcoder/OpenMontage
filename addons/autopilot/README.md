@@ -40,6 +40,10 @@ in `autopilot_log.md`.
 
 - 9:16 vertical, 30–60 s, 3D Pixar-like style, Russian dialogue with native Veo audio.
 - Product integration is native to the plot (stage skills already require this).
+- **Series episodes** (the prompt says "Series episode … addons/series/README.md",
+  i.e. the brief has `world:`) are not ads. The style, cast and runtime come from
+  the world, and `addons/series/README.md` replaces the two defaults above and all
+  advertiser/product/«Реклама» requirements.
 - Comment-bait: apply `addons/comment-bait` when the brief says
   `comment_bait: hero_breaks_wall|meta_joke`. With `none` or no field, skip it.
 - Background music: a licensed stock bed from `pixabay_music` (free, no key, Pixabay

@@ -37,6 +37,8 @@ STALE_TASK = timedelta(hours=2)
 DEFAULT_STYLE = ("3D Pixar-like animated film style, soft global illumination, rich saturated colors, "
                  "expressive stylized proportions, clean readable silhouettes")
 README = "addons/character-library/README.md"
+WORKER_TASKS = ("character_generate",)  # Flow work, drained by the factory worker between briefs
+MAX_SHEET_REFS = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS characters (
@@ -187,7 +189,7 @@ class Library:
                 n += 1
         return n
 
-    def search(self, q: str = "", tag: str = "", archived: str = "0") -> list[dict[str, Any]]:
+    def search(self, q: str = "", tag: str = "", archived: str = "0", world: str = "") -> list[dict[str, Any]]:
         sql, args = "SELECT id FROM characters WHERE 1=1", []
         if archived in ("0", "1"):
             sql += " AND archived = ?"
@@ -206,16 +208,20 @@ class Library:
                 continue  # removed on disk; the next reindex drops it
             if tag and tag not in ((char.get("library") or {}).get("tags") or []):
                 continue
+            if world and (char.get("library") or {}).get("world_id") != world:
+                continue
             rows.append(char)
         return rows
 
     # tasks
-    def add_task(self, kind: str, args: dict[str, Any]) -> str:
+    def add_task(self, kind: str, args: dict[str, Any], status: str = "queued") -> str:
+        """`status="running"` for tasks Studio executes itself (Claude calls), so the
+        factory worker never claims them."""
         task_id = f"t{datetime.now(timezone.utc):%Y%m%d%H%M%S}{secrets.token_hex(3)}"
         now = _now()
         with self._conn() as c:
             c.execute("INSERT INTO tasks (id, kind, args, status, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-                      (task_id, kind, json.dumps(args, ensure_ascii=False), "queued", now, now))
+                      (task_id, kind, json.dumps(args, ensure_ascii=False), status, now, now))
         return task_id
 
     def task(self, task_id: str) -> Optional[dict[str, Any]]:
@@ -228,9 +234,11 @@ class Library:
         out["result"] = json.loads(out["result"]) if out["result"] else None
         return out
 
-    def claim_task(self) -> Optional[dict[str, Any]]:
+    def claim_task(self, kinds: tuple[str, ...] = WORKER_TASKS) -> Optional[dict[str, Any]]:
+        marks = ",".join("?" * len(kinds))
         with self._conn() as c:
-            for row in c.execute("SELECT id FROM tasks WHERE status='queued' ORDER BY created_at, id").fetchall():
+            for row in c.execute(f"SELECT id FROM tasks WHERE status='queued' AND kind IN ({marks}) "
+                                 "ORDER BY created_at, id", kinds).fetchall():
                 cur = c.execute("UPDATE tasks SET status='running', updated_at=? WHERE id=? AND status='queued'",
                                 (_now(), row["id"]))
                 if cur.rowcount:
@@ -272,9 +280,10 @@ def _view(lib: Library, char: dict[str, Any], full: bool = True) -> dict[str, An
 
 
 def _new_char(char_id: str, name: str, role: str, description: str, prompt_tokens: str,
-              voice: dict[str, str], style_lock: str, tags: list[str], source: str) -> dict[str, Any]:
+              voice: dict[str, str], style_lock: str, tags: list[str], source: str,
+              world_id: str = "") -> dict[str, Any]:
     now = _now()
-    return {
+    char = {
         "id": char_id, "name": name, "role": role, "description": description,
         "turnaround_path": "", "voice": {"language": voice.get("language") or "ru",
                                          "description": voice.get("description") or ""},
@@ -282,6 +291,9 @@ def _new_char(char_id: str, name: str, role: str, description: str, prompt_token
         "library": {"style_lock": style_lock, "tags": tags, "created_at": now, "updated_at": now,
                     "source": source, "archived": False},
     }
+    if world_id:
+        char["library"]["world_id"] = world_id
+    return char
 
 
 def _clean_tags(tags: list[str]) -> list[str]:
@@ -315,12 +327,31 @@ def _set_sheet(char: dict[str, Any], kind: str, rel: str) -> None:
 
 
 # -- generation ------------------------------------------------------------------
-def sheet_prompt(name: str, description: str, style_lock: str) -> str:
+def sheet_prompt(name: str, description: str, style_lock: str, with_refs: bool = False) -> str:
+    refs = (" Use the reference images only for this character's identity and the drawing style; "
+            "do not copy their composition, pose, background or other characters." if with_refs else "")
     return (f"{style_lock.strip().rstrip('.')}. Character turnaround sheet of {name}: {description.strip().rstrip('.')}. "
             "Three full-body views of the same character side by side: front view, three-quarter view, "
             "side profile view. Neutral standing pose, identical proportions, colors and outfit in every view. "
             "Plain light grey background, even soft studio lighting. "
-            "No text, no labels, no captions, no watermark.")
+            f"No text, no labels, no captions, no watermark.{refs}")
+
+
+def sheet_refs(lib: "Library", char: dict[str, Any]) -> list[str]:
+    """Reference images for a sheet: the character's own refs first, then its world's
+    family/cover and style refs (studio.worlds), at most MAX_SHEET_REFS."""
+    d = lib.dir(char["id"])
+    out = [str(d / rel) for rel in _images(d, "refs")][:2]
+    world_id = (char.get("library") or {}).get("world_id")
+    if world_id:
+        from studio import worlds
+
+        out += worlds.reference_images(lib.root.parent / "worlds", world_id)
+    seen: list[str] = []
+    for path in out:
+        if path not in seen and Path(path).is_file():
+            seen.append(path)
+    return seen[:MAX_SHEET_REFS]
 
 
 def _flow_image():
@@ -370,9 +401,11 @@ def _run_generate(lib: Library, task: dict[str, Any]) -> dict[str, Any]:
     shutil.rmtree(new_dir, ignore_errors=True)
     new_dir.mkdir(parents=True, exist_ok=True)
     output_path = new_dir / "1.png"
+    refs = sheet_refs(lib, char)
     try:
         result = _flow_image().execute({
-            "prompt": sheet_prompt(char["name"], char["description"], style),
+            "prompt": sheet_prompt(char["name"], char["description"], style, with_refs=bool(refs)),
+            "image_paths": refs,
             "model": "nano-pro", "aspect_ratio": "16:9",
             "number_of_images": max(1, min(4, int(args.get("variants") or 1))),
             "output_path": str(output_path), "project_dir": str(d), "scene_id": f"char_{char['id']}",
@@ -476,6 +509,7 @@ class CharacterIn(BaseModel):
     style_lock: str = Field(default="", max_length=1000)
     tags: list[str] = Field(default_factory=list, max_length=20)
     id: Optional[str] = Field(default=None, max_length=60)
+    world_id: Optional[str] = Field(default=None, max_length=60)
 
 
 class CharacterPatch(BaseModel):
@@ -487,6 +521,7 @@ class CharacterPatch(BaseModel):
     style_lock: Optional[str] = Field(default=None, max_length=1000)
     tags: Optional[list[str]] = Field(default=None, max_length=20)
     archived: Optional[bool] = None
+    world_id: Optional[str] = Field(default=None, max_length=60)  # "" detaches
 
 
 class GenerateIn(CharacterIn):
@@ -513,18 +548,27 @@ def _lib(request: Request) -> Library:
     return lib
 
 
+def _world_style(lib: Library, world_id: str) -> str:
+    """Validated world id -> its style_lock (404 for an unknown world)."""
+    from studio import worlds
+
+    return worlds.WorldStore(lib.root.parent / "worlds", lib.db_path).load(world_id).get("style_lock") or ""
+
+
 def _create(lib: Library, body: CharacterIn, source: str) -> dict[str, Any]:
+    world_id = projects.safe_id(body.world_id) if body.world_id else ""
+    style = body.style_lock.strip() or (_world_style(lib, world_id) if world_id else "")
     char_id = lib.free_id(body.id or body.name)
     char = _new_char(char_id, body.name.strip(), body.role.strip() or "hero", body.description.strip(),
                      body.prompt_tokens.strip() or f"{body.name.strip()}, {body.description.strip()}"[:400],
-                     body.voice.model_dump(), body.style_lock.strip(), _clean_tags(body.tags), source)
+                     body.voice.model_dump(), style, _clean_tags(body.tags), source, world_id)
     return lib.save(char)
 
 
 @router.get("/characters")
-def list_characters(request: Request, q: str = "", tag: str = "", archived: str = "0") -> list[dict]:
+def list_characters(request: Request, q: str = "", tag: str = "", archived: str = "0", world: str = "") -> list[dict]:
     lib = _lib(request)
-    return [_view(lib, c, full=False) for c in lib.search(q, tag, archived)]
+    return [_view(lib, c, full=False) for c in lib.search(q, tag, archived, world)]
 
 
 @router.get("/characters/{char_id}")
@@ -556,6 +600,12 @@ def patch_character(char_id: str, body: CharacterPatch, request: Request) -> dic
         meta["tags"] = _clean_tags(body.tags)
     if body.archived is not None:
         meta["archived"] = body.archived
+    if body.world_id is not None:
+        if body.world_id:
+            _world_style(lib, projects.safe_id(body.world_id))
+            meta["world_id"] = projects.safe_id(body.world_id)
+        else:
+            meta.pop("world_id", None)
     return _view(lib, lib.save(char))
 
 
@@ -642,9 +692,11 @@ async def character_file(char_id: str, name: str, request: Request, w: Optional[
 @router.post("/characters/generate", status_code=201)
 def generate_character(body: GenerateIn, request: Request) -> dict:
     lib = _lib(request)
-    if not body.style_lock.strip():
+    if not body.style_lock.strip() and not body.world_id:
         body.style_lock = DEFAULT_STYLE
     char = _create(lib, body, "generated")
+    if not char["library"].get("style_lock"):
+        char["library"]["style_lock"] = DEFAULT_STYLE
     task_id = lib.add_task("character_generate", {"character_id": char["id"], "variants": body.variants})
     char["library"]["task_id"] = task_id
     lib.save(char)
@@ -742,4 +794,4 @@ def from_project(body: FromProjectIn, request: Request) -> dict:
     return _view(lib, lib.save(char))
 
 
-__all__ = ["OPTION_KEY", "Library", "router", "run_pending_tasks", "prompt_lines", "normalize_ids", "sheet_prompt"]
+__all__ = ["OPTION_KEY", "WORKER_TASKS", "Library", "sheet_refs", "router", "run_pending_tasks", "prompt_lines", "normalize_ids", "sheet_prompt"]

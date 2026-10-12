@@ -16,7 +16,20 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=4760)
     sub.add_parser("hash-password", help="print a STUDIO_ADMIN_PASSWORD_HASH value")
+    imp = sub.add_parser("import-worlds", help="import a world-adaptations zip into Studio")
+    imp.add_argument("zip")
     args = ap.parse_args(argv)
+
+    if args.cmd == "import-worlds":
+        from pathlib import Path
+
+        load_dotenv()
+        from studio import config as studio_config
+        from studio.worlds import WorldStore, import_archive
+
+        ids = import_archive(WorldStore.of(studio_config.load()), Path(args.zip).read_bytes())
+        print("\n".join(ids))
+        return 0
 
     if args.cmd == "hash-password":
         from studio.auth import hash_password

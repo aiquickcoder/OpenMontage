@@ -5,6 +5,8 @@ import { api, type BriefRow, type BriefState } from "../api";
 import { Card, Empty, ErrorNote, Progress, StateBadge } from "../components/ui";
 import { CharacterPicker } from "../components/CharacterPicker";
 import type { Campaign } from "../types/ads";
+import type { Character } from "../types/characters";
+import type { World } from "../types/worlds";
 import { ago, STAGE_LABEL, STATE_LABEL, shortId } from "../format";
 
 const FILTERS: (BriefState | "")[] = ["", "queued", "running", "awaiting_approval", "failed", "budget", "approved", "rejected"];
@@ -25,6 +27,23 @@ function NewBrief() {
   const [campaign, setCampaign] = useState(() => params.get("campaign") ?? "");
   const campaigns = useQuery({ queryKey: ["campaigns"], queryFn: () => api.get<Campaign[]>("/campaigns") });
   const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === "active" || c.id === campaign);
+  const [world, setWorld] = useState(() => params.get("world") ?? "");
+  const worlds = useQuery({ queryKey: ["worlds", "0"], queryFn: () => api.get<World[]>("/worlds?archived=0") });
+  const pickWorld = async (id: string) => {
+    setWorld(id);
+    if (!id) return;
+    setCampaign(""); // world episodes cannot carry advertising
+    try {
+      const chars = await qc.fetchQuery({
+        queryKey: ["characters", "world", id],
+        queryFn: () => api.get<Character[]>(`/characters?world=${encodeURIComponent(id)}`),
+      });
+      const ready = chars.filter((c) => c.turnaround_path && !c.library.archived).map((c) => c.id);
+      if (ready.length) setCharacters(ready);
+    } catch {
+      /* preselect is best-effort */
+    }
+  };
   const [bait, setBait] = useState("none");
   const [product, setProduct] = useState("");
   const [duration, setDuration] = useState("");
@@ -39,7 +58,7 @@ function NewBrief() {
           duration,
           audience,
           ...(characters.length ? { characters: characters.join(",") } : {}),
-          ...(campaign ? { campaign } : {}),
+          ...(world ? { world } : campaign ? { campaign } : {}),
         },
       }),
     onSuccess: ({ id }) => {
@@ -88,8 +107,20 @@ function NewBrief() {
           </select>
         </label>
         <label>
+          Мир сериала
+          <select value={world} onChange={(e) => pickWorld(e.target.value)}>
+            <option value="">Без мира</option>
+            {(worlds.data ?? []).map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+            {world && worlds.data && !worlds.data.some((w) => w.id === world) && <option value={world}>{world}</option>}
+          </select>
+        </label>
+        <label title={world ? "Эпизод мира не может быть рекламой" : undefined}>
           Рекламная кампания
-          <select value={campaign} onChange={(e) => setCampaign(e.target.value)}>
+          <select value={world ? "" : campaign} onChange={(e) => setCampaign(e.target.value)} disabled={!!world}>
             <option value="">Без рекламы</option>
             {activeCampaigns.map((c) => (
               <option key={c.id} value={c.id}>

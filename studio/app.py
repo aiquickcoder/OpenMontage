@@ -25,7 +25,7 @@ from factory import actions
 from factory.db import BriefStore, InvalidTransition
 from factory.service import BAIT_MODES
 from factory.tg import Telegram
-from studio import ads, auth, characters, farm, projects
+from studio import ads, auth, characters, farm, planner, projects, worlds
 from studio import config as studio_config
 from studio.config import StudioSettings
 
@@ -48,6 +48,8 @@ class BriefOptions(BaseModel):
     style: Optional[str] = Field(default=None, max_length=300)
     characters: Optional[str] = Field(default=None, max_length=500)  # comma-separated library ids
     campaign: Optional[str] = Field(default=None, max_length=80)     # ads campaign id
+    world: Optional[str] = Field(default=None, max_length=60)        # series world id (no ads)
+    music: Optional[str] = Field(default=None, max_length=120)
 
 
 class BriefIn(BaseModel):
@@ -238,6 +240,11 @@ def create_brief(body: BriefIn, request: Request) -> dict:
             opts["characters"] = ",".join(ids)
         else:
             opts.pop("characters")
+    if "world" in opts:
+        opts["world"] = projects.safe_id(opts["world"])
+        worlds.WorldStore.of(request.app.state.settings).load(opts["world"])  # 404 for an unknown world
+        if "campaign" in opts:
+            raise HTTPException(status_code=422, detail="эпизод мира не может быть рекламой (campaign)")
     if "campaign" in opts:
         opts.update(_campaign_options(request, opts))
     brief_id = _store(request).add(body.text.strip(), opts)
@@ -416,6 +423,8 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.include_router(farm.ws_router)  # /api/farm/ws (agent token) + /api/devices/{name}/live (cookie)
     app.include_router(farm.router)
     app.include_router(characters.router)
+    app.include_router(worlds.router)
+    app.include_router(planner.router)
     app.include_router(ads.router)
     app.include_router(api)
 

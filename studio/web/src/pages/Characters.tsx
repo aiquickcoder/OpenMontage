@@ -12,6 +12,7 @@ import {
   type CharacterRole,
   type GenerateResult,
 } from "../types/characters";
+import type { World } from "../types/worlds";
 import "../characters.css";
 
 const ROLES = Object.keys(ROLE_LABEL) as CharacterRole[];
@@ -132,7 +133,7 @@ function NewCharacter() {
   );
 }
 
-function CharacterCard({ c }: { c: Character }) {
+function CharacterCard({ c, world }: { c: Character; world?: string }) {
   const tags = c.library.tags ?? [];
   return (
     <Link to={`/characters/${c.id}`} className={`char-card${c.library.archived ? " char-archived" : ""}`}>
@@ -147,6 +148,7 @@ function CharacterCard({ c }: { c: Character }) {
         <div className="char-card-name">{c.name}</div>
         <div className="char-card-meta">
           <span>{ROLE_LABEL[c.role as CharacterRole] ?? c.role}</span>
+          {world && <span className="char-tag">{world}</span>}
           {c.library.archived && <span className="badge">в архиве</span>}
           {c.task && c.task.status !== "done" && <span className={`badge char-task-${c.task.status}`}>{TASK_LABEL[c.task.status]}</span>}
         </div>
@@ -191,6 +193,8 @@ export function CharactersPage() {
     queryKey: ["characters", "", "", archived],
     queryFn: () => api.get<Character[]>(`/characters?archived=${archived}`),
   });
+  const worlds = useQuery({ queryKey: ["worlds", "0"], queryFn: () => api.get<World[]>("/worlds?archived=0") });
+  const worldNames = useMemo(() => new Map((worlds.data ?? []).map((w) => [w.id, w.name])), [worlds.data]);
   const tags = useMemo(() => {
     const set = new Set<string>();
     all.data?.forEach((c) => c.library.tags?.forEach((t) => set.add(t)));
@@ -249,7 +253,7 @@ export function CharactersPage() {
         {data && data.length > 0 && (
           <div className="char-grid">
             {data.map((c) => (
-              <CharacterCard key={c.id} c={c} />
+              <CharacterCard key={c.id} c={c} world={c.library.world_id ? worldNames.get(c.library.world_id) ?? c.library.world_id : undefined} />
             ))}
           </div>
         )}

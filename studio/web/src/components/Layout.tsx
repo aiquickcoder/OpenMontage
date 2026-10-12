@@ -8,7 +8,9 @@ const NAV: NavItem[] = [
   { to: "/", label: "Обзор" },
   { to: "/briefs", label: "Производство" },
   { to: "/videos", label: "Видео" },
+  { to: "/worlds", label: "Миры" },
   { to: "/characters", label: "Персонажи" },
+  { to: "/planner", label: "План" },
   {
     to: "/campaigns",
     label: "Реклама",

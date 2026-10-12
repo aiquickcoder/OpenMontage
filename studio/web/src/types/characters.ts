@@ -15,6 +15,7 @@ export interface CharacterLibraryMeta {
   source: string; // "manual" | "generated" | "project:<id>"
   archived: boolean;
   task_id?: string;
+  world_id?: string; // series world this character belongs to
 }
 
 export interface TaskBrief { id: string; status: TaskStatus; error: string | null; updated_at: string }

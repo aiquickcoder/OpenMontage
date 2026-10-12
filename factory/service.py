@@ -18,6 +18,8 @@ log = logging.getLogger("factory")
 OPTION_KEYS = {"bait": "comment_bait", "comment_bait": "comment_bait", "product": "product",
                "duration": "duration", "audience": "audience", "style": "style",
                "music": "music",
+               # Studio series: world id (episode of a world, no ads) and planner episode id
+               "world": "world", "episode": "episode",
                # Studio add-ons: character library ids (comma-separated) and ad campaigns
                "characters": "characters", "campaign": "campaign",
                "advertiser": "advertiser", "insert": "insert"}
@@ -113,9 +115,24 @@ def worker_loop(settings: Settings, poll_s: float = 30) -> None:
     if stuck:
         tg.send("⚠️ Воркер перезапущен, помечены как failed (проверьте кредиты): " + ", ".join(stuck))
     while True:
+        release_planned(settings, store, tg)
         if process_one(settings, store, tg) is None:
             run_studio_tasks(settings)
             time.sleep(poll_s)
+
+
+def release_planned(settings: Settings, store: BriefStore, tg: Telegram) -> list[str]:
+    """Approved planner episodes whose air date has come become briefs (studio.planner)."""
+    try:
+        from studio import planner
+
+        released = planner.release_due(settings, store)
+    except Exception:  # noqa: BLE001 — the planner must never stop the worker
+        log.exception("planner release failed")
+        return []
+    for brief_id in released:
+        tg.send(f"📅 Эпизод по плану ушёл в производство: {brief_id}")
+    return released
 
 
 def run_studio_tasks(settings: Settings) -> int:

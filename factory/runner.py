@@ -57,7 +57,7 @@ def addon_lines(settings: Optional[Settings], options: dict[str, Any]) -> list[s
     except Exception:  # noqa: BLE001
         log.exception("studio settings unavailable; skipping add-on prompt hooks")
         return []
-    for module in ("studio.characters", "studio.ads"):
+    for module in ("studio.worlds", "studio.characters", "studio.ads"):
         try:
             mod = __import__(module, fromlist=["prompt_lines"])
             lines += mod.prompt_lines(ss, options) or []
