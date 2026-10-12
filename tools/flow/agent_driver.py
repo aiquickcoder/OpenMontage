@@ -55,6 +55,13 @@ def bridge_enabled() -> bool:
     return os.environ.get("FLOW_BRIDGE") == "1"
 
 
+def proxy_settings() -> Optional[dict[str, str]]:
+    """FLOW_PROXY (e.g. socks5://127.0.0.1:20900) routes only the Flow browser through
+    an exit Google geolocates to a supported country; the rest of the host stays direct."""
+    server = os.environ.get("FLOW_PROXY", "").split("#")[0].strip()
+    return {"server": server} if server else None
+
+
 # Model names as Flow's agent spells them in its replies and tool calls.
 MODEL_PATTERNS = {
     "veo-lite-lp": r"lite\s*\[?\s*lower\s*priority|lite[_-]?lp|lower[_ ]priority",
@@ -171,6 +178,7 @@ class FlowAgentDriver:
             locale="en-US",
             extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
             ignore_default_args=["--enable-automation", "--no-sandbox"],
+            proxy=proxy_settings(),
             args=["--password-store=basic", "--disable-blink-features=AutomationControlled",
                   "--disable-dev-shm-usage"],
         )

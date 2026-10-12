@@ -239,3 +239,17 @@ def test_generate_quota_reached_says_stop(tmp_path):
     with pytest.raises(ab.AgentGenerationError) as err:
         ab.generate("video", "b", [], count=1, output_path=None, flow_project=None, timeout=1, driver_cls=Quota)
     assert "AUTOPILOT_RESULT: BUDGET" in str(err.value) and err.value.charged is False
+
+
+def test_proxy_settings_from_env(monkeypatch):
+    from tools.flow import agent_driver
+    monkeypatch.delenv("FLOW_PROXY", raising=False)
+    assert agent_driver.proxy_settings() is None
+    monkeypatch.setenv("FLOW_PROXY", "socks5://127.0.0.1:20900   # SE exit")
+    assert agent_driver.proxy_settings() == {"server": "socks5://127.0.0.1:20900"}
+
+
+def test_flow_plan_ignores_inline_comment(monkeypatch):
+    from tools.flow import credit_ledger
+    monkeypatch.setenv("FLOW_PLAN", "free                      # no paid plan")
+    assert credit_ledger.flow_plan() == "free"

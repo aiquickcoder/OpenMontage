@@ -63,7 +63,8 @@ class FlowBudgetExceeded(RuntimeError):
 
 
 def flow_plan() -> str:
-    plan = os.environ.get("FLOW_PLAN", "pro").strip().lower()
+    # systemd EnvironmentFile keeps inline comments: "free   # note" must still read as free
+    plan = os.environ.get("FLOW_PLAN", "pro").split("#")[0].strip().lower()
     return plan if plan in PLAN_VIDEO_CREDITS else "pro"
 
 
