@@ -66,6 +66,10 @@ def is_available() -> bool:
     return agent_driver.profile_dir(profile_name()).is_dir()
 
 
+def _name(path: Optional[str]) -> str:
+    return Path(path).name if path else ""
+
+
 def video_brief(inputs: dict[str, Any], model: str, duration: Optional[int]) -> tuple[str, list[str]]:
     operation = inputs.get("operation") or "text_to_video"
     count = int(inputs.get("count") or 1)
@@ -83,14 +87,17 @@ def video_brief(inputs: dict[str, Any], model: str, duration: Optional[int]) -> 
     ]
     if operation in ("image_to_video", "first_last_frame_to_video"):
         attachments.append(first)
-        lines.append("Use attached image 1 as the exact FIRST frame (image-to-video); keep its "
-                     "characters, composition and style unchanged.")
+        # Uploads land in the project's media grid, not on the chat message, so name the file.
+        lines.append(f"Use the image I just uploaded to this project, file {_name(first)}, as the "
+                     "exact FIRST frame (image-to-video); keep its characters, composition and "
+                     "style unchanged.")
         if last:
             attachments.append(last)
-            lines.append("Use attached image 2 as the exact LAST frame.")
+            lines.append(f"Use the uploaded image {_name(last)} as the exact LAST frame.")
     elif operation == "reference_to_video":
         attachments += refs
-        lines.append(f"Use the {len(refs)} attached images as ingredients/references "
+        lines.append(f"Use the {len(refs)} images I just uploaded ({', '.join(_name(r) for r in refs)}) "
+                     "as ingredients/references "
                      "for characters and objects (reference-to-video); keep them on-model.")
     lines.append("Shot description (follow literally, keep any quoted dialogue word for word, "
                  "native audio on):")

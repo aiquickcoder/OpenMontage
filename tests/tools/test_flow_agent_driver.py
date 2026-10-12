@@ -87,14 +87,14 @@ def test_video_brief_i2v(tmp_path):
         {"prompt": "Лис машет лапой: «Пиши МУЛЬТ!»", "operation": "image_to_video", "image_path": str(frame)},
         "veo-lite", 8)
     assert att == [str(frame)]
-    assert "Veo 3.1 - Lite." in brief and "8 seconds" in brief and "FIRST frame" in brief
+    assert "Veo 3.1 - Lite." in brief and "8 seconds" in brief and "FIRST frame" in brief and "file k.png" in brief
     assert "«Пиши МУЛЬТ!»" in brief
 
 
 def test_video_brief_r2v():
     brief, att = ab.video_brief({"prompt": "p", "operation": "reference_to_video",
                                  "reference_image_paths": ["a.png", "b.png"]}, "omni-flash", 10)
-    assert att == ["a.png", "b.png"] and "2 attached images" in brief and "Omni 1.1 Flash" in brief
+    assert att == ["a.png", "b.png"] and "2 images I just uploaded (a.png, b.png)" in brief and "Omni 1.1 Flash" in brief
 
 
 class _FakeDriver:
@@ -253,3 +253,11 @@ def test_flow_plan_ignores_inline_comment(monkeypatch):
     from tools.flow import credit_ledger
     monkeypatch.setenv("FLOW_PLAN", "free                      # no paid plan")
     assert credit_ledger.flow_plan() == "free"
+
+
+def test_failed_generation_books_measured_spend(tmp_path, monkeypatch):
+    from tools.flow import credit_ledger
+    ledger = credit_ledger.CreditLedger(tmp_path, budget=40)
+    entry = ledger.reserve(tool="flow_veo_video", model="omni-flash", credits=15)
+    ledger.settle(entry, charged=True, credits=7)
+    assert ledger.summary()["committed"] == 7

@@ -35,13 +35,13 @@ PLAN_VIDEO_CREDITS = {
         "veo-quality": 100,
         "omni-flash": 20,
     },
-    # No paid plan (a monthly allowance of ~50 credits was observed via GetCredits on
-    # 2026-10-10). Per-clip prices not published; assume Pro rates, the agent driver
-    # books the measured spend.
+    # No paid plan: 50 credits/day (support.google.com/flow/answer/16526234, 2026-10-12).
+    # Omni Flash is priced by length/resolution (4 s 360p = 4 ... 10 s 720p = 15); book
+    # the 10 s 720p ceiling, the agent driver records the measured spend.
     "free": {
         "veo-lite": 10,
         "veo-fast": 20,
-        "omni-flash": 20,
+        "omni-flash": 15,
     },
     "ultra": {
         "veo-lite-lp": 0,

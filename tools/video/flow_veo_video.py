@@ -387,7 +387,9 @@ class FlowVeoVideo(BaseTool):
                 confirm_up_to=max(credits * 2, credits + 10),
             )
         except agent_backend.AgentGenerationError as exc:
-            ledger.settle(entry_id, charged=exc.charged)
+            before, after = exc.data.get("credits_before"), exc.data.get("credits_after")
+            measured = before - after if isinstance(before, int) and isinstance(after, int) and before >= after else None
+            ledger.settle(entry_id, charged=exc.charged, credits=measured)
             return ToolResult(
                 success=False,
                 error=str(exc),
