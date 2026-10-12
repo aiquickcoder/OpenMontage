@@ -70,6 +70,22 @@ def _name(path: Optional[str]) -> str:
     return Path(path).name if path else ""
 
 
+def video_timeout() -> float:
+    """Seconds to wait for one clip. The free plan's shared queue ("high demand") has been
+    seen holding a paid clip for 40+ min, so it waits far longer than paid plans."""
+    raw = os.environ.get("FLOW_VIDEO_TIMEOUT_SEC", "").split("#")[0].strip()
+    if raw.isdigit():
+        return float(raw)
+    from tools.flow.credit_ledger import flow_plan
+    return 5400.0 if flow_plan() == "free" else 1800.0
+
+
+def pending_message(project_url: str) -> str:
+    return (f"Flow accepted and charged this clip but it is still queued in {project_url}. "
+            "Do NOT generate it again (that pays twice): call flow_veo_video with the same inputs "
+            f"plus collect_from=\"{project_url}\" (0 credits) to wait for and download it.")
+
+
 def video_brief(inputs: dict[str, Any], model: str, duration: Optional[int]) -> tuple[str, list[str]]:
     operation = inputs.get("operation") or "text_to_video"
     count = int(inputs.get("count") or 1)
@@ -174,6 +190,9 @@ def generate(kind: str, brief: str, attachments: list[str], *, count: int,
             if res.refused:
                 raise AgentGenerationError(f"Flow agent refused: {res.refused}",
                                            charged=bool(res.credits_spent), data=data)
+            if not res.media and res.credits_spent:
+                data["pending"] = True
+                raise AgentGenerationError(pending_message(project_url), charged=True, data=data)
             if not res.media:
                 raise AgentGenerationError(
                     "Flow agent finished without producing media (it may have asked a question "
@@ -195,4 +214,32 @@ def generate(kind: str, brief: str, attachments: list[str], *, count: int,
         credits_spent=res.credits_spent,
         models_mentioned=res.models_mentioned,
         reply=res.reply_text[-600:],
+    )
+
+
+def collect(kind: str, project_url: str, *, count: int, output_path: Optional[str],
+            timeout: float, driver_cls: Any = None) -> AgentGeneration:
+    """Download media an earlier paid request left queued in `project_url` (0 credits)."""
+    driver_cls = driver_cls or agent_driver.FlowAgentDriver
+    staging = (Path(output_path).parent if output_path else Path.cwd()) / ".flow_agent_tmp"
+    url = _project_url(project_url) or project_url
+    try:
+        with driver_cls(profile_name()) as drv:
+            media = drv.collect(url, expect=kind, count=count, timeout=timeout)
+            if not media:
+                raise AgentGenerationError(pending_message(url), charged=False,
+                                           data={"project_url": url, "pending": True})
+            downloaded = [drv.download(m, staging) for m in media[:count]]
+    except AgentGenerationError:
+        raise
+    except Exception as exc:
+        raise AgentGenerationError(f"Flow collect failed: {exc}", charged=False,
+                                   data={"project_url": url, "pending": True}) from exc
+    paths = _place(downloaded, output_path)
+    if output_path:
+        shutil.rmtree(staging, ignore_errors=True)
+    return AgentGeneration(
+        paths=paths, media_ids=[m.media_id for m in media[:count]],
+        flow_project=url.rstrip("/").split("/project/")[-1].split("?")[0],
+        credits_spent=0, models_mentioned=[], reply="collected from queued project",
     )

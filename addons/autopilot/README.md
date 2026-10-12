@@ -61,6 +61,10 @@ in `autopilot_log.md`.
 - A Flow error mentioning `PUBLIC_ERROR_USER_QUOTA_REACHED` (daily generation limit of
   the account) also ends the run with `AUTOPILOT_RESULT: BUDGET` at once: no retries,
   no other model, no "test" generation — failed attempts count against the quota too.
+- A Flow result with `pending: true` ("still queued in <project>") is already paid.
+  Never generate that shot again: call `flow_veo_video` with the same inputs plus
+  `collect_from=<project url>` (0 credits; it waits up to `FLOW_VIDEO_TIMEOUT_SEC`).
+  Repeat the collect call while it stays pending; it does not count as a retry.
 
 ## Failure and final line
 

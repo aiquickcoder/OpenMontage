@@ -112,6 +112,11 @@ class FlowVeoVideo(BaseTool):
         "required": ["prompt"],
         "properties": {
             "prompt": {"type": "string"},
+            "collect_from": {
+                "type": "string",
+                "description": "Flow project URL from a 'still queued' error: wait for and download "
+                               "that already-paid clip instead of generating (0 credits).",
+            },
             "operation": {
                 "type": "string",
                 "enum": list(OPERATION_TO_COMMAND),
@@ -297,6 +302,8 @@ class FlowVeoVideo(BaseTool):
         if inputs.get("dry_run"):  # agents pass this as an input; never generate on it
             return ToolResult(success=True, data={"dry_run": True, **self.dry_run(inputs)})
         model = inputs.get("model") or "veo-fast"
+        if inputs.get("collect_from") and agent_backend.is_selected():
+            return self._collect_agent(inputs, model, start)
         credits = self.estimate_credits(inputs)
         ledger = CreditLedger(self._project_dir(inputs))
         try:
@@ -371,6 +378,26 @@ class FlowVeoVideo(BaseTool):
             model=model,
         )
 
+    def _collect_agent(self, inputs: dict[str, Any], model: str, start: float) -> ToolResult:
+        try:
+            gen = agent_backend.collect(
+                "video", inputs["collect_from"], count=int(inputs.get("count") or 1),
+                output_path=inputs.get("output_path"), timeout=agent_backend.video_timeout())
+        except agent_backend.AgentGenerationError as exc:
+            return ToolResult(success=False, error=str(exc),
+                              data={**exc.data, "driver": "agent", "credits_possibly_spent": 0},
+                              duration_seconds=round(time.time() - start, 2), model=model)
+        return ToolResult(
+            success=True,
+            data={"provider": self.provider, "driver": "agent", "model": model,
+                  "operation": "collect", "prompt": inputs["prompt"],
+                  "output": gen.paths[0], "output_path": gen.paths[0], "outputs": gen.paths,
+                  "media_id": gen.media_ids[0] if gen.media_ids else None, "media_ids": gen.media_ids,
+                  "flow_project": gen.flow_project, "credits_spent": 0},
+            artifacts=gen.paths, cost_usd=0.0,
+            duration_seconds=round(time.time() - start, 2), model=model,
+        )
+
     def _execute_agent(self, inputs: dict[str, Any], model: str, credits: int,
                        ledger: CreditLedger, entry_id: str, start: float) -> ToolResult:
         duration = _parse_duration(inputs.get("duration", 8))
@@ -382,8 +409,8 @@ class FlowVeoVideo(BaseTool):
             gen = agent_backend.generate(
                 "video", brief, attachments, count=count,
                 output_path=inputs.get("output_path"), flow_project=inputs.get("flow_project"),
-                # free-tier queue on the agent composer can take 15+ min per clip
-                timeout=max(1800, self.estimate_runtime(inputs) * 3 + 300),
+                # the free-plan queue has held a paid clip for 40+ min (FLOW_VIDEO_TIMEOUT_SEC)
+                timeout=max(agent_backend.video_timeout(), self.estimate_runtime(inputs) * 3 + 300),
                 confirm_up_to=max(credits * 2, credits + 10),
             )
         except agent_backend.AgentGenerationError as exc:

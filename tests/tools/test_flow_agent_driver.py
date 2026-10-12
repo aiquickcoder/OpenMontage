@@ -261,3 +261,52 @@ def test_failed_generation_books_measured_spend(tmp_path, monkeypatch):
     entry = ledger.reserve(tool="flow_veo_video", model="omni-flash", credits=15)
     ledger.settle(entry, charged=True, credits=7)
     assert ledger.summary()["committed"] == 7
+
+
+class _QueuedDriver(_FakeDriver):
+    """Flow charged the clip but it is still in the free queue when ask() times out."""
+
+    def ask(self, brief, *, expect, count, timeout, attachments, confirm_up_to=None):
+        return ad.AgentResult(project_url="p", credits_before=43, credits_after=33,
+                              confirmed_costs=[10], models_mentioned=["veo-lite"])
+
+    def collect(self, project_url, *, expect, count, timeout):
+        _QueuedDriver.collected_from = project_url
+        return [ad.Media(kind="video", media_id="late", url="u")]
+
+
+def test_generate_charged_without_media_is_pending(tmp_path):
+    import pytest
+
+    with pytest.raises(ab.AgentGenerationError) as err:
+        ab.generate("video", "b", [], count=1, output_path=None, flow_project=None,
+                    timeout=1, driver_cls=_QueuedDriver)
+    assert err.value.charged and err.value.data["pending"]
+    assert "collect_from=" in str(err.value) and "Do NOT generate it again" in str(err.value)
+
+
+def test_veo_tool_collect_from_downloads_without_charging(tmp_path, monkeypatch):
+    from tools.video.flow_veo_video import FlowVeoVideo
+
+    monkeypatch.setenv("FLOW_DRIVER", "agent")
+    monkeypatch.setattr(ab, "is_available", lambda: True)
+    real_collect = ab.collect
+    monkeypatch.setattr(ab, "collect", lambda *a, **k: real_collect(*a, **{**k, "driver_cls": _QueuedDriver}))
+    url = "https://flow.google.com/project/8d923a65-a7fa-442b-a994-171163f3fed2"
+    out = tmp_path / "s1.mp4"
+    res = FlowVeoVideo().execute({"prompt": "fox", "model": "veo-lite", "project_dir": str(tmp_path),
+                                  "output_path": str(out), "collect_from": url})
+    assert res.success, res.error
+    assert res.data["credits_spent"] == 0 and out.read_bytes() == b"video"
+    assert _QueuedDriver.collected_from == url
+    assert not (tmp_path / "flow_credits.json").exists() or '"reserved"' not in (tmp_path / "flow_credits.json").read_text()
+
+
+def test_video_timeout_by_plan(monkeypatch):
+    monkeypatch.delenv("FLOW_VIDEO_TIMEOUT_SEC", raising=False)
+    monkeypatch.setenv("FLOW_PLAN", "free   # note")
+    assert ab.video_timeout() == 5400
+    monkeypatch.setenv("FLOW_PLAN", "ultra")
+    assert ab.video_timeout() == 1800
+    monkeypatch.setenv("FLOW_VIDEO_TIMEOUT_SEC", "7200")
+    assert ab.video_timeout() == 7200

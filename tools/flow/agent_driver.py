@@ -401,6 +401,23 @@ class FlowAgentDriver:
         result.credits_after = self._last_credits()
         return result
 
+    def collect(self, project_url: str, *, expect: str = "video", count: int = 1,
+                timeout: float = 3600, poll: float = 60) -> list[Media]:
+        """Wait for media a previous (already paid) request left queued in `project_url`.
+
+        Sends nothing to the agent, so it costs no credits. The project page does not
+        always push a finished queued clip, so it is reloaded every `poll` seconds."""
+        deadline = time.monotonic() + timeout
+        while True:
+            mark = len(self._bodies)
+            self.page.goto(project_url, wait_until="domcontentloaded", timeout=90_000)
+            self.page.wait_for_timeout(15_000)
+            self._check_gate()
+            media = [m for m in self._media_since(mark).values() if expect in ("any", m.kind)]
+            if len(media) >= count or time.monotonic() + poll > deadline:
+                return media
+            self.page.wait_for_timeout(int(poll * 1000))
+
     def download(self, media: Media, out_dir: Path) -> Path:
         out_dir.mkdir(parents=True, exist_ok=True)
         resp = self.ctx.request.get(media.url, timeout=300_000)
