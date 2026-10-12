@@ -60,6 +60,49 @@ in `autopilot_log.md`.
   - If Pixabay fails twice, continue without music and say so in `autopilot_log.md`;
     never block a run on music.
 
+## Keyframes and takes: look before you tick
+
+Images are free, so keyframes are where an unattended run must be strict.
+`scene-director.md` already says how; autopilot runs must actually do it.
+
+- **Open every image you approve.** Read each keyframe PNG (and the contact
+  sheet `scene-director.md` asks for) before ticking a gate. A gate ✔ without
+  having looked at the image is a failed gate. In `autopilot_log.md`, give one
+  line per keyframe on what you checked.
+- **2–4 variants per shot with references**, as `scene-director.md` says. If Nano
+  Banana echoes the turnaround back, retry with one turnaround + the location
+  only, and say "use the reference only for the character's identity; new pose
+  and scene". Do not drop references altogether.
+- **Image prompts are not video prompts.**
+  - Keep `veo_prompt` and the keyframe prompt separate; store the keyframe prompt
+    as `metadata.storyboard[*].keyframe_prompt`.
+  - In image prompts use shot size ("wide shot", "medium close-up") but no camera
+    movement (push-in, pan, handheld sway). Movement belongs to Veo.
+  - Never put film wording in image prompts: "feature film", "film still",
+    "cinematic frame", or "9:16 vertical" as text. Nano Banana Pro then draws a
+    widescreen still and pads the vertical frame with blur. This was verified
+    on 2026-10-12: all four keyframes of the first ad had blurred top and bottom
+    bands for this reason. The aspect goes only through `aspect_ratio: 9:16`.
+  - End image prompts with "full-bleed vertical composition filling the frame
+    edge to edge, no letterbox, no borders".
+- **Composition rules for image prompts:**
+  - at most 3 identical objects; ring or clutter is shown by one or two hero
+    props, not by a counted crowd;
+  - several people must differ visibly (height, build, hair, one clothing detail)
+    and stand apart. Never "two matching / identical" people: that produces
+    merged clones;
+  - mouth closed, hands visible or clearly out of frame (start pose).
+- **Reject and redraw** (free, up to 3 rounds per shot) any keyframe with:
+  - cloned or merged people, or extra limbs;
+  - the wrong count of key props, or floating or detached objects;
+  - blurred bands or a letterbox (top or bottom fifth noticeably softer than the
+    middle);
+  - text or logos;
+  - a character off-model against the bible.
+- **Takes:** after each clip, pull 3 frames with `frame_sampler`, open them, and
+  check them the same way. A bad take follows the credit and retry rules below;
+  log it under `metadata.rejected_takes` even when you keep it.
+
 ## Credits
 
 - Flow tools run through `FLOW_DRIVER=agent`. Every result carries
