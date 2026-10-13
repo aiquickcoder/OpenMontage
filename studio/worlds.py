@@ -275,7 +275,7 @@ def ask_claude_json(settings: Any, prompt: str, timeout: float = CLAUDE_TIMEOUT_
     from factory.runner import build_env
 
     fs = settings.factory if hasattr(settings, "factory") else settings
-    proc = subprocess.run([fs.claude_bin, "-p", prompt, "--output-format", "text", "--max-turns", "1"],
+    proc = subprocess.run([fs.claude_bin, "-p", prompt, "--output-format", "text", "--max-turns", "3"],
                           capture_output=True, text=True, timeout=timeout, cwd=str(fs.repo),
                           env=build_env(fs, dict(os.environ)))
     out = proc.stdout or ""
