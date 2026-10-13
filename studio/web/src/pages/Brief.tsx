@@ -109,7 +109,7 @@ export function BriefPage() {
           <div className="clips">
             {data.clips.map((rel) => (
               <figure key={rel}>
-                <video src={fileUrl(data.id, rel)} controls preload="metadata" />
+                <video src={fileUrl(data.id, rel)} poster={fileUrl(data.id, rel, 480)} controls preload="none" playsInline />
                 <figcaption>{rel.split("/").pop()}</figcaption>
               </figure>
             ))}

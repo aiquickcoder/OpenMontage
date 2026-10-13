@@ -57,7 +57,7 @@ function VideoPanel({ video, onClose }: { video: VideoRow; onClose: () => void }
         </header>
         <div className="drawer-body">
           {video.available ? (
-            <video className="player" src={fileUrl(video.id, "final.mp4")} controls autoPlay playsInline />
+            <video className="player" src={fileUrl(video.id, "final.mp4")} poster={fileUrl(video.id, "final.mp4", 720)} controls autoPlay playsInline />
           ) : (
             <Empty>Файлы ролика удалены</Empty>
           )}
