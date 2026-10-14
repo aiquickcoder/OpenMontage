@@ -346,3 +346,22 @@ def test_attach_waits_for_late_uploads(monkeypatch):
     drv._await_uploads(0, 1, per_file_wait_ms=1, settle_timeout_ms=60_000)
     known = set(drv._media_since(0))
     assert ("image", "11111111-2222-3333-4444-555555555555") in known  # the upload is never a "result"
+
+
+def test_soft_error_does_not_mask_a_hard_one():
+    assert ad.refusal_code("x PUBLIC_ERROR_SOMETHING_WENT_WRONG y") == "PUBLIC_ERROR_SOMETHING_WENT_WRONG"
+    assert ad.refusal_code("PUBLIC_ERROR_SOMETHING_WENT_WRONG ... PUBLIC_ERROR_USER_QUOTA_REACHED") == "PUBLIC_ERROR_USER_QUOTA_REACHED"
+    assert ad.refusal_code("all good") is None
+
+
+class _RetriedDriver(_FakeDriver):
+    def ask(self, brief, *, expect, count, timeout, attachments, confirm_up_to=None):
+        media = [ad.Media(kind="image", media_id="m1", url="u")]
+        return ad.AgentResult(project_url="p", media=media, credits_before=50, credits_after=50,
+                              refused="PUBLIC_ERROR_SOMETHING_WENT_WRONG")
+
+
+def test_generate_keeps_media_after_agent_retried_a_soft_error(tmp_path):
+    gen = ab.generate("image", "b", [], count=1, output_path=str(tmp_path / "a.png"), flow_project=None,
+                      timeout=10, driver_cls=_RetriedDriver)
+    assert gen.media_ids == ["m1"]

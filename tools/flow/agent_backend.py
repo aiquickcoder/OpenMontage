@@ -187,7 +187,7 @@ def generate(kind: str, brief: str, attachments: list[str], *, count: int,
                     "Flow daily generation quota reached (PUBLIC_ERROR_USER_QUOTA_REACHED). STOP: do not "
                     "retry or switch models; end the run with AUTOPILOT_RESULT: BUDGET (quota resets ~24 h "
                     "after the day's first generation)", charged=bool(res.credits_spent), data=data)
-            if res.refused:
+            if res.refused and not (res.media and res.refused in agent_driver.SOFT_ERRORS):
                 raise AgentGenerationError(f"Flow agent refused: {res.refused}",
                                            charged=bool(res.credits_spent), data=data)
             if not res.media and res.credits_spent:

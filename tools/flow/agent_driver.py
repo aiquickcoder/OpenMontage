@@ -119,9 +119,17 @@ def unescape_urls(body: str) -> str:
     return re.sub(r"\\+u0026", "&", re.sub(r"\\+u003d", "=", body))
 
 
+# Transient failures the Flow agent retries on its own within the same turn (seen
+# 2026-10-14: a reference-guided sheet failed once, then the agent regenerated it).
+SOFT_ERRORS = ("PUBLIC_ERROR_SOMETHING_WENT_WRONG", "PUBLIC_ERROR_HIGH_TRAFFIC", "PUBLIC_ERROR_UNSPECIFIED")
+SOFT_IDLE_S = 90
+
+
 def refusal_code(stream: str) -> Optional[str]:
-    m = re.search(r"PUBLIC_ERROR_[A-Z_]+", stream)
-    return m.group(0) if m else None
+    """The first hard refusal; transient (agent-retried) errors only when nothing else is there."""
+    codes = re.findall(r"PUBLIC_ERROR_[A-Z_]+", stream)
+    hard = [c for c in codes if c not in SOFT_ERRORS]
+    return hard[0] if hard else (codes[0] if codes else None)
 
 
 @dataclass
@@ -368,11 +376,18 @@ class FlowAgentDriver:
         deadline = time.monotonic() + timeout
         turn_mark, turn_start = mark, time.monotonic()
         ready_at: Optional[float] = None
+        soft_bodies, soft_since = -1, time.monotonic()
         while time.monotonic() < deadline:
             self.page.wait_for_timeout(5_000)
             stream = "".join(b for u, b in self._bodies[mark:] if "StreamChat" in u)
-            if "PUBLIC_ERROR_" in stream:
-                break  # agent refused (anti-abuse / policy); waiting longer won't help
+            code = refusal_code(stream)
+            if code and code not in SOFT_ERRORS:
+                break  # agent refused (anti-abuse / policy / quota); waiting longer won't help
+            if code:  # transient: the agent usually retries; give up only once the chat goes quiet
+                if len(self._bodies) != soft_bodies:
+                    soft_bodies, soft_since = len(self._bodies), time.monotonic()
+                elif time.monotonic() - soft_since > SOFT_IDLE_S and not self._new_media(mark, known, expect):
+                    break
             # The go-ahead request is itself a pending generate_* call, so look for its
             # inline Approve button rather than for the absence of a tool call.
             approve = self._approve_button() if self._visible_approvals() > approve_seen else None
