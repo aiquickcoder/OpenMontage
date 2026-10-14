@@ -347,7 +347,9 @@ def sheet_refs(lib: "Library", char: dict[str, Any]) -> list[str]:
     if world_id:
         from studio import worlds
 
-        out += worlds.reference_images(lib.root.parent / "worlds", world_id)
+        # A group picture confuses the model when only one member is wanted (Flow answers
+        # "couldn't process the reference"); with the character's own refs use style refs only.
+        out += worlds.reference_images(lib.root.parent / "worlds", world_id, style_only=bool(out))
     seen: list[str] = []
     digests: set[str] = set()
     for path in out:

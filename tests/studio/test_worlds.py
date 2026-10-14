@@ -180,3 +180,17 @@ def test_sheet_refs_skip_identical_files(env):
                                                     "world_id": w["id"]})
     lib = characters.Library.of(settings)
     assert len(characters.sheet_refs(lib, lib.load("murka"))) == 1
+
+
+def test_own_ref_replaces_group_picture(env):
+    settings, client = env
+    w = _world(client)
+    client.post(f"/api/worlds/{w['id']}/image?kind=family", headers=H, content=PNG)
+    client.post(f"/api/worlds/{w['id']}/image?kind=style", headers=H, content=PNG + b"style")
+    client.post("/api/characters", headers=H, json={"name": "Мурка", "description": "Мама-кошка в фартуке",
+                                                    "world_id": w["id"]})
+    client.post("/api/characters/murka/image?kind=ref", headers=H, content=PNG + b"own")
+    lib = characters.Library.of(settings)
+    refs = characters.sheet_refs(lib, lib.load("murka"))
+    assert "/characters/murka/refs/" in refs[0] and not any("family-" in r for r in refs)
+    assert any("style-" in r for r in refs)

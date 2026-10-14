@@ -189,17 +189,17 @@ def add_ref(store: WorldStore, world: dict[str, Any], kind: str, data: bytes, fi
     return rel
 
 
-def reference_images(root: Path, world_id: str) -> list[str]:
+def reference_images(root: Path, world_id: str, style_only: bool = False) -> list[str]:
     """Absolute paths a character sheet of this world should be drawn against:
-    family refs, the cover, then style refs."""
+    family refs, the cover, then style refs (only style refs with `style_only`)."""
     path = Path(root) / projects.safe_id(world_id) / "world.json"
     if not path.is_file():
         return []
     world = json.loads(path.read_text(encoding="utf-8"))
     d = path.parent
     refs = world.get("refs") or []
-    rels = [r["path"] for r in refs if r.get("kind") == "family"]
-    rels += [world["cover"]] if world.get("cover") else []
+    rels = [] if style_only else [r["path"] for r in refs if r.get("kind") == "family"]
+    rels += [world["cover"]] if world.get("cover") and not style_only else []
     rels += [r["path"] for r in refs if r.get("kind") == "style"]
     out: list[str] = []
     for rel in rels:
