@@ -13,6 +13,7 @@ The cartoon-ad agent consumes library characters via addons/character-library.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -348,8 +349,14 @@ def sheet_refs(lib: "Library", char: dict[str, Any]) -> list[str]:
 
         out += worlds.reference_images(lib.root.parent / "worlds", world_id)
     seen: list[str] = []
+    digests: set[str] = set()
     for path in out:
-        if path not in seen and Path(path).is_file():
+        p = Path(path)
+        if path in seen or not p.is_file():
+            continue
+        digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        if digest not in digests:  # a world's cover is often the same file as its family ref
+            digests.add(digest)
             seen.append(path)
     return seen[:MAX_SHEET_REFS]
 

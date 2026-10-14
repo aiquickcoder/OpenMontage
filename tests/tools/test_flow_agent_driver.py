@@ -323,3 +323,26 @@ def test_video_timeout_by_plan(monkeypatch):
     assert ab.video_timeout() == 1800
     monkeypatch.setenv("FLOW_VIDEO_TIMEOUT_SEC", "7200")
     assert ab.video_timeout() == 7200
+
+
+class _UploadPage:
+    """A page whose uploads only show up in the recorded bodies after a few waits."""
+
+    def __init__(self, drv, url, delay):
+        self.drv, self.url, self.delay, self.waits = drv, url, delay, 0
+
+    def wait_for_timeout(self, ms):
+        self.waits += 1
+        if self.waits == self.delay:
+            self.drv._bodies.append(("batchexecute", self.url))
+
+
+def test_attach_waits_for_late_uploads(monkeypatch):
+    drv = ad.FlowAgentDriver.__new__(ad.FlowAgentDriver)
+    drv._bodies = []
+    up = "https://flow-content.google/image/11111111-2222-3333-4444-555555555555?Expires=1&Signature=s"
+    drv.page = _UploadPage(drv, up, delay=4)
+    monkeypatch.setattr(drv, "_clear_overlays", lambda *a, **k: None)
+    drv._await_uploads(0, 1, per_file_wait_ms=1, settle_timeout_ms=60_000)
+    known = set(drv._media_since(0))
+    assert ("image", "11111111-2222-3333-4444-555555555555") in known  # the upload is never a "result"

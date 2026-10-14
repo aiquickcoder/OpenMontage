@@ -261,11 +261,17 @@ class FlowAgentDriver:
         self.page.keyboard.press("Escape")
         return self.page.url
 
-    def attach(self, paths: list[str], *, per_file_wait_ms: int = 6_000) -> None:
-        """Upload local images into the composer (keyframes, references)."""
-        if not paths:
+    def attach(self, paths: list[str], *, per_file_wait_ms: int = 6_000, settle_timeout_ms: int = 90_000) -> None:
+        """Upload local images into the composer (keyframes, references).
+
+        Each upload becomes an image media in the project, and Flow can publish its URL
+        well after the file input fires (slower through a proxy). ask() treats every media
+        id it has not seen as a generation result, so wait until all uploads are visible
+        here; otherwise a late upload is returned as if it were the generated image."""
+        files = list(dict.fromkeys(str(Path(p).resolve()) for p in paths))
+        if not files:
             return
-        files = [str(Path(p).resolve()) for p in paths]
+        mark = len(self._bodies)
         inputs = self.page.locator("input[type=file]")
         if inputs.count() == 0:
             # the file input is created lazily behind the composer's "add" button
@@ -276,11 +282,21 @@ class FlowAgentDriver:
                 with self.page.expect_file_chooser(timeout=15_000) as chooser:
                     upload.first.click()
                 chooser.value.set_files(files)
-                self.page.wait_for_timeout(per_file_wait_ms * len(files))
-                self._clear_overlays()
+                self._await_uploads(mark, len(files), per_file_wait_ms, settle_timeout_ms)
                 return
         inputs.last.set_input_files(files)
-        self.page.wait_for_timeout(per_file_wait_ms * len(files))
+        self._await_uploads(mark, len(files), per_file_wait_ms, settle_timeout_ms)
+
+    def _await_uploads(self, mark: int, count: int, per_file_wait_ms: int, settle_timeout_ms: int) -> None:
+        self.page.wait_for_timeout(per_file_wait_ms * count)
+        waited = 0
+        while waited < settle_timeout_ms:
+            uploaded = [m for m in self._media_since(mark).values() if m.kind == "image"]
+            if len(uploaded) >= count:
+                break
+            self.page.wait_for_timeout(2_000)
+            waited += 2_000
+        self.page.wait_for_timeout(3_000)  # a late duplicate of the same upload settles too
         self._clear_overlays()
 
     def _clear_overlays(self, rounds: int = 4) -> None:

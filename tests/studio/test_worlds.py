@@ -169,3 +169,14 @@ def test_brief_with_world(env):
     r = client.post("/api/briefs", headers=H, json={"text": "Эпизод про кошек и рыбу",
                                                     "options": {"world": w["id"], "campaign": "c1"}})
     assert r.status_code == 422
+
+
+def test_sheet_refs_skip_identical_files(env):
+    settings, client = env
+    w = _world(client)
+    client.post(f"/api/worlds/{w['id']}/image?kind=cover", headers=H, content=PNG)
+    client.post(f"/api/worlds/{w['id']}/image?kind=family", headers=H, content=PNG)
+    client.post("/api/characters", headers=H, json={"name": "Мурка", "description": "Мама-кошка в фартуке",
+                                                    "world_id": w["id"]})
+    lib = characters.Library.of(settings)
+    assert len(characters.sheet_refs(lib, lib.load("murka"))) == 1
