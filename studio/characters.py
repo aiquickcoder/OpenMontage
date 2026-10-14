@@ -413,7 +413,9 @@ def _run_generate(lib: Library, task: dict[str, Any]) -> dict[str, Any]:
     shutil.rmtree(new_dir, ignore_errors=True)
     new_dir.mkdir(parents=True, exist_ok=True)
     output_path = new_dir / "1.png"
-    refs = sheet_refs(lib, char)
+    # The last retry goes text-only: Flow rejects some reference uploads outright (e.g. a
+    # picture with a child in it) and reports it as a generic "something went wrong".
+    refs = [] if args.get("no_refs") or int(args.get("retry", 0)) >= MAX_RETRIES else sheet_refs(lib, char)
     try:
         result = _flow_image().execute({
             "prompt": sheet_prompt(char["name"], char["description"], style, with_refs=bool(refs)),
