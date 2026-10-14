@@ -26,7 +26,8 @@ from studio import auth, characters, projects, worlds
 STATUSES = ("draft", "approved", "queued", "done", "failed")
 EDITABLE = ("draft", "approved")
 BRIEF_DONE = ("awaiting_approval", "approved")
-BRIEF_FAILED = ("failed", "budget", "rejected")
+BRIEF_FAILED = ("failed", "rejected")
+BRIEF_PAUSED = ("budget",)  # out of the day's Flow credits: resumed by release_due the next day
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodes (
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS episodes (
     source TEXT NOT NULL DEFAULT 'manual',
     brief_id TEXT,
     released_at TEXT,
+    resumed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -70,6 +72,12 @@ class EpisodeStore:
         with self._conn() as c:
             c.execute("PRAGMA journal_mode=WAL")
             c.executescript(SCHEMA)
+
+    def _migrate(self) -> None:
+        with self._conn() as c:
+            cols = {r["name"] for r in c.execute("PRAGMA table_info(episodes)")}
+            if "resumed_at" not in cols:
+                c.execute("ALTER TABLE episodes ADD COLUMN resumed_at TEXT")
 
     @classmethod
     def of(cls, settings: Any) -> "EpisodeStore":
@@ -146,8 +154,10 @@ class EpisodeStore:
         return [f"{r['title']}: {r['logline']}" for r in rows]
 
     def released_on(self, day: str) -> int:
+        """Production slots used on `day`: new releases plus resumed (multi-day) episodes."""
         with self._conn() as c:
-            return c.execute("SELECT COUNT(*) FROM episodes WHERE released_at LIKE ?", (f"{day}%",)).fetchone()[0]
+            return c.execute("SELECT COUNT(*) FROM episodes WHERE released_at LIKE ? OR resumed_at LIKE ?",
+                             (f"{day}%", f"{day}%")).fetchone()[0]
 
 
 # -- release into the factory queue ----------------------------------------------------------
@@ -192,6 +202,19 @@ def release_due(settings: Any, briefs: Any, now: Optional[datetime] = None) -> l
     today = now.date().isoformat()
     room = daily_limit() - eps.released_on(today)
     released: list[str] = []
+    # Episodes that ran out of yesterday's credits continue first (one slot each).
+    for ep in eps.list(status="queued"):
+        if room <= 0:
+            break
+        brief = briefs.get(ep["brief_id"]) if ep.get("brief_id") else None
+        if not brief or brief["state"] not in BRIEF_PAUSED:
+            continue
+        if (ep.get("resumed_at") or "").startswith(today) or (ep.get("released_at") or "").startswith(today):
+            continue
+        briefs.move(brief["id"], "queued", detail="planner: resumed with the new day's Flow credits")
+        eps.update(ep["id"], resumed_at=now.isoformat(timespec="seconds"))
+        released.append(brief["id"])
+        room -= 1
     for ep in eps.list(end=today, status="approved"):
         if room <= 0:
             break

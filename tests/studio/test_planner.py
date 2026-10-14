@@ -115,3 +115,21 @@ def test_plan_week_route_needs_characters(env, monkeypatch):
     empty = client.post("/api/worlds", headers=H, json={"name": "Пустой мир"}).json()
     r = client.post(f"/api/worlds/{empty['id']}/plan-week", headers=H, json={"start_date": "2026-10-13"})
     assert r.status_code == 422
+
+
+def test_budget_stopped_episode_resumes_next_day(env):
+    settings, client, world_id = env
+    a = _episode(client, world_id, "2026-10-13")
+    b = _episode(client, world_id, "2026-10-14")
+    for ep in (a, b):
+        client.patch(f"/api/episodes/{ep['id']}", headers=H, json={"status": "approved"})
+    store = BriefStore(settings.factory.db_path)
+    day1 = planner.release_due(settings, store, datetime(2026, 10, 13, 7, tzinfo=timezone.utc))
+    store.move(day1[0], "running")
+    store.move(day1[0], "budget")
+    assert planner.release_due(settings, store, datetime(2026, 10, 13, 20, tzinfo=timezone.utc)) == []
+    day2 = planner.release_due(settings, store, datetime(2026, 10, 14, 7, tzinfo=timezone.utc))
+    assert day2 == day1 and store.get(day1[0])["state"] == "queued"  # yesterday's episode continues
+    eps = planner.EpisodeStore.of(settings)
+    assert eps.get(a["id"])["status"] == "queued" and eps.get(b["id"])["status"] == "approved"  # slot used
+    assert planner.release_due(settings, store, datetime(2026, 10, 14, 9, tzinfo=timezone.utc)) == []
