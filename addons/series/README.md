@@ -52,9 +52,18 @@ exist to prevent that.
 
 ## script: a shot list with coverage
 
-The pipeline's "4–11 sections" is the floor. For a 30 s scene, plan **6–10
-shots**. Each shot is one generated clip of **4 or 6 s**; the edit uses
-1.5–4 s of it. Use 8 s clips only for one continuous action.
+**Shot length follows the genre** (`skills/creative/cinematic.md`, *Average Shot Length*). It is not the 1–3 s short-form rule.
+
+| Episode genre | Average shot length | Example for 30 s |
+|---|---|---|
+| Quiet drama / slice of life | 4–8 s, holds up to 10 s on the emotional beat | 5–7 shots |
+| Warm comedy sketch | 3–5 s, quicker on the gag | 6–9 shots |
+| Gag / slapstick burst | 2–3 s | 9–12 shots |
+
+- Vary the length like breathing (long → medium → short → long). Never use the same length three times in a row.
+- Use a clip whole when the shot is the beat: a line plus its pause, an exit, a phone call. Do not chop a good 8 s take into 2 s pieces.
+- Take two cuts from one clip only when it carries two distinct beats.
+- OpenMontage's reference short «THE LAST BANANA» used 6 clips of about 10 s in 60 s, with narration, music and word-level captions.
 
 - **Coverage.** Mix shot sizes and include each of these:
   - one establishing or wide shot;
@@ -152,8 +161,9 @@ shots**. Each shot is one generated clip of **4 or 6 s**; the edit uses
   - `dissolve` (0.3–0.5 s) only for a time jump or a change of place.
   - `dip_to_black` (0.5 s) for a strong time skip or the final beat.
   - Nothing else.
-- **Pacing.** A 30 s scene usually has 8–14 cuts. Hold longer only on the
-  emotional beat.
+- **Pacing.** Follow the genre table in *script*: a quiet drama runs about 5–7
+  cuts in 30 s, a sketch 6–9. Hold the emotional beat and the silences, and
+  never trim a pause just to add a cut.
 - **Subtitles.**
   - Build the SRT from the **transcribed word timings** mapped onto the final
     timeline, accounting for trims and transition overlaps. Never use the
