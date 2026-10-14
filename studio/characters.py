@@ -418,7 +418,7 @@ def _run_generate(lib: Library, task: dict[str, Any]) -> dict[str, Any]:
     refs = [] if args.get("no_refs") or int(args.get("retry", 0)) >= MAX_RETRIES else sheet_refs(lib, char)
     try:
         result = _flow_image().execute({
-            "prompt": sheet_prompt(char["name"], char["description"], style, with_refs=bool(refs)),
+            "prompt": sheet_prompt(char["name"], char.get("prompt_tokens") or char["description"], style, with_refs=bool(refs)),
             "image_paths": refs,
             "model": "nano-pro", "aspect_ratio": "16:9",
             "number_of_images": max(1, min(4, int(args.get("variants") or 1))),
