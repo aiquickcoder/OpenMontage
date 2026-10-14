@@ -252,3 +252,19 @@ def test_prompt_lines(env):
     assert str((settings.characters_dir / "kot_barsik" / "character.json").resolve()) in text
     assert "ghost: not found" in text and "etc" not in text
     assert characters.OPTION_KEY == "characters"
+
+
+def test_transient_sheet_failure_is_retried(env, monkeypatch):
+    settings, client = env
+    char = client.post("/api/characters/generate", headers=H, json={**CAT, "variants": 1}).json()
+    calls = []
+
+    class Flaky:
+        def execute(self, inputs):
+            calls.append(1)
+            return SimpleNamespace(success=False, error="Flow agent refused: PUBLIC_ERROR_SOMETHING_WENT_WRONG", data={})
+
+    monkeypatch.setattr(characters, "_flow_image", lambda: Flaky())
+    assert characters.run_pending_tasks(settings) == 3  # first try + 2 retries, then it gives up
+    task = client.get(f"/api/characters/{char['id']}").json()["task"]
+    assert task["status"] == "failed" and len(calls) == 3

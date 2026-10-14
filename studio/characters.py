@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import secrets
 import shutil
@@ -29,6 +30,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from studio import auth, projects
+
+log = logging.getLogger("studio")
 
 OPTION_KEY = "characters"  # brief option (Telegram `characters: a,b` and Studio form)
 ROLES = ("hero", "sidekick", "antagonist", "extra", "mascot")
@@ -436,6 +439,30 @@ def _run_generate(lib: Library, task: dict[str, Any]) -> dict[str, Any]:
     return {"variants": variants, "media_ids": media_ids[:len(variants)]}
 
 
+TRANSIENT = ("PUBLIC_ERROR_SOMETHING_WENT_WRONG", "PUBLIC_ERROR_HIGH_TRAFFIC", "without producing media")
+MAX_RETRIES = 2
+
+
+def _retry_transient(lib: "Library", task: dict[str, Any], error: str) -> Optional[str]:
+    """Images are free and Flow fails reference-guided sheets intermittently: re-queue a
+    sheet task up to MAX_RETRIES times and point the character at the new task."""
+    args = dict(task["args"])
+    if task["kind"] != "character_generate" or not any(t in error for t in TRANSIENT):
+        return None
+    if int(args.get("retry", 0)) >= MAX_RETRIES:
+        return None
+    args["retry"] = int(args.get("retry", 0)) + 1
+    new_id = lib.add_task("character_generate", args)
+    try:
+        char = lib.load(args["character_id"])
+    except HTTPException:
+        return new_id
+    if (char.get("library") or {}).get("task_id") == task["id"]:
+        char["library"]["task_id"] = new_id
+        lib.save(char)
+    return new_id
+
+
 def run_pending_tasks(settings: Any, limit: int = 10) -> int:
     """Execute queued tasks one at a time; returns how many ran. Safe between briefs:
     FlowImage takes the Flow profile lock itself, and failures never raise."""
@@ -453,6 +480,9 @@ def run_pending_tasks(settings: Any, limit: int = 10) -> int:
             result = _run_generate(lib, task)
         except Exception as exc:  # noqa: BLE001 — a task failure must not kill the worker
             lib.finish_task(task["id"], "failed", error=str(exc)[:500])
+            retry = _retry_transient(lib, task, str(exc))
+            if retry:
+                log.info("character sheet %s failed transiently; retry task %s", task["args"].get("character_id"), retry)
         else:
             lib.finish_task(task["id"], "done", result=result)
     return done
