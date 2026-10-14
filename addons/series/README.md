@@ -30,6 +30,29 @@ exist to prevent that.
 - **Episode:** the brief text, i.e. the title, logline and synopsis with
   dialogue. Keep the beats and the quoted lines; log any change.
 
+## Craft comes from OpenMontage's skills, not from this file
+
+This add-on only overrides advertising, the world inputs and free-Flow limits. For
+craft, **read and follow these OpenMontage skills at their stage**. Their formulas
+win over any shorthand below.
+
+| Stage | Read and apply |
+|---|---|
+| script | `skills/pipelines/cinematic/script-director.md` (beat map: hook → escalation → reveal → landing; `silence_windows`), `skills/creative/storytelling.md` (Anti-Subjective rule; name subject transitions revealing/disappearing/switching; **one camera-intent line per beat**), `skills/creative/cinematic.md` (shot length by genre, breathing rhythm, Murch rule), `skills/pipelines/cartoon-ad/script-director.md` (one action and one speaker per clip, words per second, 0.7 s head/tail silence), `skills/meta/voice-performance-director.md` |
+| scene_plan | `skills/pipelines/cinematic/scene-director.md` (**5-aspect checklist** for every shot: Subject, Subject Motion, Scene, Spatial Framing, Camera; hero frames; small transition set; overlays listed separately), `skills/pipelines/cartoon-ad/scene-director.md` (keyframe = first frame, 2–4 variants, contact sheet before the gate), `skills/creative/image-gen-usage.md` |
+| Veo prompts | `skills/creative/prompting/veo-prompting.md` (14 components, 100–250 words, labelled fields as in its example), `skills/creative/video-gen-prompting.md` (5-aspect skeleton, camera primitive groups, **identity anchoring: repeat the same 3–6 attributes verbatim in every shot**, replace emotions with their visible cause, one speaker per clip, iteration strategy), `.agents/skills/gemini-omni/SKILL.md` for Omni Flash (single continuous shot, `[0-2s]` timecodes, `<FIRST_FRAME>`, English only) |
+| review | `skills/meta/reviewer.md`: run the **slideshow-risk** check on the scene plan (`lib/slideshow_risk.py`; every scene needs `shot_intent`). Use the **sample-first** order from `skills/meta/video-reference-analyst.md` and `voice-performance-director.md`: generate the most performance-critical shot first, review it, lock the formula and voices, then generate the rest. |
+| edit / compose | `skills/pipelines/cartoon-ad/edit-director.md`, `skills/creative/video-stitching.md`, `skills/core/subtitle-sync.md` (word-timed cues), `compose-director.md` |
+
+**Verbatim strings.** Write these once in the bible and copy them unchanged into every keyframe and Veo prompt:
+- each character's identity line (`Name — 3–6 visual attributes`);
+- each character's voice line;
+- the location line;
+- the lighting line;
+- the style line.
+
+Paraphrasing them between shots is the main source of drift.
+
 ## idea / proposal
 
 - Skip every advertiser, product and brand item. In `brief.metadata`, write
@@ -48,7 +71,8 @@ exist to prevent that.
   - The free plan has 50 credits per day. An episode may need more than one day.
     In that case end the day's run with `AUTOPILOT_RESULT: BUDGET`; the planner
     resumes the episode the next day. Never cut coverage to fit one day's
-    credits, and never spend credits on tests.
+    credits. Do not spend on throwaway tests: sample-first means generating the
+    most critical **real** shot first and reviewing it before the others.
 
 ## script: a shot list with coverage
 
@@ -109,27 +133,18 @@ exist to prevent that.
 - **Continuity.** For consecutive shots in one setup, pass the previous approved
   keyframe as an extra reference. When a move must continue, use the previous
   clip's last frame (`frame_sampler`) as the next keyframe.
-- **Veo prompt: 120–180 words, in this order:**
-  1. Shot size and **camera move**, using the primitives in
-     `skills/creative/prompting/veo-prompting.md` and
-     `skills/creative/video-gen-prompting.md`. Examples: "slow dolly-in from
-     medium to close-up over 4 s", "rack focus from the folder to her face",
-     "subtle handheld, slight drift right", "slow pan following him to the
-     door".
-     - At least half of the shots move with motivation: the move follows an
-       action or reveals something.
-     - Static only for a deliberate still beat, and then write "locked-off
-       static camera".
-  2. The single action with timing ("at 1 s she looks up; at 2.5 s she…").
-  3. The line: `<Name> говорит по-русски: «…»` plus a one-line voice note. For a
-     reaction or insert: "no dialogue, characters do not speak".
-  4. The sound: room tone and one or two specific effects.
-  5. A **short** style tag of ≤ 25 words taken from the world `style_lock`.
-     Identity and look come from the keyframe; do not repeat full character
-     descriptions. Use the name plus 2–3 identifiers ("Lena, copper curls in a
-     bun, teal cardigan").
-  6. The negative: the world `negative_style` plus "no subtitles, no captions,
-     no on-screen text".
+- **Veo prompt** uses the labelled 14-component structure of `veo-prompting.md`
+  (Subject, Action, Scene, Camera, Lens, Lighting, Mood as a visible cause,
+  Style, Audio with the quoted line, Negative), at 100–250 words.
+  - Fill the 5-aspect skeleton; nothing is left implicit.
+  - Use the verbatim identity, voice, location, lighting and style lines.
+  - Put the line in Russian as `Name says in Russian: «…»`. Keep every other
+    word in English, because Veo reads Russian stage directions aloud.
+  - In a shot with two people, state that only the visible speaker talks and
+    the other stays silent with mouth closed.
+  - Never request a cut or fade inside a clip.
+  - The negative is the world `negative_style` plus "no subtitles, no captions,
+    no text overlays, no background music".
 
 ## assets
 
