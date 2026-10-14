@@ -34,6 +34,7 @@ import contextlib
 import json
 import hashlib
 import logging
+import os
 import secrets
 import shutil
 import subprocess
@@ -643,14 +644,19 @@ class VideoCompose(BaseTool):
                     f.write(f"file '{safe}'\n")
 
             concat_out = temp_dir / "concat.mp4"
-            cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", str(concat_path),
-                "-c", "copy",
-                str(concat_out),
-            ]
-            self.run_command(cmd)
+            transitions = self._cut_transitions(cuts)
+            if any(kind != "cut" for kind, _ in transitions):
+                # dissolves / dips need overlapping segments: xfade + acrossfade chain
+                self._xfade_concat(temp_segments, transitions, concat_out, codec, crf, preset)
+            else:
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", str(concat_path),
+                    "-c", "copy",
+                    str(concat_out),
+                ]
+                self.run_command(cmd)
 
             # Step 3: Apply subtitles and/or replace audio
             final_input = concat_out
@@ -658,9 +664,7 @@ class VideoCompose(BaseTool):
 
             if subtitle_path and Path(subtitle_path).exists():
                 style = inputs.get("subtitle_style", {})
-                ass_style = self._build_subtitle_style(style)
-                sub_escaped = str(Path(subtitle_path).resolve()).replace("\\", "/").replace(":", "\\:")
-                vfilters.append(f"subtitles='{sub_escaped}':force_style='{ass_style}'")
+                vfilters.append(self._subtitle_filter(Path(subtitle_path), style, target_w, target_h, temp_dir))
 
             cmd = ["ffmpeg", "-y", "-i", str(final_input)]
 
@@ -2062,14 +2066,28 @@ class VideoCompose(BaseTool):
             if public_dir is not None:
                 cmd.append(f"--public-dir={public_dir}")
 
-            # Apply media profile dimensions
+            # Apply media profile dimensions. Without a profile the compositions fall
+            # back to their own defaults (1920x1080 for most), which silently turned
+            # 9:16 episodes landscape — so derive the frame from the edit or sources.
+            dims = None
             if profile_name:
                 try:
                     from lib.media_profiles import get_profile
                     p = get_profile(profile_name)
-                    cmd.extend(["--width", str(p.width), "--height", str(p.height)])
+                    dims = (p.width, p.height)
                 except (ImportError, ValueError):
                     pass
+            if dims is None:
+                dims = self._frame_from_edit(composition_data or {}, props)
+            if dims:
+                cmd.extend(["--width", str(dims[0]), "--height", str(dims[1])])
+            # Small servers (2-4 vCPU) time out on OffthreadVideo with Remotion's
+            # default parallelism; keep it modest and give the browser headroom.
+            cpu = os.cpu_count() or 2
+            cmd.append(f"--concurrency={inputs.get('remotion_concurrency') or max(1, min(2, cpu // 2))}")
+            env_timeout = os.environ.get("REMOTION_TIMEOUT_MS", "").split("#")[0].strip()
+            if not inputs.get("remotion_timeout_ms") and env_timeout.isdigit():
+                inputs = {**inputs, "remotion_timeout_ms": int(env_timeout)}
 
             # Optional creator-facing render timeout. Remotion's `--timeout` (ms)
             # governs headless-browser setup and delayRender(); on slow machines or
@@ -2718,15 +2736,15 @@ class VideoCompose(BaseTool):
             return ToolResult(success=False, error=f"Subtitle file not found: {subtitle_path}")
 
         style = inputs.get("subtitle_style", {})
-        ass_style = self._build_subtitle_style(style)
-        sub_escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", "\\:")
         codec = inputs.get("codec", "libx264")
         crf = inputs.get("crf", 23)
+        width, height = self._video_size(input_path)
+        sub_filter = self._subtitle_filter(subtitle_path, style, width, height, output_path.parent / ".subs_tmp")
 
         cmd = [
             "ffmpeg", "-y",
             "-i", str(input_path),
-            "-vf", f"subtitles='{sub_escaped}':force_style='{ass_style}'",
+            "-vf", sub_filter,
             "-c:v", codec, "-crf", str(crf),
             "-c:a", "copy",
             str(output_path),
@@ -2907,6 +2925,174 @@ class VideoCompose(BaseTool):
                     resolved[k] = v
 
         return resolved
+
+    def _frame_from_edit(self, edit: dict, props: dict) -> Optional[tuple[int, int]]:
+        meta = edit.get("metadata") or {}
+        target = meta.get("compose_target")
+        if isinstance(target, dict) and target.get("width") and target.get("height"):
+            return int(target["width"]), int(target["height"])
+        aspect = str(edit.get("aspect_ratio") or meta.get("aspect_ratio") or "")
+        if aspect == "9:16":
+            return 1080, 1920
+        if aspect == "16:9":
+            return 1920, 1080
+        for cut in edit.get("cuts") or props.get("cuts") or []:
+            src = Path(str(cut.get("source") or ""))
+            if src.is_file() and not self._is_image(src):
+                w, h = self._video_size(src)
+                return (1080, 1920) if h > w else (1920, 1080)
+        return None
+
+    # -- transitions on the FFmpeg path -----------------------------------------
+    XFADE_TYPES = {"dissolve": "fade", "crossfade": "fade", "fade": "fade", "cross_dissolve": "fade",
+                   "dip_to_black": "fadeblack", "fade_to_black": "fadeblack", "fadeblack": "fadeblack",
+                   "dip_to_white": "fadewhite", "fadewhite": "fadewhite"}
+
+    @classmethod
+    def _cut_transitions(cls, cuts: list[dict]) -> list[tuple[str, float]]:
+        """Per boundary (i -> i+1): (xfade type or 'cut', duration s)."""
+        out = []
+        for a, b in zip(cuts, cuts[1:]):
+            name = str(a.get("transition_out") or "").lower() or str(b.get("transition_in") or "").lower() or "cut"
+            if name in ("cut", "none", "hard_cut"):
+                name = str(b.get("transition_in") or "cut").lower()
+            kind = cls.XFADE_TYPES.get(name, "cut")
+            dur = b.get("transition_duration") or (0.5 if kind == "fadeblack" else 0.3)
+            out.append((kind, max(0.05, min(1.5, float(dur)))))
+        return out
+
+    def _xfade_concat(self, segments: list[Path], transitions: list[tuple[str, float]], out: Path,
+                      codec: str, crf: Any, preset: str) -> None:
+        durations = [self._media_duration(p) for p in segments]
+        cmd = ["ffmpeg", "-y"]
+        for seg in segments:
+            cmd.extend(["-i", str(seg)])
+        parts, v_prev, a_prev, timeline = [], "[0:v]", "[0:a]", durations[0]
+        for i, (kind, dur) in enumerate(transitions, start=1):
+            # a plain cut between dissolves is a one-frame fade (indistinguishable from a cut)
+            xf, d = (kind, dur) if kind != "cut" else ("fade", 1 / 30)
+            d = min(d, durations[i - 1] / 2, durations[i] / 2)
+            offset = max(0.0, timeline - d)
+            parts.append(f"{v_prev}[{i}:v]xfade=transition={xf}:duration={d:.3f}:offset={offset:.3f}[v{i}]")
+            parts.append(f"{a_prev}[{i}:a]acrossfade=d={d:.3f}[a{i}]")
+            v_prev, a_prev = f"[v{i}]", f"[a{i}]"
+            timeline = offset + durations[i]
+        cmd.extend(["-filter_complex", ";".join(parts), "-map", v_prev, "-map", a_prev,
+                    "-c:v", codec, "-crf", str(crf), "-preset", preset, "-pix_fmt", "yuv420p", "-r", "30",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", str(out)])
+        self.run_command(cmd)
+
+    @staticmethod
+    def _media_duration(path: Path) -> float:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
+                              "default=nw=1:nk=1", str(path)], capture_output=True, text=True, timeout=60).stdout
+        try:
+            return float(out.strip())
+        except ValueError:
+            return 0.0
+
+    # -- subtitles: SRT -> ASS at the real frame size ---------------------------
+    # libass renders SRT on a virtual 384x288 canvas, so FontSize=28 on a 1080x1920
+    # frame becomes ~190 px and MarginV shrinks the same way. Converting to ASS with
+    # PlayResX/Y = the output size makes every style value real pixels.
+    SUB_MAX_CHARS = 32
+
+    @staticmethod
+    def _srt_cues(text: str) -> list[tuple[str, str, str]]:
+        import re as _re
+        cues = []
+        for block in _re.split(r"\n\s*\n", text.replace("\r\n", "\n").strip()):
+            lines = [l for l in block.split("\n") if l.strip()]
+            for i, line in enumerate(lines):
+                m = _re.match(r"\s*(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)", line)
+                if m:
+                    g = [int(x) for x in m.groups()]
+                    def ass_t(h, mi, se, ms):
+                        return f"{h}:{mi:02d}:{se:02d}.{int(ms / 10):02d}"
+                    cues.append((ass_t(*g[:4]), ass_t(*g[4:]), " ".join(lines[i + 1:]).strip()))
+                    break
+        return [c for c in cues if c[2]]
+
+    @classmethod
+    def _wrap_sub(cls, text: str, max_chars: int) -> str:
+        words, lines, cur = text.split(), [], ""
+        for w in words:
+            if cur and len(cur) + 1 + len(w) > max_chars:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = f"{cur} {w}".strip()
+        if cur:
+            lines.append(cur)
+        if len(lines) > 2:  # never more than two lines: rebalance into two
+            half = (len(words) + 1) // 2
+            lines = [" ".join(words[:half]), " ".join(words[half:])]
+        return "\\N".join(lines)
+
+    @staticmethod
+    def _ass_color(value: Any, default: str) -> str:
+        """'#RRGGBB' / '#RRGGBBAA' / '&H..' -> ASS &HAABBGGRR."""
+        v = str(value or "").strip()
+        if v.startswith("&H"):
+            return v
+        if v.startswith("#") and len(v) in (7, 9):
+            r, g, b = v[1:3], v[3:5], v[5:7]
+            a = v[7:9] if len(v) == 9 else "FF"
+            alpha = f"{255 - int(a, 16):02X}"
+            return f"&H{alpha}{b}{g}{r}".upper()
+        return default
+
+    def _subtitle_filter(self, subtitle_path: Path, style: dict, width: int, height: int, work_dir: Path) -> str:
+        """`subtitles=` filter for an SRT/ASS file rendered at the true frame size."""
+        src = Path(subtitle_path)
+        if src.suffix.lower() == ".ass":
+            target = src
+        else:
+            vertical = height > width
+            lo, hi = (round(height * 0.022), round(height * 0.045)) if vertical else (round(height * 0.035), round(height * 0.07))
+            size = int(style.get("font_size") or 0) or round(height * (0.03 if vertical else 0.05))
+            size = max(lo, min(hi, size))
+            margin = int(style.get("margin_v") or 0)
+            margin = max(margin, round(height * (0.14 if vertical else 0.06)))
+            boxed = int(style.get("border_style", 1)) == 3
+            outline = max(2, round(size * 0.07))
+            primary = self._ass_color(style.get("primary_color") or style.get("color"), "&H00FFFFFF")
+            outline_c = self._ass_color(style.get("outline_color"), "&H00000000")
+            back = self._ass_color(style.get("back_color") or style.get("background"), "&H80000000")
+            font = style.get("font") or "Inter"
+            bold = -1 if style.get("bold", True) else 0
+            max_chars = int(style.get("max_chars_per_line") or self.SUB_MAX_CHARS)
+            cues = self._srt_cues(src.read_text(encoding="utf-8", errors="replace"))
+            header = (
+                "[Script Info]\nScriptType: v4.00+\n"
+                f"PlayResX: {width}\nPlayResY: {height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
+                "[V4+ Styles]\n"
+                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+                "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+                "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                f"Style: Default,{font},{size},{primary},&H000000FF,{outline_c},{back},{bold},0,0,0,100,100,0,0,"
+                f"{3 if boxed else 1},{outline if not boxed else round(size * 0.25)},{0 if boxed else 1},"
+                f"{int(style.get('alignment', 2))},{round(width * 0.08)},{round(width * 0.08)},{margin},1\n\n"
+                "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+            )
+            events = "".join(f"Dialogue: 0,{a},{b},Default,,0,0,0,,{self._wrap_sub(t, max_chars)}\n" for a, b, t in cues)
+            work_dir.mkdir(parents=True, exist_ok=True)
+            target = work_dir / f"{src.stem}.{width}x{height}.ass"
+            target.write_text(header + events, encoding="utf-8")
+        esc = str(target.resolve()).replace("\\", "/").replace(":", "\\:").replace("'", "\\'")
+        return f"subtitles='{esc}'"
+
+    @staticmethod
+    def _video_size(path: Path) -> tuple[int, int]:
+        import json as _json
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                              "stream=width,height", "-of", "json", str(path)],
+                             capture_output=True, text=True, timeout=60).stdout
+        try:
+            st = _json.loads(out)["streams"][0]
+            return int(st["width"]), int(st["height"])
+        except (ValueError, KeyError, IndexError):
+            return 1080, 1920
 
     @staticmethod
     def _build_subtitle_style(style: dict) -> str:

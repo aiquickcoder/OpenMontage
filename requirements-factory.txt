@@ -2,3 +2,6 @@
 playwright>=1.45        # FLOW_DRIVER=agent: drives Google Flow in system Chrome (channel="chrome")
 PySocks>=1.7            # Telegram over socks5h proxy from RU hosts
 websockets>=13          # Studio: uvicorn WebSocket impl for /api/farm/ws and live screens (also pulled by google-genai)
+# word-timed subtitles (tools/analysis/transcriber); faster-whisper 1.2 calls av.open(metadata_errors=) which PyAV 14+ removed
+faster-whisper>=1.2
+av==13.1.0

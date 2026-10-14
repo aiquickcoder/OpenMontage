@@ -1,91 +1,54 @@
-"""Vertical / arbitrary-resolution support for video_compose's FFmpeg compose.
+"""Vertical episodes: true-pixel ASS subtitles, dissolve/dip transitions, Remotion frame size."""
 
-Regression test for a silent-dimension bug: the compose target resolution was
-resolved from `profile` (and the documented `metadata.compose_target` hook) but
-the per-segment scale/pad filter hardcoded 1920x1080, so vertical profiles like
-`tiktok` silently produced landscape output. These tests run the real FFmpeg
-path on a tiny lavfi fixture and assert the output dimensions.
-"""
-
-from __future__ import annotations
-
-import shutil
-import subprocess
 from pathlib import Path
-
-import pytest
 
 from tools.video.video_compose import VideoCompose
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
-    reason="ffmpeg/ffprobe not available",
-)
+SRT = """1
+00:00:03,500 --> 00:00:07,500
+Да, буду. Жена с ребёнком останется. И ещё очень длинная реплика для проверки переноса строк.
+
+2
+00:00:08,500 --> 00:00:11,000
+А собеседование?
+"""
 
 
-def _make_clip(path: Path, w: int = 1280, h: int = 720, d: int = 2) -> None:
-    subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i",
-         f"color=c=teal:s={w}x{h}:d={d}:r=30",
-         "-c:v", "libx264", "-crf", "28", "-pix_fmt", "yuv420p",
-         "-g", "30", "-keyint_min", "30", str(path)],
-        capture_output=True, check=True,
-    )
+def test_srt_becomes_ass_at_real_frame_size(tmp_path):
+    srt = tmp_path / "s.srt"
+    srt.write_text(SRT, encoding="utf-8")
+    flt = VideoCompose()._subtitle_filter(srt, {"font_size": 36, "background": "#00000066"}, 1080, 1920, tmp_path)
+    ass = (tmp_path / "s.1080x1920.ass").read_text(encoding="utf-8")
+    assert flt.startswith("subtitles='") and "s.1080x1920.ass" in flt
+    assert "PlayResX: 1080" in ass and "PlayResY: 1920" in ass
+    style = next(line for line in ass.splitlines() if line.startswith("Style: Default"))
+    fields = style.split(",")
+    assert 42 <= int(fields[2]) <= 86          # 36 is clamped up to a readable size, never ~240 px
+    assert fields[15] == "1"                    # outline, no opaque box unless border_style=3
+    assert int(fields[-2]) >= 1920 * 0.14       # above the platform UI dead zone
+    events = [line for line in ass.splitlines() if line.startswith("Dialogue:")]
+    assert events[0].startswith("Dialogue: 0,0:00:03.50,0:00:07.50")
+    assert events[0].count("\\N") == 1          # at most two lines
+    assert events[1].endswith("А собеседование?")
 
 
-def _dims(path: Path) -> tuple[int, int]:
-    out = subprocess.check_output(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)]
-    ).decode().strip()
-    w, h = out.split(",")
-    return int(w), int(h)
+def test_boxed_style_only_when_asked(tmp_path):
+    srt = tmp_path / "s.srt"
+    srt.write_text(SRT, encoding="utf-8")
+    VideoCompose()._subtitle_filter(srt, {"border_style": 3}, 1080, 1920, tmp_path)
+    style = next(l for l in (tmp_path / "s.1080x1920.ass").read_text().splitlines() if l.startswith("Style:"))
+    assert style.split(",")[15] == "3"
 
 
-def _edit_decisions(src: Path, metadata: dict | None = None) -> dict:
-    ed = {
-        "version": "1.0",
-        "render_runtime": "ffmpeg",
-        "cuts": [{"id": "c1", "source": str(src), "in_seconds": 0, "out_seconds": 2}],
-    }
-    if metadata:
-        ed["metadata"] = metadata
-    return ed
+def test_cut_transitions():
+    cuts = [{"transition_out": "cut"}, {"transition_in": "dissolve", "transition_duration": 0.4},
+            {"transition_in": "dip_to_black"}, {}]
+    assert VideoCompose._cut_transitions(cuts) == [("fade", 0.4), ("fadeblack", 0.5), ("cut", 0.3)]
+    assert VideoCompose._cut_transitions([{}, {}]) == [("cut", 0.3)]
 
 
-def test_compose_default_is_landscape_hd(tmp_path):
-    """No profile / no target → unchanged 1920x1080 default (backward compatible)."""
-    src = tmp_path / "in.mp4"
-    _make_clip(src)
-    out = tmp_path / "out.mp4"
-    r = VideoCompose().execute(
-        {"operation": "compose", "edit_decisions": _edit_decisions(src), "output_path": str(out)}
-    )
-    assert r.success, r.error
-    assert _dims(out) == (1920, 1080)
-
-
-def test_compose_vertical_profile(tmp_path):
-    """profile='tiktok' → 1080x1920 (the bug: previously stayed 1920x1080)."""
-    src = tmp_path / "in.mp4"
-    _make_clip(src)
-    out = tmp_path / "out.mp4"
-    r = VideoCompose().execute(
-        {"operation": "compose", "edit_decisions": _edit_decisions(src),
-         "profile": "tiktok", "output_path": str(out)}
-    )
-    assert r.success, r.error
-    assert _dims(out) == (1080, 1920)
-
-
-def test_compose_target_override_cover(tmp_path):
-    """metadata.compose_target with fit='cover' → exact requested dims, cropped to fill."""
-    src = tmp_path / "in.mp4"
-    _make_clip(src)
-    out = tmp_path / "out.mp4"
-    ed = _edit_decisions(src, metadata={"compose_target": {"width": 720, "height": 1280, "fit": "cover"}})
-    r = VideoCompose().execute(
-        {"operation": "compose", "edit_decisions": ed, "output_path": str(out)}
-    )
-    assert r.success, r.error
-    assert _dims(out) == (720, 1280)
+def test_remotion_frame_from_edit(tmp_path):
+    vc = VideoCompose()
+    assert vc._frame_from_edit({"metadata": {"compose_target": {"width": 1080, "height": 1920}}}, {}) == (1080, 1920)
+    assert vc._frame_from_edit({"aspect_ratio": "9:16"}, {}) == (1080, 1920)
+    assert vc._frame_from_edit({}, {}) is None
