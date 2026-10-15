@@ -133,3 +133,14 @@ def test_budget_stopped_episode_resumes_next_day(env):
     eps = planner.EpisodeStore.of(settings)
     assert eps.get(a["id"])["status"] == "queued" and eps.get(b["id"])["status"] == "approved"  # slot used
     assert planner.release_due(settings, store, datetime(2026, 10, 14, 9, tzinfo=timezone.utc)) == []
+
+
+def test_old_episodes_table_is_migrated(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "studio.db"
+    with sqlite3.connect(db) as c:  # the table as deployed before resumed_at existed
+        c.execute("CREATE TABLE episodes (id TEXT PRIMARY KEY, world_id TEXT, air_date TEXT, title TEXT, logline TEXT,"
+                  " synopsis TEXT, characters TEXT, notes TEXT, status TEXT, source TEXT, brief_id TEXT,"
+                  " released_at TEXT, created_at TEXT, updated_at TEXT)")
+    assert planner.EpisodeStore(db).released_on("2026-10-15") == 0

@@ -72,6 +72,7 @@ class EpisodeStore:
         with self._conn() as c:
             c.execute("PRAGMA journal_mode=WAL")
             c.executescript(SCHEMA)
+        self._migrate()
 
     def _migrate(self) -> None:
         with self._conn() as c:
