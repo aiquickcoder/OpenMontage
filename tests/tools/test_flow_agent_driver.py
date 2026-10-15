@@ -365,3 +365,10 @@ def test_generate_keeps_media_after_agent_retried_a_soft_error(tmp_path):
     gen = ab.generate("image", "b", [], count=1, output_path=str(tmp_path / "a.png"), flow_project=None,
                       timeout=10, driver_cls=_RetriedDriver)
     assert gen.media_ids == ["m1"]
+
+
+def test_image_brief_names_uploaded_refs():
+    brief, refs = ab.image_brief({"prompt": "hall", "image_paths": ["/x/lena.png", "/y/loc.png"]}, "nano-pro", "9:16", 1)
+    assert refs == ["/x/lena.png", "/y/loc.png"]
+    assert "2 images I just uploaded to this project (lena.png, loc.png)" in brief
+    assert "attached" not in brief

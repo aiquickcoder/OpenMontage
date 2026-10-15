@@ -129,7 +129,10 @@ def image_brief(inputs: dict[str, Any], model: str, aspect: str, count: int) -> 
         f"Model: {IMAGE_MODEL_LABELS.get(model, model)}. Aspect ratio {aspect}.",
     ]
     if refs:
-        lines.append(f"Use the {len(refs)} attached images as references (image-to-image); keep "
+        # Uploads land in the project's media grid, not on the chat message: name the files,
+        # or the agent looks for attachments, finds none and fails (PUBLIC_ERROR_SOMETHING_WENT_WRONG).
+        lines.append(f"Use the {len(refs)} image{'s' if len(refs) > 1 else ''} I just uploaded to this project "
+                     f"({', '.join(_name(r) for r in refs)}) as references (image-to-image); keep "
                      "characters, products and style on-model.")
     lines.append("Image description (follow literally):")
     lines.append(inputs["prompt"])
