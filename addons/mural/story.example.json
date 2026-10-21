@@ -1,0 +1,310 @@
+{
+ "slug": "plemyashka-naushnik",
+ "title": "Племяшка и наушник",
+ "layout": "strip",
+ "panel_aspect": "1:1",
+ "style": "STYLE: stylized 3D animation in the spirit of modern Pixar/Disney family animation, soft global illumination, subsurface-scattering skin, big expressive eyes, warm golden cozy living-room light, shallow depth of field, physically-based materials, clean rounded shapes, highly detailed.",
+ "characters": {
+  "MAX": "MAX — a warm, playful uncle, 28, lean, short tousled dark-brown hair, light stubble, friendly brown eyes, mustard-yellow hoodie, blue jeans.",
+  "LILY": "LILY — a 3-year-old toddler girl, chubby round cheeks, huge sparkling hazel eyes, two tiny pigtails with pink bobbles, soft mint-green onesie.",
+  "FAMILY": "FAMILY — a worried young mother around 30 (messy chestnut bun, grey cardigan, white t-shirt), a grandmother (short silver curly hair, round glasses, lilac cardigan) and a grandfather (bald with white moustache, brown knit vest over a checked shirt)."
+ },
+ "sheets": [
+  {
+   "id": "sheet_max",
+   "prompt": "Character: {MAX}"
+  },
+  {
+   "id": "sheet_family",
+   "prompt": "Character line-up sheet of three adults standing side by side, full body, front view: the young mother, the grandmother and the grandfather. {FAMILY}"
+  }
+ ],
+ "panels": [
+  {
+   "id": "p1",
+   "refs": [
+    "sheet_max",
+    "sheet_family"
+   ],
+   "duration": 6.6,
+   "prompt": "Wide shot. LILY sits innocently on the living-room rug looking up. The FAMILY crowd around her mid-panic — hands on cheeks, mouths open, leaning in. MAX stands slightly apart at the edge, calm, one eyebrow raised. Warm lamplight, evening.",
+   "camera": [
+    [
+     0,
+     0.28,
+     0.52,
+     1.0,
+     null
+    ],
+    [
+     2.0,
+     0.32,
+     0.52,
+     1.02,
+     "sine.inOut"
+    ],
+    [
+     5.0,
+     0.5,
+     0.58,
+     1.22,
+     "sine.inOut"
+    ],
+    [
+     6.6,
+     0.8,
+     0.45,
+     1.15,
+     "power2.inOut"
+    ]
+   ],
+   "captions": [
+    [
+     2.4,
+     3.7,
+     "Трёхлетняя племяшка"
+    ],
+    [
+     3.7,
+     4.9,
+     "проглотила наушник."
+    ],
+    [
+     5.0,
+     6.5,
+     "Паника — у всех."
+    ]
+   ]
+  },
+  {
+   "id": "p2",
+   "refs": [
+    "sheet_max",
+    "sheet_family"
+   ],
+   "duration": 3.6,
+   "prompt": "Tight close-up of MAX's face lighting up with a mischievous lightbulb idea, one finger raised, sly grin, eyes twinkling, phone already in his other hand. Behind him, softly out of focus, the FAMILY panicking: the mother with a messy chestnut bun, the grandmother with silver curls and round glasses, the bald grandfather with a white moustache.",
+   "camera": [
+    [
+     0.9,
+     0.5,
+     0.5,
+     1.0,
+     "power3.inOut"
+    ],
+    [
+     1.3,
+     0.52,
+     0.47,
+     1.03,
+     "sine.out"
+    ],
+    [
+     1.75,
+     0.53,
+     0.33,
+     1.65,
+     "expo.out"
+    ],
+    [
+     3.6,
+     0.53,
+     0.34,
+     1.72,
+     "sine.inOut"
+    ]
+   ],
+   "captions": [
+    [
+     0.2,
+     1.1,
+     "У всех."
+    ],
+    [
+     1.2,
+     2.1,
+     "Кроме меня."
+    ],
+    [
+     2.2,
+     3.7,
+     "У меня была идея."
+    ]
+   ]
+  },
+  {
+   "id": "p3",
+   "refs": [
+    "sheet_max",
+    "sheet_family"
+   ],
+   "duration": 3.5,
+   "prompt": "Macro over-the-shoulder shot on MAX's phone screen (mustard-yellow hoodie sleeve visible) showing a minimal dark Bluetooth screen with one single glowing white earbud icon and one blue button. The only readable words on the screen are \"Earbud\" under the icon and \"Connect\" on the button; no other text, no status bar text. His thumb taps the button. LILY sits blurred on the rug in the warm background, the FAMILY blurred behind her.",
+   "camera": [
+    [
+     1.2,
+     0.42,
+     0.5,
+     1.0,
+     "power3.inOut"
+    ],
+    [
+     3.5,
+     0.47,
+     0.47,
+     1.55,
+     "power2.inOut"
+    ]
+   ],
+   "captions": [
+    [
+     0.5,
+     1.7,
+     "Подключаемся"
+    ],
+    [
+     1.7,
+     3.7,
+     "к потерянному устройству…"
+    ]
+   ]
+  },
+  {
+   "id": "p4",
+   "refs": [
+    "sheet_max",
+    "sheet_family"
+   ],
+   "duration": 4.1,
+   "prompt": "MAX kneels on the rug and gently presses his ear to LILY's round belly, eyes closed, concentrating hard. LILY stands in front of him and looks down at him, curious. The FAMILY watch tense in the background, arms crossed.",
+   "camera": [
+    [
+     1.3,
+     0.4,
+     0.52,
+     1.0,
+     "power3.inOut"
+    ],
+    [
+     4.1,
+     0.47,
+     0.6,
+     1.25,
+     "sine.inOut",
+     -2.0
+    ]
+   ],
+   "captions": [
+    [
+     0.6,
+     2.3,
+     "Ухо к животику."
+    ],
+    [
+     2.4,
+     4.2,
+     "Проверка связи."
+    ]
+   ]
+  },
+  {
+   "id": "p5",
+   "refs": [
+    "sheet_max"
+   ],
+   "duration": 3.7,
+   "prompt": "Extreme close-up of MAX's face breaking into a delighted, astonished grin, eyes wide with glee. Tiny whimsical glowing music notes float up from LILY's belly. Magical warm glow.",
+   "camera": [
+    [
+     1.2,
+     0.5,
+     0.5,
+     1.0,
+     "power3.inOut"
+    ],
+    [
+     3.7,
+     0.5,
+     0.42,
+     1.45,
+     "power2.in"
+    ]
+   ],
+   "shake": [
+    2.5,
+    3.8,
+    9
+   ],
+   "captions": [
+    [
+     0.5,
+     2.1,
+     "И знаете что?"
+    ],
+    [
+     2.5,
+     4.2,
+     "Оно играло."
+    ]
+   ]
+  },
+  {
+   "id": "p6",
+   "refs": [
+    "sheet_max",
+    "sheet_family"
+   ],
+   "duration": 7.0,
+   "prompt": "Group shot: the whole FAMILY stands stern and worried, arms crossed, frowning at MAX. MAX alone is doubled over laughing, pointing at LILY's belly. Comedic contrast, warm key light on MAX.",
+   "camera": [
+    [
+     1.4,
+     0.3,
+     0.5,
+     1.05,
+     "power3.inOut"
+    ],
+    [
+     3.8,
+     0.58,
+     0.48,
+     1.02,
+     "sine.inOut"
+    ],
+    [
+     5.9,
+     0.72,
+     0.5,
+     1.04,
+     "power2.inOut"
+    ],
+    [
+     7.0,
+     0.74,
+     0.5,
+     1.035,
+     "sine.out"
+    ]
+   ],
+   "captions": [
+    [
+     0.8,
+     2.2,
+     "Один я понял,"
+    ],
+    [
+     2.3,
+     4.1,
+     "что это гениально."
+    ]
+   ]
+  }
+ ],
+ "music": {
+  "src": "~/Desktop/pixabay_примеры/5_Comedy_Cartoon_Funny_Background_Music.mp3",
+  "offset": 1.5,
+  "volume": 0.5,
+  "title": "Comedy Cartoon Funny Background Music",
+  "license": "Pixabay Content License"
+ }
+}
