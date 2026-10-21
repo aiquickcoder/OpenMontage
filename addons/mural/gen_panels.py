@@ -28,6 +28,10 @@ FRAME = {
     "16:9": "Wide 16:9 composition filling the frame edge to edge, no letterbox, no borders, no text, no watermark.",
 }
 FALLBACK_MODEL = "nano2"  # Nano Banana 2: separate per-model daily quota, same driver
+# A spent Pro quota often comes back as an empty answer ("without producing media"), not as a QUOTA code.
+# After PRO_DOWN_AFTER such empty Pro answers in a row, the rest of the run goes straight to the fallback model.
+PRO_DOWN_AFTER = 2
+_pro_empty = 0
 SHEET = ("Character turnaround sheet: front view, three-quarter view and side profile of the same character side by "
          "side, neutral standing pose, identical proportions and outfit in every view, plain light grey background, "
          "even soft studio lighting. No text, no labels.")
@@ -39,8 +43,9 @@ def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, varian
     if (out / f"{name}.png").is_file():
         print(f"{name} exists, skip", flush=True)
         return True
+    global _pro_empty
     plan = ["nano-pro", "nano-pro", FALLBACK_MODEL]
-    attempt = 0
+    attempt = plan.index(FALLBACK_MODEL) if _pro_empty >= PRO_DOWN_AFTER else 0
     while attempt < len(plan):
         model = plan[attempt]
         t0 = time.time()
@@ -50,11 +55,13 @@ def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, varian
         ok = r.success and (out / f"{name}.png").is_file()
         print(f"{name} try{attempt + 1} {model} refs={len(refs)} {'OK' if ok else 'FAIL ' + str(r.error)[:120]} "
               f"{time.time() - t0:.0f}s", flush=True)
+        if model == "nano-pro":
+            _pro_empty = 0 if ok else _pro_empty + ("without producing media" in str(r.error))
         if ok:
             (out / f"{name}.prompt.txt").write_text(prompt)
             (out / f"{name}.model.txt").write_text(model)
             return True
-        if "QUOTA" in str(r.error):
+        if "QUOTA" in str(r.error) or (model == "nano-pro" and _pro_empty >= PRO_DOWN_AFTER):
             if model == FALLBACK_MODEL:
                 print(f"{name} daily quota reached on both models, stopping (resume after the reset)", flush=True)
                 sys.exit(3)
