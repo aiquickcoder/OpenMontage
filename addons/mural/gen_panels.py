@@ -12,6 +12,7 @@ Writes <out_dir>/<sheet id>.png, <panel id>.png (+ _2 variant) and .prompt.txt. 
 re-run resumes; pass panel ids to redraw only those (delete their old files first). Prints DONE at the end.
 """
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -26,30 +27,40 @@ FRAME = {
     "9:16": "Vertical 9:16 composition filling the frame edge to edge, no letterbox, no borders, no text, no watermark.",
     "16:9": "Wide 16:9 composition filling the frame edge to edge, no letterbox, no borders, no text, no watermark.",
 }
+FALLBACK_MODEL = "nano2"  # Nano Banana 2: separate per-model daily quota, same driver
 SHEET = ("Character turnaround sheet: front view, three-quarter view and side profile of the same character side by "
          "side, neutral standing pose, identical proportions and outfit in every view, plain light grey background, "
          "even soft studio lighting. No text, no labels.")
 
 
 def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, variants: int) -> bool:
+    """Up to 3 tries: Nano Banana Pro with refs twice, then Nano Banana 2 (its own daily quota) with refs.
+    A Pro quota error jumps straight to Nano Banana 2; exit code 3 only when both are out of quota."""
     if (out / f"{name}.png").is_file():
         print(f"{name} exists, skip", flush=True)
         return True
-    for attempt in range(3):
-        use = [] if attempt == 2 else refs  # last try text-only: Flow sometimes rejects a reference upload
+    plan = ["nano-pro", "nano-pro", FALLBACK_MODEL]
+    attempt = 0
+    while attempt < len(plan):
+        model = plan[attempt]
         t0 = time.time()
-        r = FlowImage().execute({"prompt": prompt, "model": "nano-pro", "aspect_ratio": aspect,
-                                 "number_of_images": variants, "image_paths": use,
+        r = FlowImage().execute({"prompt": prompt, "model": model, "aspect_ratio": aspect,
+                                 "number_of_images": variants, "image_paths": refs,
                                  "output_path": str(out / f"{name}.png")})
         ok = r.success and (out / f"{name}.png").is_file()
-        if not ok and "QUOTA" in str(r.error):
-            print(f"{name} daily quota reached, stopping (resume after the reset)", flush=True)
-            sys.exit(3)
-        print(f"{name} try{attempt + 1} refs={len(use)} {'OK' if ok else 'FAIL ' + str(r.error)[:120]} "
+        print(f"{name} try{attempt + 1} {model} refs={len(refs)} {'OK' if ok else 'FAIL ' + str(r.error)[:120]} "
               f"{time.time() - t0:.0f}s", flush=True)
         if ok:
             (out / f"{name}.prompt.txt").write_text(prompt)
+            (out / f"{name}.model.txt").write_text(model)
             return True
+        if "QUOTA" in str(r.error):
+            if model == FALLBACK_MODEL:
+                print(f"{name} daily quota reached on both models, stopping (resume after the reset)", flush=True)
+                sys.exit(3)
+            attempt = plan.index(FALLBACK_MODEL)
+            continue
+        attempt += 1
     return False
 
 
@@ -65,6 +76,11 @@ def main() -> None:
     for s in story.get("sheets", []):
         if only and s["id"] not in only:
             continue
+        if s.get("path"):  # an existing library turnaround (Studio character): reuse it, spend no quota
+            src = Path(s["path"])
+            if src.is_file() and not (out / f"{s['id']}.png").is_file():
+                shutil.copy2(src, out / f"{s['id']}.png")
+            continue
         draw(out, s["id"], f"{style} {SHEET} {fill(s['prompt'])}", [], "16:9", 1)
 
     aspect = story.get("panel_aspect", "9:16")
@@ -74,7 +90,7 @@ def main() -> None:
         # refs: only adult cast sheets — Flow rejects pictures of children (and group shots with a child) as references
         refs = [str(out / f"{r}.png") for r in p.get("refs", []) if (out / f"{r}.png").is_file()]
         prompt = f"{style} {cast} {fill(p['prompt'])} {SINGLE} {FRAME[aspect]}"
-        if not draw(out, p["id"], prompt, refs, aspect, 2):
+        if not draw(out, p["id"], prompt, refs, aspect, int(story.get("variants", 2))):
             print(f"{p['id']} failed 3 times", flush=True)
     print("DONE", flush=True)
 

@@ -1,5 +1,6 @@
 """Planner: episodes CRUD, Claude week plan, scheduled release into the factory queue."""
 
+import json
 from datetime import date, datetime, timezone
 
 import pytest
@@ -144,3 +145,24 @@ def test_old_episodes_table_is_migrated(tmp_path):
                   " synopsis TEXT, characters TEXT, notes TEXT, status TEXT, source TEXT, brief_id TEXT,"
                   " released_at TEXT, created_at TEXT, updated_at TEXT)")
     assert planner.EpisodeStore(db).released_on("2026-10-15") == 0
+
+
+def test_per_world_cap_and_format(env, monkeypatch):
+    settings, client, world_a = env
+    monkeypatch.setenv("PLANNER_DAILY_LIMIT", "2")
+    monkeypatch.setenv("PLANNER_DAILY_LIMIT_PER_WORLD", "1")
+    world_b = client.post("/api/worlds", headers=H, json={"name": "Россия 90-х"}).json()["id"]
+    wfile = worlds.worlds_dir(settings) / world_b / "world.json"
+    data = json.loads(wfile.read_text(encoding="utf-8"))
+    wfile.write_text(json.dumps({**data, "format": "mural"}, ensure_ascii=False), encoding="utf-8")
+    for world_id in (world_a, world_a, world_b, world_b):
+        ep = _episode(client, world_id, "2026-10-13")
+        client.patch(f"/api/episodes/{ep['id']}", headers=H, json={"status": "approved"})
+    store = BriefStore(settings.factory.db_path)
+    day1 = planner.release_due(settings, store, datetime(2026, 10, 13, 7, tzinfo=timezone.utc))
+    opts = [store.get(b)["options"] for b in day1]
+    assert sorted(o["world"] for o in opts) == sorted([world_a, world_b])  # one per world, not two of the first
+    assert [o.get("format") for o in opts if o["world"] == world_b] == ["mural"]
+    assert all("format" not in o for o in opts if o["world"] == world_a)
+    assert planner.release_due(settings, store, datetime(2026, 10, 13, 9, tzinfo=timezone.utc)) == []
+    assert len(planner.release_due(settings, store, datetime(2026, 10, 14, 7, tzinfo=timezone.utc))) == 2

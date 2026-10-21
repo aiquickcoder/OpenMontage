@@ -19,7 +19,7 @@ OPTION_KEYS = {"bait": "comment_bait", "comment_bait": "comment_bait", "product"
                "duration": "duration", "audience": "audience", "style": "style",
                "music": "music",
                # Studio series: world id (episode of a world, no ads) and planner episode id
-               "world": "world", "episode": "episode",
+               "world": "world", "episode": "episode", "format": "format",
                # Studio add-ons: character library ids (comma-separated) and ad campaigns
                "characters": "characters", "campaign": "campaign",
                "advertiser": "advertiser", "insert": "insert"}

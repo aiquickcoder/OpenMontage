@@ -157,6 +157,11 @@ def test_prompt_lines_for_world_brief(env):
     assert "Episode id: ep1" in prompt and "murka:" in prompt and "addons/character-library" in prompt
     assert worlds.prompt_lines(settings, {"world": "nope"})[0].startswith("- World `nope` not found")
     assert worlds.prompt_lines(settings, {}) == []
+    mural = runner.build_prompt({"id": "b2", "text": "Эпизод",
+                                 "options": {"world": w["id"], "episode": "ep2", "format": "mural"}},
+                                settings=settings.factory)
+    assert "addons/mural/README.md" in mural and "addons/series" not in mural.replace("do NOT apply addons/series", "")
+    assert f"{w['id']}/world.json" in mural and "murka:" in mural
 
 
 def test_brief_with_world(env):

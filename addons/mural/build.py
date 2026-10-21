@@ -13,15 +13,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
 
 REPO = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
+MUSIC_DIRS = [Path("/opt/openmontage/music"), Path.home() / "Desktop" / "pixabay_примеры"]
 W, H, FPS = 1080, 1920, 30
 UPSCALE_TIMEOUT_S = 900  # Real-ESRGAN on a Mac under memory pressure can hang; fall back to Lanczos
 
@@ -37,8 +41,10 @@ def remove_sparkle(img: np.ndarray) -> np.ndarray:
     return cv2.inpaint(img, mask, 9, cv2.INPAINT_TELEA)
 
 
-def upscale(src: Path, dst: Path) -> str:
+def upscale(src: Path, dst: Path, esrgan: bool = True) -> str:
     """2x with OpenMontage's `upscale` tool (Real-ESRGAN anime model); Lanczos + light sharpen if it fails or hangs."""
+    if not esrgan:
+        return _lanczos(src, dst)
     code = ("from tools.enhancement.upscale import Upscale;import sys;"
             "r=Upscale().execute({'input_path':sys.argv[1],'output_path':sys.argv[2],'scale':2,"
             "'model':'RealESRGAN_x4plus_anime_6B'});sys.exit(0 if r.success else 1)")
@@ -49,13 +55,17 @@ def upscale(src: Path, dst: Path) -> str:
             return "esrgan"
     except subprocess.TimeoutExpired:
         pass
+    return _lanczos(src, dst)
+
+
+def _lanczos(src: Path, dst: Path) -> str:
     im = cv2.imread(str(src))
     up = cv2.resize(im, (im.shape[1] * 2, im.shape[0] * 2), interpolation=cv2.INTER_LANCZOS4)
     cv2.imwrite(str(dst), cv2.addWeighted(up, 1.35, cv2.GaussianBlur(up, (0, 0), 1.2), -0.35, 0))
     return "lanczos"
 
 
-def prepare(proj: Path, story: dict, skip_upscale: bool) -> dict:
+def prepare(proj: Path, story: dict, skip_upscale: bool, esrgan: bool = True) -> dict:
     A = proj / "assets"
     (A / "panels_2x").mkdir(parents=True, exist_ok=True)
     panels, how = [], {}
@@ -64,7 +74,7 @@ def prepare(proj: Path, story: dict, skip_upscale: bool) -> dict:
         if not src.is_file():
             sys.exit(f"missing chosen panel {src}")
         if not (skip_upscale and up.is_file()):
-            how[p["id"]] = upscale(src, up)
+            how[p["id"]] = upscale(src, up, esrgan)
             print(f"upscale {p['id']}: {how[p['id']]}", flush=True)
         panels.append(remove_sparkle(cv2.imread(str(up))))
     ph, pw = panels[0].shape[:2]
@@ -82,24 +92,81 @@ def prepare(proj: Path, story: dict, skip_upscale: bool) -> dict:
 
 
 # -- composition -----------------------------------------------------------------------------------
-def camera_keys(story: dict, meta: dict) -> tuple[list, list, list, float]:
+MAX_CUE_WORDS, CUE_PUNCT = 4, (".", ",", "!", "?", "…", ":", ";", "—")
+
+
+def word_cues(words: list) -> list[tuple[float, float, str]]:
+    """Captions from real word timings: 2–4 words, split after punctuation, on screen while spoken."""
+    cues, cur = [], []
+    for w in words:
+        cur.append(w)
+        if len(cur) >= MAX_CUE_WORDS or w[0].rstrip().endswith(CUE_PUNCT):
+            cues.append(cur)
+            cur = []
+    if cur:
+        if cues and len(cur) == 1 and len(cues[-1]) < MAX_CUE_WORDS + 1:
+            cues[-1] += cur
+        else:
+            cues.append(cur)
+    out = []
+    for c in cues:
+        a, b = c[0][1], max(c[-1][2] + 0.15, c[0][1] + 0.6)
+        out.append((round(a, 2), round(b, 2), " ".join(w[0] for w in c)))
+    for k in range(len(out) - 1):  # never overlap the next cue
+        if out[k][1] > out[k + 1][0]:
+            out[k] = (out[k][0], out[k + 1][0], out[k][2])
+    return out
+
+
+def panel_timing(proj: Path, story: dict) -> Optional[dict]:
+    path = proj / "assets" / "timing.json"
+    return json.loads(path.read_text(encoding="utf-8")) if story.get("narration") and path.is_file() else None
+
+
+def camera_keys(story: dict, meta: dict, timing: Optional[dict] = None) -> tuple[list, list, list, float]:
+    """Camera keys, caption cues and shake windows on the global clock.
+
+    Without narration a panel lasts `duration` s and camera/caption times are seconds from its start. With
+    narration (assets/timing.json) a panel lasts as long as its beat is spoken, camera/shake times are FRACTIONS
+    (0..1) of that span, and captions come from the real word timings."""
     pw, ph, cols = meta["panel_w"], meta["panel_h"], meta["cols"]
     fit = H / ph if story.get("layout", "strip") != "grid" else max(W / pw, H / (ph * meta["rows"]))
+    spans = {p["id"]: p for p in (timing or {}).get("panels", [])}
     keys, caps, shakes, start = [], [], [], 0.0
     for i, p in enumerate(story["panels"]):
         r, c = divmod(i, cols)
+        span = spans.get(p["id"])
+        if span:
+            start, dur = span["start"], span["end"] - span["start"]
+            at = lambda t: start + t * dur  # noqa: E731
+        else:
+            dur = p["duration"]
+            at = lambda t: start + t  # noqa: E731
         for k in p["camera"]:
             t, fx, fy, zoom, ease = k[:5]
             rot = k[5] if len(k) > 5 else 0
-            keys.append((round(start + t, 3), (c * pw + fx * pw, r * ph + fy * ph), fit * zoom, rot, ease))
-        for a, b, text in p.get("captions", []):
-            caps.append((round(start + a, 2), round(start + b, 2), text))
+            keys.append((round(at(t), 3), (c * pw + fx * pw, r * ph + fy * ph), fit * zoom, rot, ease))
+        if span and not p.get("captions"):
+            caps += word_cues(span["words"])
+        else:
+            for a, b, text in p.get("captions", []):
+                caps.append((round(start + a, 2), round(start + b, 2), text))
         if p.get("shake"):
             a, b, amp = p["shake"]
-            shakes.append((round(start + a, 2), round(start + b, 2), amp))
-        start += p["duration"]
+            shakes.append((round(at(a), 2), round(at(b), 2), amp))
+        start += dur
     keys.sort(key=lambda k: k[0])
     return keys, caps, shakes, round(start, 3)
+
+
+def find_music(src: str) -> Optional[Path]:
+    p = Path(src).expanduser()
+    if p.is_file():
+        return p
+    for d in MUSIC_DIRS:
+        if (d / p.name).is_file():
+            return d / p.name
+    return None
 
 
 def write_workspace(proj: Path, story: dict, meta: dict) -> Path:
@@ -107,10 +174,20 @@ def write_workspace(proj: Path, story: dict, meta: dict) -> Path:
     (ws / "assets").mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(ws / "assets" / "canvas.jpg"), cv2.imread(str(proj / "assets" / "canvas.png")),
                 [cv2.IMWRITE_JPEG_QUALITY, 93])
-    music = story.get("music") or {}
+    shutil.copy2(HERE / "vendor" / "gsap.min.js", ws / "assets" / "gsap.min.js")  # offline-safe on the server
+    music = dict(story.get("music") or {})
     if music.get("src"):
-        shutil.copy2(Path(music["src"]).expanduser(), ws / "assets" / "music.mp3")
-    keys, caps, shakes, duration = camera_keys(story, meta)
+        found = find_music(music["src"])
+        if found is None:
+            print(f"music {music['src']} not found — rendering without music", flush=True)
+            music = {}
+        else:
+            shutil.copy2(found, ws / "assets" / "music.mp3")
+    timing = panel_timing(proj, story)
+    narration = timing is not None and (proj / "assets" / "narration.mp3").is_file()
+    if narration:
+        shutil.copy2(proj / "assets" / "narration.mp3", ws / "assets" / "narration.mp3")
+    keys, caps, shakes, duration = camera_keys(story, meta, timing)
     MW, MH = meta["panel_w"] * meta["cols"], meta["panel_h"] * meta["rows"]
     min_scale = max((H + 60) / MH, (W + 60) / MW)
 
@@ -131,9 +208,14 @@ def write_workspace(proj: Path, story: dict, meta: dict) -> Path:
         f'  tl.from("#cap{i} span", {{opacity: 0, y: 18, duration: 0.18, ease: "power2.out"}}, {a});\n'
         f'  tl.to("#cap{i} span", {{opacity: 0, duration: 0.12, ease: "power1.in"}}, {b - 0.12:.2f});'
         for i, (a, b, _) in enumerate(caps))
+    # music sits ~-18 dB under a narrator (volume 0.14), ~-6 dB without one (0.5)
+    music_vol = music.get("volume", 0.14 if narration else 0.5)
     audio = (f'    <audio id="bgm" src="assets/music.mp3" data-start="0" data-duration="{duration}" '
-             f'data-media-start="{music.get("offset", 0)}" data-track-index="10" data-volume="{music.get("volume", 0.5)}"></audio>'
+             f'data-media-start="{music.get("offset", 0)}" data-track-index="10" data-volume="{music_vol}"></audio>'
              if music.get("src") else "")
+    if narration:
+        audio += (f'\n    <audio id="voice" src="assets/narration.mp3" data-start="0" data-track-index="11" '
+                  f'data-volume="1"></audio>')
     audio_js = f'  tl.to("#bgm", {{ volume: 0, duration: 2.0, ease: "power1.in" }}, {duration - 2.0});' if audio else ""
     html = f"""<!doctype html>
 <html lang="ru">
@@ -141,7 +223,7 @@ def write_workspace(proj: Path, story: dict, meta: dict) -> Path:
   <meta charset="UTF-8" />
   <meta name="viewport" content="width={W}, height={H}" />
   <title>{story.get('title', story['slug'])}</title>
-  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="assets/gsap.min.js"></script>
   <style>
     body {{ margin: 0; background: #120c08; }}
     #root {{ position: relative; width: {W}px; height: {H}px; overflow: hidden; background: #120c08; }}
@@ -151,7 +233,7 @@ def write_workspace(proj: Path, story: dict, meta: dict) -> Path:
     .vignette {{ position: absolute; inset: 0; pointer-events: none;
                  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.45) 100%); }}
     .cap {{ position: absolute; left: 60px; right: 60px; bottom: 360px; text-align: center; }}
-    .cap span {{ display: inline-block; font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 68px;
+    .cap span {{ display: inline-block; font-family: "Arial Black", "DejaVu Sans", Arial, sans-serif; font-weight: 900; font-size: 68px;
                  line-height: 1.15; color: #fff; text-shadow: 0 0 6px rgba(0,0,0,.85), 0 4px 14px rgba(0,0,0,.7);
                  -webkit-text-stroke: 2px rgba(0,0,0,.55); paint-order: stroke fill; }}
     #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }}
@@ -212,8 +294,9 @@ def render(ws: Path, out: Path) -> None:
     # Same commands as hyperframes_compose.render_existing (check, then render --strict). Called directly because
     # the tool's 5 s `npm view` runtime probe times out when the registry answers slowly (~12 s from RU).
     out.parent.mkdir(parents=True, exist_ok=True)
+    hf = os.environ.get("HYPERFRAMES_BIN", "npx --yes hyperframes").split()  # server: a pinned global install
     for args in (["check"], ["render", "--output", str(out.resolve()), "--fps", str(FPS), "--quality", "high", "--strict"]):
-        p = subprocess.run(["npx", "--yes", "hyperframes", *args], cwd=ws, capture_output=True, text=True)
+        p = subprocess.run([*hf, *args], cwd=ws, capture_output=True, text=True)
         tail = (p.stdout + p.stderr).strip().splitlines()[-4:]
         print(f"hyperframes {args[0]}: exit {p.returncode}\n  " + "\n  ".join(tail), flush=True)
         if p.returncode != 0:
@@ -258,10 +341,11 @@ def main() -> None:
     ap.add_argument("project", type=Path)
     ap.add_argument("--skip-upscale", action="store_true", help="reuse assets/panels_2x when present")
     ap.add_argument("--no-render", action="store_true")
+    ap.add_argument("--server", action="store_true", help="factory server: Lanczos upscale (no Real-ESRGAN there)")
     a = ap.parse_args()
     proj = a.project.resolve()
-    story = json.loads((proj / "story.json").read_text())
-    meta = prepare(proj, story, a.skip_upscale)
+    story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
+    meta = prepare(proj, story, a.skip_upscale, esrgan=not a.server)
     ws = write_workspace(proj, story, meta)
     print("workspace", ws, flush=True)
     if a.no_render:

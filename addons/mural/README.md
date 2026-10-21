@@ -111,3 +111,80 @@ last key of a panel is usually at `t = duration`.
   A plain `sudo -u factory python …` has no token or proxy and fails with "Network is unreachable".
 - The video goes out with its real dimensions (`factory/tg.py` `send_video`). Put the canvas next to it on the
   Desktop.
+
+## Narrator mode (a voiced story)
+
+For first-person stories of 90–140 words, about 45–60 s of voice-over. Approved for the «20 историй» series.
+
+**Story**
+- `story.json` gets `"narration": {"voice": "<fish reference_id>", "model": "s2.1-pro", "speed": 1.0}`.
+- Every panel gets a `beat`, the exact slice of the narration it shows. Taken together, the beats in order **are**
+  the whole text, word for word.
+- Fish S2 emotion tags may sit inside a beat: `[sigh]`, `[pause]`, `[laughs softly]`, `[whispers]`,
+  `[angry]`. Use at most one or two per beat, only where the text earns them.
+
+**Beats → panels**
+- 8–10 panels. One beat is one visual moment: a gesture, a reaction or an object.
+- **Never** illustrate an abstraction. Show its visible cause, for example a bill on the table, not "anger".
+- Open on the setup with a wide shot, go close on the turn (the face, the object), and end on the punchline image.
+- A beat should run 3–8 s spoken, about 7–20 words. Split longer beats and merge tiny ones.
+
+**Panel aspect.** `"panel_aspect": "9:16"` in a `strip`: each panel is exactly one frame, and the camera travels
+right between them.
+
+**Camera.** In narrator mode, camera and shake times are **fractions 0..1 of the panel's spoken span**:
+- typical keys are `[[0.15, …, 1.0, "power3.inOut"], [1.0, …, 1.25, "sine.inOut"]]`;
+- the first key is the arrival from the previous panel;
+- push in on faces at the emotional words;
+- keep zoom ≤ 1.6.
+
+**Timing.**
+- `addons/mural/narrate.py projects/<slug>` voices the text with `fish_audio_tts`, transcribes it with
+  `transcriber` (small, ru) and aligns every beat to the real words. The result goes to `assets/timing.json`.
+- Panel spans come from speech, so there is no `duration` field. Captions are built from the real word timings
+  (2–4 words per cue, split at punctuation). Do not write `captions` by hand.
+- Check the printout. Every panel must have words, last 2–9 s, and its heard text must match its beat. If not,
+  fix the beats and re-run with `--retime`, which keeps the audio.
+
+**Mix.** Voice at full volume. Music sits about −18 dB under it (volume 0.14) and fades out over the last 2 s.
+
+## Autopilot (factory run)
+
+The factory starts this when a planned episode's world has `"format": "mural"`. The prompt gives:
+- the project id;
+- the world bible path (`style_lock`, `negative_style`, `setting`, and `narrator` = `{character, voice}` plus
+  `supporting` roles);
+- the cast lines;
+- the episode text, which is the **approved, adapted narration**. Voice it verbatim; never rewrite it.
+
+Steps, in order. Every command runs from `/opt/openmontage` with `.venv/bin/python`.
+
+1. **Story.** Write `projects/<id>/story.json` in narrator mode:
+   - `layout` "strip", `panel_aspect` "9:16", `variants` 1;
+   - `style` = the world `style_lock`, plus "Avoid: " + `negative_style`;
+   - `characters` = verbatim identity lines of the narrator and every role in the episode;
+   - `sheets` = existing library turnarounds via `{"id": "...", "path": "/srv/factory/characters/<cid>/turnaround.png"}`.
+     Draw a new adult sheet only for a role the world lacks.
+   - `music` = a file from `/opt/openmontage/music/` that matches the mood (see `music/LICENSES.md` there).
+2. **Voice.** Run `addons/mural/narrate.py projects/<id>`.
+   - If `FISH_AUDIO_API_KEY` is missing, or Fish fails twice, end with
+     `AUTOPILOT_RESULT: FAILED projects/<id> narration`.
+   - Fix bad beat alignment with `--retime`, as described in *Narrator mode*.
+3. **Panels.** Drawing takes far longer than one tool call, so run it in the background and poll:
+   `nohup .venv/bin/python addons/mural/gen_panels.py projects/<id>/story.json projects/<id>/assets/flow > projects/<id>/assets/flow.log 2>&1 &`.
+   Then check the log every few minutes until `DONE`.
+   - Exit code 3 / "daily quota reached on both models" means end with `AUTOPILOT_RESULT: BUDGET projects/<id>`.
+     The planner resumes tomorrow, and finished panels are kept.
+4. **Review.** Open **every** panel image with Read. Check it against the README rules: identity, the asked moment,
+   no comic grid, no gibberish text, no bands, a full-bleed 9:16 frame.
+   - Copy the good ones to `assets/panels_src/<panel id>.png`.
+   - Redraw a failed panel once: delete it, run `gen_panels.py … <panel id>` and review again. If it still fails, keep
+     the best one and note it in `qa/notes.md`.
+5. **Build.** Run `addons/mural/build.py projects/<id> --server`.
+   - `qa/report.json` must list no bands.
+   - Open `qa/contact.jpg` and frames at 3 zooms. Fix camera keys and re-run with `--skip-upscale` if needed.
+6. **Publish metadata.** Run `addons/mural/publish.py projects/<id> --caption "<hook, 1 line>" --tags "<3–6 tags>"`.
+   No «Реклама» or ERID.
+7. Finish with exactly one line: `AUTOPILOT_RESULT: READY projects/<id>`.
+
+Never spend Flow video credits in this mode, never edit pipeline skills, and never print secrets.

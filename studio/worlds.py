@@ -377,7 +377,12 @@ def prompt_lines(settings: Any, options: dict[str, Any]) -> list[str]:
     path = (worlds_dir(settings) / world_id / "world.json").resolve()
     if not path.is_file():
         return [f"- World `{world_id}` not found in Studio — run as a normal brief."]
-    lines = [f"- Series episode (NOT an ad): apply {README} with the world bible {path}."]
+    if options.get("format") == "mural":
+        # addons/mural replaces the series (Veo) rules; the world only supplies style, setting and cast
+        lines = [f"- Mural episode of a world (NOT an ad): use the world bible {path} for style_lock, "
+                 "negative_style, setting, narrator and cast; do NOT apply addons/series."]
+    else:
+        lines = [f"- Series episode (NOT an ad): apply {README} with the world bible {path}."]
     if options.get("episode"):
         lines.append(f"- Episode id: {options['episode']} (planned in Studio).")
     if not characters.normalize_ids(options.get(characters.OPTION_KEY)):

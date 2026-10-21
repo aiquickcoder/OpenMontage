@@ -66,16 +66,28 @@ def addon_lines(settings: Optional[Settings], options: dict[str, Any]) -> list[s
     return lines
 
 
+MURAL = "mural"
+
+
 def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None,
                  settings: Optional[Settings] = None) -> str:
     opts = brief.get("options") or {}
-    lines = [
-        "You are running OpenMontage unattended (no human will answer questions).",
-        "1. Read AGENT_GUIDE.md and follow its routing for the `cartoon-ad` pipeline.",
-        "2. Read addons/autopilot/README.md and follow it exactly — it defines the approval "
-        "policy, credit rules and the required final AUTOPILOT_RESULT line.",
-        f"3. Use project id `{brief['id']}` (projects/{brief['id']}).",
-    ]
+    if opts.get("format") == MURAL:
+        # Mural episode: images + narration + one continuous camera (addons/mural), no Veo pipeline.
+        lines = [
+            "You are running OpenMontage unattended (no human will answer questions).",
+            "1. Read addons/mural/README.md and follow it exactly, section «Autopilot (factory run)» "
+            "included — it defines every step, the quota rules and the required final AUTOPILOT_RESULT line.",
+            f"2. Use project id `{brief['id']}` (projects/{brief['id']}) as the mural slug.",
+        ]
+    else:
+        lines = [
+            "You are running OpenMontage unattended (no human will answer questions).",
+            "1. Read AGENT_GUIDE.md and follow its routing for the `cartoon-ad` pipeline.",
+            "2. Read addons/autopilot/README.md and follow it exactly — it defines the approval "
+            "policy, credit rules and the required final AUTOPILOT_RESULT line.",
+            f"3. Use project id `{brief['id']}` (projects/{brief['id']}).",
+        ]
     bait = opts.get("comment_bait")
     if bait:
         lines.append(f"4. Apply addons/comment-bait/README.md with mode `{bait}`.")

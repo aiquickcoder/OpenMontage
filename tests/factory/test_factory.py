@@ -288,3 +288,11 @@ def test_send_video_passes_dimensions(tmp_path, monkeypatch):
     bot.send_video(clip, "c")
     assert sent["width"] == 108 and sent["height"] == 192 and sent["duration"] == 2
     assert tg.video_meta(tmp_path / "missing.mp4") == {}
+
+
+def test_mural_format_routes_to_mural_addon():
+    text, opts = service.parse_brief("format: mural\nЭпизод «Бали»")
+    assert opts == {"format": "mural"}
+    p = runner.build_prompt({"id": "b2", "text": text, "options": opts})
+    assert "addons/mural/README.md" in p and "projects/b2" in p
+    assert "cartoon-ad" not in p and "addons/autopilot" not in p

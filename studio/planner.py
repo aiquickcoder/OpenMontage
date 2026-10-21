@@ -60,6 +60,12 @@ def daily_limit() -> int:
     return int(raw) if raw.isdigit() else 1
 
 
+def per_world_limit() -> int:
+    """PLANNER_DAILY_LIMIT_PER_WORLD caps slots per world on top of the global limit (0 = no per-world cap)."""
+    raw = os.environ.get("PLANNER_DAILY_LIMIT_PER_WORLD", "0").split("#")[0].strip()
+    return int(raw) if raw.isdigit() else 0
+
+
 def release_hour() -> int:
     raw = os.environ.get("PLANNER_RELEASE_HOUR_UTC", "6").split("#")[0].strip()
     return min(23, int(raw)) if raw.isdigit() else 6
@@ -154,11 +160,15 @@ class EpisodeStore:
                              (world_id, limit)).fetchall()
         return [f"{r['title']}: {r['logline']}" for r in rows]
 
-    def released_on(self, day: str) -> int:
-        """Production slots used on `day`: new releases plus resumed (multi-day) episodes."""
+    def released_on(self, day: str, world_id: Optional[str] = None) -> int:
+        """Production slots used on `day` (optionally in one world): new releases plus resumed episodes."""
+        sql = "SELECT COUNT(*) FROM episodes WHERE (released_at LIKE ? OR resumed_at LIKE ?)"
+        args: list[Any] = [f"{day}%", f"{day}%"]
+        if world_id is not None:
+            sql += " AND world_id = ?"
+            args.append(world_id)
         with self._conn() as c:
-            return c.execute("SELECT COUNT(*) FROM episodes WHERE released_at LIKE ? OR resumed_at LIKE ?",
-                             (f"{day}%", f"{day}%")).fetchone()[0]
+            return c.execute(sql, args).fetchone()[0]
 
 
 # -- release into the factory queue ----------------------------------------------------------
@@ -202,6 +212,22 @@ def release_due(settings: Any, briefs: Any, now: Optional[datetime] = None) -> l
         return []
     today = now.date().isoformat()
     room = daily_limit() - eps.released_on(today)
+    cap = per_world_limit()
+    used: dict[str, int] = {}
+
+    def world_full(world_id: str) -> bool:
+        if not cap:
+            return False
+        if world_id not in used:
+            used[world_id] = eps.released_on(today, world_id)
+        return used[world_id] >= cap
+
+    def take(world_id: str) -> None:
+        nonlocal room
+        room -= 1
+        if cap:
+            used[world_id] = used.get(world_id, 0) + 1
+
     released: list[str] = []
     # Episodes that ran out of yesterday's credits continue first (one slot each).
     for ep in eps.list(status="queued"):
@@ -212,26 +238,32 @@ def release_due(settings: Any, briefs: Any, now: Optional[datetime] = None) -> l
             continue
         if (ep.get("resumed_at") or "").startswith(today) or (ep.get("released_at") or "").startswith(today):
             continue
+        if world_full(ep["world_id"]):
+            continue
         briefs.move(brief["id"], "queued", detail="planner: resumed with the new day's Flow credits")
         eps.update(ep["id"], resumed_at=now.isoformat(timespec="seconds"))
         released.append(brief["id"])
-        room -= 1
+        take(ep["world_id"])
     for ep in eps.list(end=today, status="approved"):
         if room <= 0:
             break
+        if world_full(ep["world_id"]):
+            continue
         opts = {worlds.OPTION_KEY: ep["world_id"], "episode": ep["id"]}
-        world_dir = worlds.worlds_dir(settings) / ep["world_id"] / "world.json"
-        if world_dir.is_file():
-            duration = json.loads(world_dir.read_text(encoding="utf-8")).get("duration")
-            if duration:
-                opts["duration"] = str(duration)
+        world_file = worlds.worlds_dir(settings) / ep["world_id"] / "world.json"
+        if world_file.is_file():
+            world = json.loads(world_file.read_text(encoding="utf-8"))
+            if world.get("duration"):
+                opts["duration"] = str(world["duration"])
+            if world.get("format"):
+                opts["format"] = str(world["format"])  # e.g. "mural": the runner follows addons/mural
         ids = characters.normalize_ids(ep.get("characters"))
         if ids:
             opts[characters.OPTION_KEY] = ",".join(ids)
         brief_id = briefs.add(brief_text(ep), opts, brief_id=_free_brief_id(briefs, ep))
         eps.update(ep["id"], status="queued", brief_id=brief_id, released_at=now.isoformat(timespec="seconds"))
         released.append(brief_id)
-        room -= 1
+        take(ep["world_id"])
     return released
 
 
