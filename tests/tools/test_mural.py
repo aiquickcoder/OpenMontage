@@ -50,3 +50,12 @@ def test_narrated_camera_uses_fractions_of_the_spoken_span():
     assert [k[0] for k in keys] == [0.0, 4.0, 5.0, 9.0] and duration == 9.0
     assert keys[2][1][0] == 2048 + 0.5 * 2048  # panel 2 sits right of panel 1 in the strip
     assert shakes == [(6.5, 8.5, 8)] and [c[2] for c in caps] == ["Раз", "Два"]
+
+
+def test_silent_timing_covers_every_beat_in_order():
+    story = {"panels": [{"id": "p1", "beat": "У меня была свадьба. [pause]"}, {"id": "p2", "beat": "Подруга не пришла."}]}
+    words = narrate.reading_words(story)
+    assert [w["word"] for w in words] == ["У", "меня", "была", "свадьба.", "Подруга", "не", "пришла."]
+    assert all(a["end"] <= b["start"] for a, b in zip(words, words[1:]))
+    t = narrate.align(story, words)
+    assert [len(p["words"]) for p in t["panels"]] == [4, 3]

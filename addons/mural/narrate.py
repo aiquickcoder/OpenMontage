@@ -2,6 +2,7 @@
 
     python addons/mural/narrate.py projects/<slug>            # TTS + transcript + timing
     python addons/mural/narrate.py projects/<slug> --retime   # keep the audio, redo only transcript/timing
+    python addons/mural/narrate.py projects/<slug> --silent   # no voice (no FISH key / test): reading-speed timing
 
 story.json must have:
   "narration": {"voice": "<fish reference_id>", "model": "s2.1-pro", "speed": 1.0,
@@ -95,19 +96,40 @@ def align(story: dict, words: list[dict]) -> dict:
     return {"panels": panels, "speech_end": speech_end, "duration": panels[-1]["end"]}
 
 
+WORDS_PER_S = 2.6  # calm Russian narration pace; captions stay readable at this speed
+PUNCT_PAUSE = {".": 0.45, "!": 0.45, "?": 0.45, "…": 0.55, ",": 0.18, "—": 0.22, ":": 0.2, ";": 0.25}
+
+
+def reading_words(story: dict) -> list[dict]:
+    """Synthetic word timings at reading speed (silent mode): same shape as the transcriber's word list."""
+    t, out = 0.4, []
+    for p in story["panels"]:
+        for tok in plain(p["beat"]).split():
+            dur = max(0.18, len(tok) / (WORDS_PER_S * 6.2))
+            out.append({"word": tok, "start": round(t, 3), "end": round(t + dur, 3)})
+            t += dur + 0.06 + PUNCT_PAUSE.get(tok[-1], 0.0)
+        t += 0.25  # breath between beats
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
     ap.add_argument("--retime", action="store_true", help="reuse assets/narration.mp3")
+    ap.add_argument("--silent", action="store_true", help="no TTS: time beats at reading speed, captions only")
     a = ap.parse_args()
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
     A = proj / "assets"
     A.mkdir(parents=True, exist_ok=True)
     audio = A / "narration.mp3"
-    if not (a.retime and audio.is_file()):
-        speak(story, audio)
-    words = transcribe(audio)
+    if a.silent:
+        audio.unlink(missing_ok=True)  # build.py then renders captions + music only
+        words = reading_words(story)
+    else:
+        if not (a.retime and audio.is_file()):
+            speak(story, audio)
+        words = transcribe(audio)
     (A / "narration_words.json").write_text(json.dumps(words, ensure_ascii=False, indent=1), encoding="utf-8")
     timing = align(story, words)
     (A / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=1), encoding="utf-8")

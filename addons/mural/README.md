@@ -146,6 +146,9 @@ right between them.
 - Check the printout. Every panel must have words, last 2–9 s, and its heard text must match its beat. If not,
   fix the beats and re-run with `--retime`, which keeps the audio.
 
+**Silent mode** (`--silent`, no Fish key): words are timed at about 2.6 words/s with pauses at punctuation;
+everything else stays the same.
+
 **Mix.** Voice at full volume. Music sits about −18 dB under it (volume 0.14) and fades out over the last 2 s.
 
 ## Autopilot (factory run)
@@ -167,8 +170,10 @@ Steps, in order. Every command runs from `/opt/openmontage` with `.venv/bin/pyth
      Draw a new adult sheet only for a role the world lacks.
    - `music` = a file from `/opt/openmontage/music/` that matches the mood (see `music/LICENSES.md` there).
 2. **Voice.** Run `addons/mural/narrate.py projects/<id>`.
-   - If `FISH_AUDIO_API_KEY` is missing, or Fish fails twice, end with
-     `AUTOPILOT_RESULT: FAILED projects/<id> narration`.
+   - If `FISH_AUDIO_API_KEY` is not set, run `narrate.py projects/<id> --silent` instead. This is test mode: timing
+     comes from reading speed and the video has captions and music only. Say so in `qa/notes.md` and in the caption
+     metadata title ("[без голоса]").
+   - If Fish is configured but fails twice, end with `AUTOPILOT_RESULT: FAILED projects/<id> narration`.
    - Fix bad beat alignment with `--retime`, as described in *Narrator mode*.
 3. **Panels.** Drawing takes far longer than one tool call, so run it in the background and poll:
    `nohup .venv/bin/python addons/mural/gen_panels.py projects/<id>/story.json projects/<id>/assets/flow > projects/<id>/assets/flow.log 2>&1 &`.
