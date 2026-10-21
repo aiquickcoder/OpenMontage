@@ -32,19 +32,35 @@ FALLBACK_MODEL = "nano2"  # Nano Banana 2: separate per-model daily quota, same 
 # After PRO_DOWN_AFTER such empty Pro answers in a row, the rest of the run goes straight to the fallback model.
 PRO_DOWN_AFTER = 2
 _pro_empty = 0
+_state: Path | None = None  # <out>/.pro_state.json: {"day": UTC date, "empty": n} — survives re-runs on the same day
+
+
+def _load_state(out: Path) -> None:
+    global _pro_empty, _state
+    _state = out / ".pro_state.json"
+    try:
+        data = json.loads(_state.read_text())
+        _pro_empty = data["empty"] if data.get("day") == time.strftime("%Y-%m-%d", time.gmtime()) else 0
+    except (OSError, ValueError, KeyError):
+        _pro_empty = 0
+
+
+def _save_state() -> None:
+    if _state is not None:
+        _state.write_text(json.dumps({"day": time.strftime("%Y-%m-%d", time.gmtime()), "empty": _pro_empty}))
 SHEET = ("Character turnaround sheet: front view, three-quarter view and side profile of the same character side by "
          "side, neutral standing pose, identical proportions and outfit in every view, plain light grey background, "
          "even soft studio lighting. No text, no labels.")
 
 
 def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, variants: int) -> bool:
-    """Up to 3 tries: Nano Banana Pro with refs twice, then Nano Banana 2 (its own daily quota) with refs.
+    """Up to 4 tries: Nano Banana Pro with refs twice, then Nano Banana 2 (its own daily quota) twice.
     A Pro quota error jumps straight to Nano Banana 2; exit code 3 only when both are out of quota."""
     if (out / f"{name}.png").is_file():
         print(f"{name} exists, skip", flush=True)
         return True
     global _pro_empty
-    plan = ["nano-pro", "nano-pro", FALLBACK_MODEL]
+    plan = ["nano-pro", "nano-pro", FALLBACK_MODEL, FALLBACK_MODEL]
     attempt = plan.index(FALLBACK_MODEL) if _pro_empty >= PRO_DOWN_AFTER else 0
     while attempt < len(plan):
         model = plan[attempt]
@@ -57,6 +73,7 @@ def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, varian
               f"{time.time() - t0:.0f}s", flush=True)
         if model == "nano-pro":
             _pro_empty = 0 if ok else _pro_empty + ("without producing media" in str(r.error))
+            _save_state()
         if ok:
             (out / f"{name}.prompt.txt").write_text(prompt)
             (out / f"{name}.model.txt").write_text(model)
@@ -75,6 +92,7 @@ def main() -> None:
     story = json.loads(Path(sys.argv[1]).read_text())
     out = Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
+    _load_state(out)
     only = set(sys.argv[3:])
     style, chars = story["style"], story["characters"]
     cast = "CAST: " + " ".join(chars.values())
