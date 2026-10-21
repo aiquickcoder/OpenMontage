@@ -5,3 +5,4 @@ websockets>=13          # Studio: uvicorn WebSocket impl for /api/farm/ws and li
 # word-timed subtitles (tools/analysis/transcriber); faster-whisper 1.2 calls av.open(metadata_errors=) which PyAV 14+ removed
 faster-whisper>=1.2
 av==13.1.0
+opencv-python-headless>=4.9  # addons/mural/build.py (canvas, inpaint, QA)
