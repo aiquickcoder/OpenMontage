@@ -75,5 +75,20 @@
   "dir": "addons/news/anchor_cat",
   "intro": "Здравствуйте, это «ЧП Москва». Главное за день — пожар в старинной усадьбе.",
   "outro": "Подписывайтесь, чтобы первыми знать, что происходит в городе."
+ },
+ "sound": {
+  "sting": {
+   "src": "news_jingle_radio.mp3",
+   "volume": 0.4
+  },
+  "ambience": {
+   "src": "fire_crackling.mp3",
+   "volume": 0.14,
+   "offset": 3
+  },
+  "whoosh": {
+   "src": "whoosh_transition.mp3",
+   "volume": 0.3
+  }
  }
 }

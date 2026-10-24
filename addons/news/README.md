@@ -147,6 +147,18 @@ Pixabay отдаёт страницы только настоящему брау
 Есть: metro_moscow_station, metro_train_doors_ru, metro_platform_muffled, news_intro_logo, news_jingle_radio, crowd_panic,
 siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh_simple, whoosh_transition.
 
+**Готовые наборы по типу события** (проверены на эталонах; подложка выходит в среднем на ~16 дБ тише голоса):
+
+| Событие | `sound` | разовые `sfx` на планах | Эталон |
+|---|---|---|---|
+| Пожар, есть видео | sting `news_jingle_radio` 0,4 · ambience `fire_crackling` 0,14 (offset 3) · whoosh 0,3 | не нужны: живой звук видео 0,35 | «Узкое» (`story.example.json`) |
+| Метро, без видео | sting 0,4 · ambience `metro_moscow_station` 0,22 (offset 5) · whoosh 0,3 | двери `metro_train_doors_ru` 0,45 (offset 20), паника `crowd_panic` 0,18, полиция `siren_ambulance_distant` 0,2 | «Новаторская» |
+| ДТП / улица | sting 0,4 · ambience `siren_passing` 0,15 · whoosh 0,3 | `siren_police` 0,3 на плане с полицией | — |
+| Нож, драка, задержание | sting 0,4 · ambience `metro_platform_muffled` или без · whoosh 0,3 | `siren_police` 0,3 | — |
+
+Перед тем как оставить живой звук видео из поста, проверить, нет ли в нём чужой речи (репортёр, крики с матом):
+`Transcriber` на клипе → если слова есть, ставить плану `"audio": 0` или 0,15.
+
 ## Музыка
 `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac. Для ЧП — `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID). Громкость 0,12 под голосом.
 
