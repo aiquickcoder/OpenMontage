@@ -77,9 +77,8 @@
    {"src": "media/station.jpg", "credit": "Фото: Автор / Wikimedia, CC BY 4.0"},
    {"src": "illustrations/i2.png", "label": "ИИ-иллюстрация", "sfx": {"src": "metro_train_doors_ru.mp3", "volume": 0.45, "offset": 20}}
  ],
- "music": {"src": "tension_suspense_building_delosound.mp3", "volume": 0.12},
- "sound": {"sting": {"src": "news_jingle_radio.mp3", "volume": 0.4},
-           "ambience": {"src": "metro_moscow_station.mp3", "volume": 0.22, "offset": 5},
+ "music": {"src": "tension_suspense_building_delosound.mp3", "volume": 0.22},
+ "sound": {"ambience": {"src": "metro_moscow_station.mp3", "volume": 0.22, "offset": 5},
            "whoosh": {"src": "whoosh_transition.mp3", "volume": 0.3}}
 }
 ```
@@ -139,7 +138,7 @@
 ## Звук (`sound_bed`, одна дорожка `assets/sfx.wav`)
 Звуки — Pixabay (Content License, без Content ID), лежат в `/opt/openmontage/sfx` (+ `LICENSES.md`), на Mac — `~/Downloads/sfx_chp`.
 Pixabay отдаёт страницы только настоящему браузеру: новые звуки ищем через Chrome-расширение Claude (ссылку `cdn.pixabay.com/download/audio/…` берём со страницы), качаем curl'ом **с Mac** (с сервера CDN недоступен) и копируем на сервер.
-- `sound.sting` — новостной джингл под приветствием (`news_jingle_radio.mp3`, 0,4).
+- `sound.sting` — новостной джингл под приветствием. **По умолчанию НЕ ставим**: владелец принял его за «не ту музыку».
 - `sound.ambience` — атмосфера места под всем b-roll, зацикливается, плавный вход/выход (метро: `metro_moscow_station.mp3`; пожар: `fire_crackling.mp3`; улица: сирены).
 - `sound.whoosh` — на переходах кот → сюжет → кот.
 - `shots[i].sfx` — разовый звук на плане (двери вагона, паника, далёкая сирена), `offset` = откуда в файле.
@@ -151,16 +150,16 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 
 | Событие | `sound` | разовые `sfx` на планах | Эталон |
 |---|---|---|---|
-| Пожар, есть видео | sting `news_jingle_radio` 0,4 · ambience `fire_crackling` 0,14 (offset 3) · whoosh 0,3 | не нужны: живой звук видео 0,35 | «Узкое» (`story.example.json`) |
-| Метро, без видео | sting 0,4 · ambience `metro_moscow_station` 0,22 (offset 5) · whoosh 0,3 | двери `metro_train_doors_ru` 0,45 (offset 20), паника `crowd_panic` 0,18, полиция `siren_ambulance_distant` 0,2 | «Новаторская» |
-| ДТП / улица | sting 0,4 · ambience `siren_passing` 0,15 · whoosh 0,3 | `siren_police` 0,3 на плане с полицией | — |
-| Нож, драка, задержание | sting 0,4 · ambience `metro_platform_muffled` или без · whoosh 0,3 | `siren_police` 0,3 | — |
+| Пожар, есть видео | ambience `fire_crackling` 0,08 (offset 3) · whoosh 0,3 | не нужны: живой звук видео 0,35 | «Узкое» (`story.example.json`) |
+| Метро, без видео | ambience `metro_moscow_station` 0,14 (offset 5) · whoosh 0,3 | двери `metro_train_doors_ru` 0,45 (offset 20), паника `crowd_panic` 0,18, полиция `siren_ambulance_distant` 0,2 | «Новаторская» |
+| ДТП / улица | ambience `siren_passing` 0,15 · whoosh 0,3 | `siren_police` 0,3 на плане с полицией | — |
+| Нож, драка, задержание | ambience `metro_platform_muffled` или без · whoosh 0,3 | `siren_police` 0,3 | — |
 
 Перед тем как оставить живой звук видео из поста, проверить, нет ли в нём чужой речи (репортёр, крики с матом):
 `Transcriber` на клипе → если слова есть, ставить плану `"audio": 0` или 0,15.
 
 ## Музыка
-`/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac. Для ЧП — `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID). Громкость 0,12 под голосом.
+Одна на формат: `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID), **громкость 0,22** — её должно быть слышно под голосом (на 0,12 её забивала подложка). `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac.
 
 ## Автопилот (фабрика, сервер)
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
