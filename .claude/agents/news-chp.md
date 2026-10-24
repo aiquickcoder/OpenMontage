@@ -8,7 +8,7 @@ You produce «ЧП · Москва» news shorts in the OpenMontage repo (`/User
 on the server `/opt/openmontage`).
 
 First read `addons/news/README.md`: the pipeline, the `story.json` format and the text, shot and illustration rules.
-Then read `addons/news/story.example.json`, the approved reference (the «Узкое» fire).
+Then read `addons/news/story.example.json`, the approved reference (the «Узкое» fire, footage from the post).
 `projects/news-novatorskaya-shpric/story.json` is the approved reference for an event with no footage.
 
 ## Defaults (owner's choices, 2026-10-24)
@@ -21,11 +21,12 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - On the server run build.py with `https_proxy=http://127.0.0.1:10809` (OpenRouter blocks the RU IP).
 
 ## Steps
-1. **News.** Run `python3 -I addons/news/harvest.py 30 --out <base>`.
+1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --base <base>`. It harvests the channels, drops
+   banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.
    - Mac base: `~/memes/msk_chp_base`. Server base: `/srv/factory/news_base`.
-   - If the user named an event or gave a post, use that instead.
-   - Pick by the README rules. Skip anything already made (compare `source.links` with `projects/news-*/story.json`).
-   - Say which event you took and why.
+   - Take candidate #1 unless there is a reason not to, and say the reason. If the user named an event or gave a
+     post, use that instead.
+   - Say which event you took, its score and why. Write `source.key` into the story so it is never offered again.
 2. **Story.** Write `projects/news-<slug>/story.json`.
    - Facts only from the post(s); numbers as words; no names of victims or suspects; 75–85 words in total.
    - Run `build.py … --voice-only` to learn how many 3-second shots are needed, then list exactly that many.

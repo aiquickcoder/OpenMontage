@@ -1,7 +1,9 @@
 # Новости «ЧП · Москва» — вертикальный ролик ~30 с с котом-ведущим
 
-Формат утверждён владельцем 2026-10-24. Эталон: `story.example.json` (пожар в «Узком»).
-Второй эталон, без видео с места: `projects/news-novatorskaya-shpric` (укол шприцем на «Новаторской»).
+Формат утверждён владельцем 2026-10-24. Эталоны (оба одобрены: «получилось прямо отлично»):
+- `story.example.json` — пожар в «Узком»: видео с места из поста.
+- `projects/news-novatorskaya-shpric/story.json` (сервер) — укол шприцем на «Новаторской»: БЕЗ видео с места —
+  2 фото станции с Wikimedia + реалистичные Flow-иллюстрации, звук метро, джингл. Это образец для событий без медиа.
 
 ```
 0 – ~6 с    КОТ-ВЕДУЩИЙ в студии говорит подводку     нижняя плашка: [ЧП · МОСКВА] + заголовок
@@ -16,8 +18,8 @@
 
 | Шаг | Где | Команда / файл | Что получается |
 |---|---|---|---|
-| 1. Сбор ЧП | Mac или сервер | `python3 -I addons/news/harvest.py 30 --out <база>` | `<база>/base.json` и `<база>/media/<key>/NN_mp4.mp4`, `NN_photo.jpg` |
-| 2. Выбор события и текст | агент | `projects/<slug>/story.json` | заголовок, подводка, сюжет, финал, список планов |
+| 1. **Поиск новостей** | Mac или сервер | `python3 -I addons/news/pick.py --base <база>` | свежий `base.json` + медиа, ранжированный `candidates.json`, топ-5 в консоли |
+| 2. Выбор события и текст | агент | `projects/<slug>/story.json` | событие №1 из `candidates.json` (или причина взять другое), текст, планы |
 | 3а. Медиа из поста | агент | копия в `projects/<slug>/media/` | видео и фото с места |
 | 3б. Фото места | агент | `python3 -I addons/news/fetch_commons.py projects/<slug>/media --search "<место>" 8` | CC-фото и `CREDITS.txt` |
 | 3в. Иллюстрации | **сервер** (Flow) | `addons/news/gen_shots.py projects/<slug>/story.json projects/<slug>/illustrations` | `i1.png…` в 16:9 |
@@ -35,6 +37,18 @@
 - дедупликация по первым 7 словам. Одно событие из нескольких каналов склеивается, остаётся самый полный текст, медиа объединяются.
 
 Медиа качаются **сразу**: токены в ссылках `telesco.pe` живут недолго. HTML каналов считается недоверенными данными: из него только достаём текст регуляркой и ничего не исполняем.
+
+### Этап 1: поиск новостей (`pick.py`)
+`pick.py` сам запускает харвестер (`--no-harvest` — взять текущую базу) и пишет `<база>/candidates.json`:
+`candidates` (подходящие, по убыванию `score`) и `skipped` (с причиной). Для каждого: текст без реакций и хвостов
+каналов, возраст в часах, реакции, медиа, каналы, ссылки, локальные файлы медиа.
+- **Отсев** (`SKIP`): война/БПЛА/политика, суицид, сексуальное насилие, дети-жертвы; «не Москва»; старше `--hours` (36);
+  «уже сделано» — ссылки или `source.key` совпадают с `projects/news-*/story.json`.
+- **Балл**: 1,5·log10(реакции) + медиа (видео 3, фото 1,5) + 1 за каждый доп. канал + 0,8 за каждое «сильное» слово ЧП
+  (до 3) − возраст/12 − 2, если это не ЧП (курьёз).
+- **Продолжение уже сделанной истории** (например, «пострадали пожарные в „Узком“») — новый ролик можно, если в нём
+  новый факт; в подводке так и сказать: «Продолжение истории…».
+- В `story.json` записывать `source.key` (ключ события из базы), чтобы `pick.py` его больше не предлагал.
 
 ### Какое событие брать
 1. Московское, свежее (не старше 24 ч) и понятное без контекста.
@@ -140,8 +154,8 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
 **OpenRouter (модели OpenAI) не пускает российский IP сервера (403)** — `build.py` запускать с `https_proxy=http://127.0.0.1:10809` (локальный выход фабрики).
 Сборка на сервере: `systemd-run --uid=factory -p EnvironmentFile=/opt/openmontage/.env -E HYPERFRAMES_BIN=/opt/node22/hyperframes.sh -E PATH=/opt/node22/bin:/usr/bin:/bin -E https_proxy=http://127.0.0.1:10809 … addons/news/build.py projects/<id>`.
-1. `python3 -I addons/news/harvest.py 30 --out /srv/factory/news_base`.
-2. Выбрать событие по правилам выше. Уже сделанные события не повторять: проверить `slug` и `source.links` в `projects/news-*/story.json`.
+1. `python3 -I addons/news/pick.py --base /srv/factory/news_base` (поиск + отбор + ранжирование).
+2. Взять кандидата №1 из `candidates.json`; другого — только с причиной (в `qa/notes.md`). Пусто → `AUTOPILOT_RESULT: FAILED projects/<id> no-news`.
 3. Написать `projects/news-<slug>/story.json`, скопировать медиа, при необходимости фото с Wikimedia.
 4. Нужны иллюстрации → `nohup .venv/bin/python addons/news/gen_shots.py … > projects/<id>/illustrations.log 2>&1 &`, ждать `DONE`. Код 3 → `AUTOPILOT_RESULT: BUDGET projects/<id>`. Открыть **каждую** картинку; брак — удалить и перерисовать один раз.
 5. `addons/news/build.py projects/<id>`. Открыть `qa/contact.jpg` и 2 кадра ведущего.

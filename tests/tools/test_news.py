@@ -46,3 +46,25 @@ def test_mouth_track_closes_and_holds_on_twos(monkeypatch):
 def test_blink_track_stays_inside_windows():
     for t, d in anchor.blink_track([(0.0, 6.0), (28.0, 33.0)]):
         assert (0 < t < 6 - d) or (28 < t < 33 - d)
+
+
+def test_pick_filters_and_ranks():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 24, 18, 0, tzinfo=timezone.utc)
+    base = {"dt": "2026-10-24T12:00", "channels": ["moscowach"], "links": ["https://t.me/moscowach/1"], "media_got": []}
+    fire = pick.judge({**base, "key": "a", "text": "Пожар на складе в Москве 😱1.2K🤬300", "media_got": ["mp4"]},
+                      now, 36, set(), set())
+    oddity = pick.judge({**base, "key": "b", "text": "Под Москвой нашли кривые дома"}, now, 36, set(), set())
+    drones = pick.judge({**base, "key": "c", "text": "Атака БПЛА на Москву, обломки упали"}, now, 36, set(), set())
+    region = pick.judge({**base, "key": "d", "channels": ["mash"], "text": "Пожар в Омске"}, now, 36, set(), set())
+    done = pick.judge({**base, "key": "e", "text": "Пожар в метро Москвы"}, now, 36, {"https://t.me/moscowach/1"}, set())
+    old = pick.judge({**base, "key": "f", "dt": "2026-10-22T10:00", "text": "ДТП в Москве"}, now, 36, set(), set())
+    assert fire["skip"] == [] and fire["reactions"] == 1500 and fire["score"] > oddity["score"]
+    assert "война/БПЛА/политика" in drones["skip"]
+    assert "не Москва" in region["skip"]
+    assert "уже сделано" in done["skip"]
+    assert any(s.startswith("старое") for s in old["skip"])
+    assert pick.clean("🔥 Пожар в Москве. BAZA в Telegram 😱358😭143") == "Пожар в Москве."
