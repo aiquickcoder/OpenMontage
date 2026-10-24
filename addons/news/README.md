@@ -154,7 +154,9 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
 **OpenRouter (модели OpenAI) не пускает российский IP сервера (403)** — `build.py` запускать с `https_proxy=http://127.0.0.1:10809` (локальный выход фабрики).
 Сборка на сервере: `systemd-run --uid=factory -p EnvironmentFile=/opt/openmontage/.env -E HYPERFRAMES_BIN=/opt/node22/hyperframes.sh -E PATH=/opt/node22/bin:/usr/bin:/bin -E https_proxy=http://127.0.0.1:10809 … addons/news/build.py projects/<id>`.
-1. `python3 -I addons/news/pick.py --base /srv/factory/news_base` (поиск + отбор + ранжирование).
+1. `https_proxy=http://127.0.0.1:10809 python3 -I addons/news/pick.py --base /srv/factory/news_base` (поиск + отбор +
+   ранжирование; t.me с сервера доступен только через прокси). «Уже сделано» считается по `projects/news-*/story.json`
+   на ЭТОЙ машине — ролик, собранный на Mac, переносить на сервер хотя бы своим `story.json`.
 2. Взять кандидата №1 из `candidates.json`; другого — только с причиной (в `qa/notes.md`). Пусто → `AUTOPILOT_RESULT: FAILED projects/<id> no-news`.
 3. Написать `projects/news-<slug>/story.json`, скопировать медиа, при необходимости фото с Wikimedia.
 4. Нужны иллюстрации → `nohup .venv/bin/python addons/news/gen_shots.py … > projects/<id>/illustrations.log 2>&1 &`, ждать `DONE`. Код 3 → `AUTOPILOT_RESULT: BUDGET projects/<id>`. Открыть **каждую** картинку; брак — удалить и перерисовать один раз.
