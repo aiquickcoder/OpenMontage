@@ -1,0 +1,78 @@
+{
+ "slug": "news-uzkoe-pozhar",
+ "title": "Пожар в усадьбе «Узкое»",
+ "tag": "ЧП · МОСКВА",
+ "date": "24 октября",
+ "headline": "Горит санаторий «Узкое» — тушат вертолётами",
+ "source": {
+  "channels": [
+   "moscowach"
+  ],
+  "links": [
+   "https://t.me/moscowach/44014"
+  ],
+  "dt": "2026-10-24T09:53"
+ },
+ "narration": {
+  "engine": "openrouter",
+  "voice": "cedar",
+  "text": "Около девяти утра загорелся санаторий «Узкое» — бывшая дворянская усадьба. Огонь охватил кровлю двухэтажного здания, которое стоит на реконструкции, — восемьсот квадратных метров. На тушение подняли пожарные вертолёты. Сейчас открытое горение ликвидировано, о пострадавших не сообщается.",
+  "model": "openai/gpt-audio"
+ },
+ "shots": [
+  {
+   "src": "media/fire.mp4",
+   "in": 0.3,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 18.5,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 3.4,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 21.2,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 9.0,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 12.0,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 15.2,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 6.2,
+   "credit": "Видео: 112 / @moscowach"
+  },
+  {
+   "src": "media/fire.mp4",
+   "in": 0.3,
+   "credit": "Видео: 112 / @moscowach"
+  }
+ ],
+ "music": {
+  "src": "tension_suspense_building_delosound.mp3",
+  "volume": 0.12
+ },
+ "anchor": {
+  "dir": "addons/news/anchor_cat",
+  "intro": "Здравствуйте, это «ЧП Москва». Главное за день — пожар в старинной усадьбе.",
+  "outro": "Подписывайтесь, чтобы первыми знать, что происходит в городе."
+ }
+}
