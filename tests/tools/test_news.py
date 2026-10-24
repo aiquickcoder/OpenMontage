@@ -81,3 +81,6 @@ def test_sound_bed_is_exactly_film_length_with_looped_ambience(tmp_path: Path, m
     dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                 str(out)], capture_output=True, text=True).stdout)
     assert abs(dur - 8.0) < 0.05 and out.stat().st_size < 3_000_000
+    level = subprocess.run(["ffmpeg", "-nostats", "-ss", "3", "-t", "2", "-i", str(out), "-af", "volumedetect", "-f",
+                            "null", "-"], capture_output=True, text=True).stderr
+    assert float(level.split("mean_volume:")[1].split("dB")[0]) > -40  # the ambience is really in the b-roll window

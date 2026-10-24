@@ -273,7 +273,12 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     def clip(src, start, dur, vol, offset=0.0, fade_in=0.05, fade_out=0.3, loop=False):
         if dur <= 0.05:
             return
-        inp = (["-stream_loop", "-1"] if loop else []) + ["-i", str(src)]
+        if loop:  # finite repeat count: an endless -stream_loop -1 input breaks amix's end of stream
+            length = float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                               str(src)]).strip() or 0) or 1.0
+            inp = ["-stream_loop", str(math.ceil((offset + dur) / length)), "-i", str(src)]
+        else:
+            inp = ["-i", str(src)]
         chain = (f"atrim=start={offset:.3f}:duration={dur:.3f},asetpts=PTS-STARTPTS,"
                  f"aformat=sample_rates=44100:channel_layouts=stereo,afade=t=in:d={fade_in},"
                  f"afade=t=out:st={max(0.0, dur - fade_out):.3f}:d={fade_out},volume={vol}")
@@ -298,19 +303,20 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
                  x.get("volume", 0.4), float(x.get("offset", 0)), 0.08, 0.4)
     if not layers:
         return None
-    args, parts = [], []
-    for k, (inp, chain, start) in enumerate(layers):
+    # input 0 is silence of exactly the film length; amix takes its length from it (duration=first), so the bed is
+    # never shorter (a late first layer) nor endless (a looped ambience), and -t is a last hard stop
+    args = ["-f", "lavfi", "-t", f"{total:.3f}", "-i", "anullsrc=r=44100:cl=stereo"]
+    parts = []
+    for k, (inp, chain, start) in enumerate(layers, 1):
         args += inp
         ms = int(round(start * 1000))
         parts.append(f"[{k}:a]{chain},adelay={ms}|{ms}[l{k}]")
-    mix = "".join(f"[l{k}]" for k in range(len(layers)))
-    parts.append(f"{mix}amix=inputs={len(layers)}:normalize=0:duration=longest,apad,atrim=duration={total:.3f},"
+    mix = "[0:a]" + "".join(f"[l{k}]" for k in range(1, len(layers) + 1))
+    parts.append(f"{mix}amix=inputs={len(layers) + 1}:normalize=0:duration=first:dropout_transition=0,"
                  f"alimiter=limit=0.9[out]")
     out = proj / "assets" / "sfx.wav"
-    # -t is the hard stop: a looped ambience input is endless, and without it amix/apad can write until the disk is full
     sh(["ffmpeg", "-v", "error", "-y", *args, "-filter_complex", ";".join(parts), "-map", "[out]", "-t", f"{total:.3f}",
-        "-ar", "44100",
-        str(out)])
+        "-ar", "44100", str(out)])
     print(f"sound bed: {len(layers)} layers -> {out.name}", flush=True)
     return out
 
