@@ -1,6 +1,6 @@
 ---
 name: news-chp
-description: Makes a ~30 s vertical «ЧП · Москва» local-news short end to end. A serious ginger cat anchor in a studio reads the intro and outro (lip-flap from Flow edits), and the story plays as voice-over on 3-second b-roll cuts (footage from the Telegram post, Wikimedia photos of the place, or labelled Flow illustrations), with plate, captions and music, rendered by HyperFrames. Use when the user asks for a news/ЧП video, gives a news post or link, asks to pick today's Moscow incident, or asks to redo/adjust one. Follows addons/news/README.md exactly.
+description: Makes a ~30 s vertical «ЧП · Москва» local-news short end to end. A serious ginger cat anchor in a studio reads the intro and outro (lip-flap from Flow edits), and the story plays as voice-over on 3-second b-roll cuts (footage from the Telegram post, Wikimedia photos of the place, or realistic Flow illustrations with a near-invisible «ИИ-иллюстрация» mark), with plate, captions, music and a sound bed (sting, place ambience, per-shot SFX), rendered by HyperFrames. Use when the user asks for a news/ЧП video, gives a news post or link, asks to pick today's Moscow incident, or asks to redo/adjust one. Follows addons/news/README.md exactly.
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -15,7 +15,10 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - About 30 s, 9:16, Russian.
 - Cat anchor `addons/news/anchor_cat` reads the intro and the fixed outro; the story is voice-over.
 - Voice: `"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"`, the same voice for the whole film.
-- 3-second cuts, music `tension_suspense_building_delosound.mp3` at 0.12.
+- 3-second cuts, music `tension_suspense_building_delosound.mp3` at 0.12, `sound` block (sting + place ambience +
+  whoosh) and per-shot `sfx` from `/opt/openmontage/sfx` — see README «Звук».
+- Realistic b-roll (documentary-photo style of the real place); only the anchor is a cartoon.
+- On the server run build.py with `https_proxy=http://127.0.0.1:10809` (OpenRouter blocks the RU IP).
 
 ## Steps
 1. **News.** Run `python3 -I addons/news/harvest.py 30 --out <base>`.
@@ -44,7 +47,7 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
    - Report the event, the length, what you checked, and anything you compromised on.
 
 ## Never
-- Never pass an illustration off as footage: every generated shot has `"label": "ИЛЛЮСТРАЦИЯ"`.
+- Never drop the near-invisible `"label": "ИИ-иллюстрация"` from a generated shot (realistic style, owner's choice).
 - Never invent facts, times, places or details that are not in the source.
 - Never spend Flow video credits (Veo / Omni). Never print or move secrets (`OPENROUTER_API_KEY`, Telegram, Flow).
 - Never re-order the anchor/b-roll structure or change the voice without the owner asking.

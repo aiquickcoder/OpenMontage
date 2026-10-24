@@ -61,9 +61,12 @@
  "shots": [
    {"src": "media/fire.mp4", "in": 0.3, "credit": "Видео: 112 / @moscowach"},
    {"src": "media/station.jpg", "credit": "Фото: Автор / Wikimedia, CC BY 4.0"},
-   {"src": "illustrations/i2.png", "label": "ИЛЛЮСТРАЦИЯ"}
+   {"src": "illustrations/i2.png", "label": "ИИ-иллюстрация", "sfx": {"src": "metro_train_doors_ru.mp3", "volume": 0.45, "offset": 20}}
  ],
- "music": {"src": "tension_suspense_building_delosound.mp3", "volume": 0.12}
+ "music": {"src": "tension_suspense_building_delosound.mp3", "volume": 0.12},
+ "sound": {"sting": {"src": "news_jingle_radio.mp3", "volume": 0.4},
+           "ambience": {"src": "metro_moscow_station.mp3", "volume": 0.22, "offset": 5},
+           "whoosh": {"src": "whoosh_transition.mp3", "volume": 0.3}}
 }
 ```
 
@@ -79,11 +82,15 @@
 - **Ритм.** Один план = 3 с (`SHOT_S`). `build.py --voice-only` печатает, сколько планов нужно (обычно 7–8). Последний план растягивается до финала ведущего.
 - **Видео из поста.** Без `in` каждый следующий план с того же файла продолжает с места, где закончился предыдущий. С `in` — с заданной секунды: так выбираются самые сильные моменты, но первым ставим самый сильный. Если файл короче, план стартует с начала.
 - **Подпись** `credit` для каждого чужого кадра: «Видео: <вотермарк> / @<канал>» или «Фото: <автор> / Wikimedia, <лицензия>».
-- **Иллюстрации.** Всегда `"label": "ИЛЛЮСТРАЦИЯ"`. Стиль — тот же 3D-мульт, что у кота (`illustration_style` из эталона Новаторской), чтобы было видно, что это рисунок, а не съёмка. Правила:
-  - лица пострадавших и подозреваемых не прорисовываем (вид со спины, размытие);
-  - никакой крови и травм;
-  - текст в кадре не пишем (в промпт добавляется «No text…»);
-  - промпты по правилам `addons/mural/README.md`: без слов «panel», «film», «cinematic».
+- **Иллюстрации — РЕАЛИСТИЧНЫЕ** (решение владельца 2026-10-24: мультяшный b-roll ломает новостной формат; мультяшный только кот).
+  - `illustration_style` = «Realistic documentary photograph … natural light, slight grain, not a render, not a cartoon» +
+    точное описание реального места (эталон: `projects/news-novatorskaya-shpric/story.json`).
+  - Ярлык `"label": "ИИ-иллюстрация"` обязателен, но он почти невидим: 20 px, белый 42 %, без плашки, в нижнем правом
+    углу кадра (владелец не хочет заметный ярлык; совсем без пометки реалистичный ИИ-кадр реального ЧП = фейк).
+  - Контекст, а не реконструкция: место, толпа, двери, полиция, камеры. Сам момент — только деталью (рука со шприцем).
+    Лиц пострадавших/подозреваемых нет (спиной, вне кадра, не в фокусе). Никакой крови и травм.
+  - Текст в кадре не пишем (в промпт добавляется «No text…»). Промпты без «panel», «film», «cinematic».
+  - Nano Banana Pro к вечеру часто отвечает пусто (квота) — `gen_shots.py` сам уходит на Nano Banana 2, качество то же.
 - **Wikimedia Commons** — для реального места (станция, улица, здание). Берём только CC BY / CC BY-SA / CC0, `CREDITS.txt` кладём рядом. Перед использованием фото открываем и смотрим.
 - **Порядок планов.** Сначала самое сильное, дальше хронология события, в конце итог (полиция, тушение, место).
 
@@ -97,7 +104,8 @@
 3. **B-roll.** ffmpeg собирает один немой клип 1080×1920 (`assets/broll.mp4`):
    - фон — размытая и затемнённая копия кадра;
    - картинка — горизонтальная обрезается в рамку 1080×760…1000 по центру (y=930), вертикальная (h/w > 1,4) идёт на весь экран;
-   - у стоп-кадров медленный наезд на 7% (zoompan с трёхкратным запасом против дрожания).
+   - у стоп-кадров медленный наезд на 7% (zoompan с трёхкратным запасом против дрожания);
+   - у кадров с `label` (картинки Flow) сначала закрашивается «звёздочка» Flow в правом нижнем углу (`remove_sparkle`).
 4. **Кот** (`anchor.py`, ассеты в `anchor_cat/`). Базовый кадр плюс три правки Flow того же кадра: `open` (рот открыт), `mid` (приоткрыт), `blink` (глаза закрыты).
    - `prepare`: ECC-выравнивание правки по базе. В патч идут только изменившиеся пиксели внутри `mouth_box` / `eyes_box` (координаты кадра 1080×1920, `anchor.json`), с растушёвкой. Голова не двигается никогда. Результат — `anchor_cat/layers/`.
    - Рот: громкость голоса по кадрам → `closed` / `mid` / `open`, каждое состояние держится минимум 2 кадра («на двойках»).
@@ -106,7 +114,7 @@
 5. **HyperFrames** (`hyperframes/index.html`):
    - `<video id="broll">` в окне b-roll, слой кота под ним;
    - нижняя плашка на подводке, верхняя плашка `#plate` (тег, дата, заголовок) на b-roll;
-   - чипы `ИЛЛЮСТРАЦИЯ` и подписи источника;
+   - незаметный ярлык `ИИ-иллюстрация` и подписи источника;
    - титры по 2–4 слова из реальных таймингов, на тёмной подложке, y=1500;
    - голос, музыка на 0,12 (≈ −18 дБ) с уходом за 1,5 с, затемнение 0,6 с.
    - Рендер: `hyperframes check` → `render --strict`, 30 fps. На сервере `HYPERFRAMES_BIN=/opt/node22/hyperframes.sh`.
@@ -114,11 +122,24 @@
 
 Флаги: `--voice-only` (голос + сколько нужно планов), `--retime` (не заказывать голос заново: тот же `assets/narration.mp3`), `--no-render`.
 
+## Звук (`sound_bed`, одна дорожка `assets/sfx.wav`)
+Звуки — Pixabay (Content License, без Content ID), лежат в `/opt/openmontage/sfx` (+ `LICENSES.md`), на Mac — `~/Downloads/sfx_chp`.
+Pixabay отдаёт страницы только настоящему браузеру: новые звуки ищем через Chrome-расширение Claude (ссылку `cdn.pixabay.com/download/audio/…` берём со страницы), качаем curl'ом **с Mac** (с сервера CDN недоступен) и копируем на сервер.
+- `sound.sting` — новостной джингл под приветствием (`news_jingle_radio.mp3`, 0,4).
+- `sound.ambience` — атмосфера места под всем b-roll, зацикливается, плавный вход/выход (метро: `metro_moscow_station.mp3`; пожар: `fire_crackling.mp3`; улица: сирены).
+- `sound.whoosh` — на переходах кот → сюжет → кот.
+- `shots[i].sfx` — разовый звук на плане (двери вагона, паника, далёкая сирена), `offset` = откуда в файле.
+- Видео из поста со звуком — живой звук под голосом на 0,35 (`"audio": 0` — выключить).
+Есть: metro_moscow_station, metro_train_doors_ru, metro_platform_muffled, news_intro_logo, news_jingle_radio, crowd_panic,
+siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh_simple, whoosh_transition.
+
 ## Музыка
 `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac. Для ЧП — `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID). Громкость 0,12 под голосом.
 
 ## Автопилот (фабрика, сервер)
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
+**OpenRouter (модели OpenAI) не пускает российский IP сервера (403)** — `build.py` запускать с `https_proxy=http://127.0.0.1:10809` (локальный выход фабрики).
+Сборка на сервере: `systemd-run --uid=factory -p EnvironmentFile=/opt/openmontage/.env -E HYPERFRAMES_BIN=/opt/node22/hyperframes.sh -E PATH=/opt/node22/bin:/usr/bin:/bin -E https_proxy=http://127.0.0.1:10809 … addons/news/build.py projects/<id>`.
 1. `python3 -I addons/news/harvest.py 30 --out /srv/factory/news_base`.
 2. Выбрать событие по правилам выше. Уже сделанные события не повторять: проверить `slug` и `source.links` в `projects/news-*/story.json`.
 3. Написать `projects/news-<slug>/story.json`, скопировать медиа, при необходимости фото с Wikimedia.
@@ -129,7 +150,7 @@
 8. Последняя строка: `AUTOPILOT_RESULT: READY projects/<id>`.
 
 ## Нельзя
-- Выдавать иллюстрацию за съёмку: ярлык `ИЛЛЮСТРАЦИЯ` обязателен.
+- Убирать незаметный ярлык `ИИ-иллюстрация` с реалистичных ИИ-кадров.
 - Писать факты, которых нет в источнике. Называть имена пострадавших и подозреваемых.
 - Тратить Flow-кредиты на видео (Veo / Omni).
 - Править скиллы конвейеров, схемы и `pipeline_defs`. Меняем только `projects/<slug>/` и `addons/news/`.

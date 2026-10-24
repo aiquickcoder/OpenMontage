@@ -8,7 +8,12 @@ story.json (see addons/news/README.md and story.example.json):
   {"slug", "title", "tag": "ЧП · МОСКВА", "headline": "...", "date": "24 октября",
    "narration": {"engine": "piper"|"fish"|"openrouter", "voice": "<piper model | fish reference_id | ash, cedar, verse…>", "text": "..."},
    "shots": [{"src": "<video|image path>", "in": 3.0, "label": "ИЛЛЮСТРАЦИЯ", "credit": "Видео: @moscowach"}, ...],
-   "music": {"src": "<file name in MUSIC_DIRS>", "volume": 0.12}}
+   "music": {"src": "<file name in MUSIC_DIRS>", "volume": 0.12},
+   "sound": {"sting": {"src": "news_jingle_radio.mp3", "volume": 0.45},          # TV-news ident under the greeting
+             "ambience": {"src": "metro_moscow_station.mp3", "volume": 0.22},  # place bed under the whole b-roll
+             "whoosh": {"src": "whoosh_transition.mp3", "volume": 0.35}}}      # anchor <-> b-roll cuts
+  per shot: "sfx": {"src": "...", "volume": 0.4, "offset": 0} = one-shot at the cut; "audio": 0.35 = the clip's own
+  sound (video shots with sound keep it at 0.35 by default; "audio": 0 mutes it). SFX files live in SFX_DIRS.
 
 Each shot holds SHOT_S seconds (the last one stretches to the end). A video shot without "in" continues where the
 previous use of the same file stopped, so one source clip can feed several cuts. B-roll is pre-composed with ffmpeg
@@ -27,6 +32,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 REPO = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -206,6 +212,14 @@ def segment(item: dict, dst: Path) -> None:
         inp = ["-ss", str(item["in"]), "-t", f"{d:.3f}", "-i", str(src)]
         fg = f"[b]scale={W}:{bh}:force_original_aspect_ratio=increase,crop={W}:{bh}[fg]"
     else:  # still: slow push-in (rendered at 3x to keep zoompan from jittering)
+        if item.get("label"):  # a Flow picture: paint out its corner sparkle first
+            import cv2
+
+            from addons.mural.build import remove_sparkle
+
+            clean = dst.with_suffix(".src.png")
+            cv2.imwrite(str(clean), remove_sparkle(cv2.imread(str(src))))
+            src = clean
         inp = ["-loop", "1", "-t", f"{d:.3f}", "-i", str(src)]
         fg = (f"[b]scale={W * 3}:{bh * 3}:force_original_aspect_ratio=increase,crop={W * 3}:{bh * 3},"
               f"zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
@@ -228,6 +242,74 @@ def broll(proj: Path, items: list[dict]) -> Path:
     (d / "list.txt").write_text("\n".join(lst) + "\n")
     out = proj / "assets" / "broll.mp4"
     sh(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(d / "list.txt"), "-c", "copy", str(out)])
+    return out
+
+
+# -- sound bed --------------------------------------------------------------------------------------
+SFX_DIRS = [Path("/opt/openmontage/sfx"), Path.home() / "Downloads" / "sfx_chp", REPO / "sfx"]
+SOURCE_AUDIO = 0.35  # a news clip's own sound (sirens, crackle, crowd) under the voice
+
+
+def find_sfx(name: str) -> Path:
+    p = Path(name).expanduser()
+    if p.is_file():
+        return p
+    for d in SFX_DIRS:
+        if (d / p.name).is_file():
+            return d / p.name
+    sys.exit(f"sfx {name} not found in {[str(d) for d in SFX_DIRS]}")
+
+
+def has_audio(src: Path) -> bool:
+    return bool(sh(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0",
+                    str(src)]).strip())
+
+
+def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optional[Path]:
+    """Every effect layer mixed into one track (assets/sfx.wav) that starts at 0 and lasts the whole film."""
+    snd, (b0, b1), total = story.get("sound") or {}, timing["broll"], timing["duration"]
+    layers = []  # (input args, filter chain, start time)
+
+    def clip(src, start, dur, vol, offset=0.0, fade_in=0.05, fade_out=0.3, loop=False):
+        if dur <= 0.05:
+            return
+        inp = (["-stream_loop", "-1"] if loop else []) + ["-i", str(src)]
+        chain = (f"atrim=start={offset:.3f}:duration={dur:.3f},asetpts=PTS-STARTPTS,"
+                 f"aformat=sample_rates=44100:channel_layouts=stereo,afade=t=in:d={fade_in},"
+                 f"afade=t=out:st={max(0.0, dur - fade_out):.3f}:d={fade_out},volume={vol}")
+        layers.append((inp, chain, start))
+
+    if snd.get("sting"):
+        x = snd["sting"]
+        clip(find_sfx(x["src"]), float(x.get("at", 0.0)), float(x.get("dur", 3.5)), x.get("volume", 0.45), fade_out=0.8)
+    if snd.get("ambience") and b1 > b0:
+        x = snd["ambience"]
+        clip(find_sfx(x["src"]), b0, b1 - b0, x.get("volume", 0.22), float(x.get("offset", 0)), 0.5, 0.6, loop=True)
+    if snd.get("whoosh"):
+        x = snd["whoosh"]
+        for t in ([b0] if b0 > 0.5 else []) + ([b1] if b1 < total - 0.5 else []):
+            clip(find_sfx(x["src"]), max(0.0, t - 0.3), float(x.get("dur", 1.0)), x.get("volume", 0.35), fade_out=0.4)
+    for it in items:
+        if it["video"] and it.get("audio", SOURCE_AUDIO) and has_audio(it["path"]):
+            clip(it["path"], it["start"], it["dur"], it.get("audio", SOURCE_AUDIO), it["in"], 0.12, 0.12)
+        if it.get("sfx"):
+            x = it["sfx"]
+            clip(find_sfx(x["src"]), it["start"] + float(x.get("at", 0)), float(x.get("dur", it["dur"])),
+                 x.get("volume", 0.4), float(x.get("offset", 0)), 0.08, 0.4)
+    if not layers:
+        return None
+    args, parts = [], []
+    for k, (inp, chain, start) in enumerate(layers):
+        args += inp
+        ms = int(round(start * 1000))
+        parts.append(f"[{k}:a]{chain},adelay={ms}|{ms}[l{k}]")
+    mix = "".join(f"[l{k}]" for k in range(len(layers)))
+    parts.append(f"{mix}amix=inputs={len(layers)}:normalize=0:duration=longest,apad,atrim=duration={total:.3f},"
+                 f"alimiter=limit=0.9[out]")
+    out = proj / "assets" / "sfx.wav"
+    sh(["ffmpeg", "-v", "error", "-y", *args, "-filter_complex", ";".join(parts), "-map", "[out]", "-ar", "44100",
+        str(out)])
+    print(f"sound bed: {len(layers)} layers -> {out.name}", flush=True)
     return out
 
 
@@ -306,7 +388,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         top = 430 if full else BOX_Y - bh // 2
         bottom = 330 if full else H - (BOX_Y + bh // 2)
         if it.get("label"):
-            chips.append(f'    <div id="chip{k}" class="clip chip label" style="top:{top + 22}px" data-start="{it["start"]}" '
+            chips.append(f'    <div id="chip{k}" class="clip chip label" data-layout-ignore style="bottom:{bottom + 14}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="4">{esc(it["label"])}</div>')
             k += 1
         if it.get("credit"):
@@ -319,6 +401,10 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
              f'data-media-start="{music.get("offset", 0)}" data-track-index="10" data-volume="{music_vol}"></audio>\n'
              if found else "")
     audio += '    <audio id="voice" src="assets/narration.mp3" data-start="0.3" data-track-index="11" data-volume="1"></audio>'
+    if (proj / "assets" / "sfx.wav").is_file():
+        shutil.copy2(proj / "assets" / "sfx.wav", ws / "assets" / "sfx.wav")
+        audio += (f'\n    <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="{duration}" '
+                  f'data-track-index="12" data-volume="1"></audio>')
     audio_js = f'  tl.to("#bgm", {{ volume: 0, duration: 1.5, ease: "power1.in" }}, {duration - 1.5:.2f});' if found else ""
     head = esc(story["headline"])
     lower_html = lower_js = ""
@@ -358,8 +444,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     #plate .head {{ margin-top: 18px; background: rgba(10,10,12,.86); color: #fff; font-size: 54px; line-height: 1.12;
                     font-weight: 900; padding: 20px 26px; border-left: 10px solid #e3001b; border-radius: 4px; }}
     .chip {{ position: absolute; z-index: 6; font-family: Arial, "DejaVu Sans", sans-serif; font-weight: 700; color: #fff; }}
-    .chip.label {{ right: 30px; font-size: 30px; letter-spacing: 1px; background: rgba(0,0,0,.6); padding: 6px 12px;
-                   border: 2px solid rgba(255,255,255,.7); border-radius: 4px; }}
+    .chip.label {{ right: 22px; font-size: 20px; font-weight: 400; color: rgba(255,255,255,.42);
+                   text-shadow: 0 1px 2px rgba(0,0,0,.35); }}
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
     .cap {{ position: absolute; left: 50px; right: 50px; top: 1500px; text-align: center; z-index: 7; }}
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
@@ -442,6 +528,8 @@ def main() -> None:
         return
     items = slots(story, timing["broll"], proj)
     broll(proj, items)
+    (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
+    sound_bed(proj, story, timing, items)
     ws = write_workspace(proj, story, timing, items)
     print("workspace", ws, flush=True)
     if a.no_render:
