@@ -68,3 +68,16 @@ def test_pick_filters_and_ranks():
     assert "уже сделано" in done["skip"]
     assert any(s.startswith("старое") for s in old["skip"])
     assert pick.clean("🔥 Пожар в Москве. BAZA в Telegram 😱358😭143") == "Пожар в Москве."
+
+
+def test_sound_bed_is_exactly_film_length_with_looped_ambience(tmp_path: Path, monkeypatch):
+    sfx = tmp_path / "amb.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=1", str(sfx)], check=True)
+    (tmp_path / "assets").mkdir()
+    monkeypatch.setattr(build, "SFX_DIRS", [tmp_path])
+    story = {"sound": {"ambience": {"src": "amb.wav", "volume": 0.2}, "whoosh": {"src": "amb.wav"}}}
+    timing = {"broll": [2.0, 6.0], "duration": 8.0}
+    out = build.sound_bed(tmp_path, story, timing, [])
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                str(out)], capture_output=True, text=True).stdout)
+    assert abs(dur - 8.0) < 0.05 and out.stat().st_size < 3_000_000

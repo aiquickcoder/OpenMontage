@@ -307,7 +307,9 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     parts.append(f"{mix}amix=inputs={len(layers)}:normalize=0:duration=longest,apad,atrim=duration={total:.3f},"
                  f"alimiter=limit=0.9[out]")
     out = proj / "assets" / "sfx.wav"
-    sh(["ffmpeg", "-v", "error", "-y", *args, "-filter_complex", ";".join(parts), "-map", "[out]", "-ar", "44100",
+    # -t is the hard stop: a looped ambience input is endless, and without it amix/apad can write until the disk is full
+    sh(["ffmpeg", "-v", "error", "-y", *args, "-filter_complex", ";".join(parts), "-map", "[out]", "-t", f"{total:.3f}",
+        "-ar", "44100",
         str(out)])
     print(f"sound bed: {len(layers)} layers -> {out.name}", flush=True)
     return out
