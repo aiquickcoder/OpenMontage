@@ -33,10 +33,12 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
    - Run `build.py … --voice-only` to learn how many 3-second shots are needed, then list exactly that many.
 3. **Pictures.**
    - Footage or photos from the post: copy them to `media/`, choose strong `in` points, add a `credit` to each.
+     Use them even when people are in frame (court, arrest, witnesses): the owner moderates every video by hand
+     (2026-10-26). List the shots with people in your report so the owner can check them.
    - The real place: `fetch_commons.py`. Open every photo before use; credit = author, licence.
    - Illustrations: `gen_shots.py` on the server (it is the Flow host). Run it in the background via `systemd-run`
      with the factory `EnvironmentFile`, `DISPLAY=:99`, `HOME=/home/factory`, and wait for `DONE`.
-   - Open **every** illustration. Check: no visible faces of victims or suspects, no blood, no gibberish text, the
+   - Open **every** illustration. Check: no generated faces of victims or suspects, no blood, no gibberish text, the
      asked moment. Redraw a failure once.
 4. **Build.** Run `.venv/bin/python addons/news/build.py projects/<slug>`. Use `--retime` for rebuilds, so the voice
    is not paid for again.
