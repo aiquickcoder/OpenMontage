@@ -1,6 +1,6 @@
 """Stage 1 of the news workflow: find today's Moscow incidents and rank them for a «ЧП · Москва» short.
 
-    python3 -I addons/news/pick.py [--base DIR] [--posts 30] [--hours 36] [--top 5] [--no-harvest]
+    python3 -I addons/news/pick.py [--city moscow|kazan] [--base DIR] [--posts 150] [--hours 36] [--top 5] [--no-harvest]
 
 1. Runs harvest.py (Telegram previews -> <base>/base.json + media/), unless --no-harvest.
 2. Drops what the format never covers (war / drones / politics, suicide, sexual violence, child victims), events that
@@ -36,8 +36,7 @@ SKIP = {
 }
 # how much of a real incident it is: strong words score, curiosities do not
 STRONG = r"пожар|горит|загорел|взрыв|ДТП|авари|столкн|сбил|наезд|нож|зарез|ножев|стрельб|выстрел|шприц|укол|напал|ограб|похит|обрушен|рухн|провал|затопи|прорыв|эвакуац|задержан|пропал\w* без вести|исчез"
-MOSCOW = r"москв|москов|\bметро\b|мкад|зеленоград|коммунарк|новая москва|новой москв|садов\w+ кольц"
-MOSCOW_CHANNELS = {"moscowach", "moscowmap"}
+CITIES = json.loads((HERE / "cities.json").read_text(encoding="utf-8"))
 REACTION = re.compile(r"([\U0001F300-\U0001FAFF☀-➿]️?)\s*(\d+(?:[.,]\d+)?)([KkКк]?)")
 TAIL = re.compile(r"(?:BAZA в Telegram|BAZA в MAX|Подпишись\S*|Прислать новость\S*)", re.I)
 
@@ -65,10 +64,10 @@ def made_already(root: Path) -> tuple[set[str], set[str]]:
             s = json.loads(Path(f).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        src = s.get("source") or {}
-        links.update(src.get("links") or [])
-        if src.get("key"):
-            keys.add(src["key"])
+        for src in [s.get("source") or {}] + [x.get("source") or {} for x in s.get("stories") or []]:  # digests too
+            links.update(src.get("links") or [])
+            if src.get("key"):
+                keys.add(src["key"])
     return links, keys
 
 
@@ -80,12 +79,14 @@ def age_hours(dt: str, now: datetime) -> float:
     return max(0.0, (now - t).total_seconds() / 3600)
 
 
-def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_keys: set[str]) -> dict:
+def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_keys: set[str],
+          city: str = "moscow") -> dict:
     text = e.get("text", "")
     why_not = [name for name, rx in SKIP.items() if re.search(rx, text, re.I)]
     chans = set(e.get("channels") or [])
-    if not (chans & MOSCOW_CHANNELS) and not re.search(MOSCOW, text, re.I):
-        why_not.append("не Москва")
+    c = CITIES[city]
+    if not (chans & {h for h, local in c["channels"] if local}) and not re.search(c["geo"], text, re.I):
+        why_not.append(f'не {c["name"]}')
     age = age_hours(e.get("dt", ""), now)
     if age > max_hours:
         why_not.append(f"старое ({age:.0f} ч)")
@@ -105,15 +106,17 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", default=os.environ.get("NEWS_BASE", "~/memes/msk_chp_base"))
-    ap.add_argument("--posts", type=int, default=30)
+    ap.add_argument("--city", default="moscow", choices=sorted(CITIES))
+    ap.add_argument("--base", default=os.environ.get("NEWS_BASE"), help="default: the city's base in cities.json")
+    ap.add_argument("--posts", type=int, default=150)
     ap.add_argument("--hours", type=float, default=36)
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--no-harvest", action="store_true")
     a = ap.parse_args()
-    base = Path(a.base).expanduser()
+    base = Path(a.base or CITIES[a.city]["base"]).expanduser()
     if not a.no_harvest:
-        p = subprocess.run([sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--out", str(base)],
+        p = subprocess.run([sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--city", a.city,
+                            "--out", str(base)],
                            capture_output=True, text=True)
         print("\n".join(l for l in p.stdout.splitlines() if l.startswith("  ")), flush=True)  # per-channel counts
         if p.returncode != 0:
@@ -121,7 +124,7 @@ def main() -> None:
     events = json.loads((base / "base.json").read_text(encoding="utf-8"))
     links, keys = made_already(REPO)
     now = datetime.now(timezone.utc)
-    ranked = sorted((judge(e, now, a.hours, links, keys) for e in events), key=lambda c: -c["score"])
+    ranked = sorted((judge(e, now, a.hours, links, keys, a.city) for e in events), key=lambda c: -c["score"])
     ok = [c for c in ranked if not c["skip"]]
     out = {"generated_at": now.isoformat(timespec="seconds"), "base": str(base),
            "candidates": ok, "skipped": [c for c in ranked if c["skip"]]}

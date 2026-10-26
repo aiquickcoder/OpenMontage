@@ -105,3 +105,20 @@ def test_sound_bed_is_exactly_film_length_with_looped_ambience(tmp_path: Path, m
     level = subprocess.run(["ffmpeg", "-nostats", "-ss", "3", "-t", "2", "-i", str(out), "-af", "volumedetect", "-f",
                             "null", "-"], capture_output=True, text=True).stderr
     assert float(level.split("mean_volume:")[1].split("dB")[0]) > -40  # the ambience is really in the b-roll window
+
+
+def test_pick_city_geo_from_cities_json():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 26, 18, 0, tzinfo=timezone.utc)
+    e = {"dt": "2026-10-26T12:00", "links": [], "media_got": []}
+    local = pick.judge({**e, "key": "a", "channels": ["tatarstansos"], "text": "ДТП на тракте, пострадали двое"},
+                       now, 36, set(), set(), "kazan")
+    federal_kzn = pick.judge({**e, "key": "b", "channels": ["mash"], "text": "Пожар в Казани на складе"},
+                             now, 36, set(), set(), "kazan")
+    federal_msk = pick.judge({**e, "key": "c", "channels": ["mash"], "text": "Пожар в Москве на складе"},
+                             now, 36, set(), set(), "kazan")
+    assert local["skip"] == [] and federal_kzn["skip"] == [] and federal_msk["skip"] == ["не Казань"]
+    assert pick.judge({**e, "key": "d", "channels": ["moscowach"], "text": "Пожар на складе"}, now, 36, set(), set())["skip"] == []

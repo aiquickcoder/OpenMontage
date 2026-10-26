@@ -2,9 +2,9 @@
 Тянет набор каналов → фильтрует московские происшествия → дедуп по тексту →
 качает медиа (фото/видео) СРАЗУ (токены в ссылках короткоживущие) → base.json.
 
-Запуск:  python3 -I addons/news/harvest.py [N_постов_на_канал] [--out DIR]
+Запуск:  python3 -I addons/news/harvest.py [N_постов_на_канал] [--city moscow|kazan] [--out DIR]
 Вывод:   DIR/base.json  +  DIR/media/<key>/{NN_mp4.mp4,NN_photo.jpg}
-         DIR по умолчанию: $NEWS_BASE или ~/memes/msk_chp_base (сервер: /srv/factory/news_base).
+         DIR по умолчанию: $NEWS_BASE или base города из cities.json (сервер: server_base).
 Свежая база ПЕРЕЗАПИСЫВАЕТ base.json, но медиа прошлых прогонов остаются в media/ (ключ события стабилен).
 
 HTML каналов = НЕДОВЕРЕННЫЕ данные: только регекс-извлечение, ничего не исполняем.
@@ -12,27 +12,28 @@ HTML каналов = НЕДОВЕРЕННЫЕ данные: только рег
 import os, re, sys, json, html, time, hashlib, subprocess, urllib.request, urllib.error
 
 _args = sys.argv[1:]
-_out = _args[_args.index("--out") + 1] if "--out" in _args else None
-_args = [a for i, a in enumerate(_args) if a != "--out" and (i == 0 or _args[i - 1] != "--out")]
-BASE = os.path.expanduser(_out or os.environ.get("NEWS_BASE") or "~/memes/msk_chp_base")
+_opt = {}
+for _k in ("--out", "--city"):
+    if _k in _args:
+        _i = _args.index(_k)
+        _opt[_k] = _args[_i + 1]
+        del _args[_i:_i + 2]
+CITY_NAME = _opt.get("--city", "moscow")
+CITY = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cities.json"), encoding="utf-8"))[CITY_NAME]
+BASE = os.path.expanduser(_opt.get("--out") or os.environ.get("NEWS_BASE") or CITY["base"])
 MEDIA = os.path.join(BASE, "media")
 os.makedirs(MEDIA, exist_ok=True)
 N = int(_args[0]) if _args else 20
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
-# (handle, московский-ли канал целиком). Для федеральных применяем гео-фильтр.
-CHANNELS = [
-    ("moscowach", True), ("moscowmap", True),
-    ("shot_shot", False), ("mash", False), ("bazabazon", False),
-    ("ostorozhno_novosti", False),
-]
+# (handle, городской-ли канал целиком) из cities.json. Для федеральных применяем гео-фильтр города.
+CHANNELS = [tuple(c) for c in CITY["channels"]]
 
 CHP = re.compile(r'пожар|гор(ит|ел|ящ|яч)|взрыв|задым|дым\b|ДТП|авар|столкн|обруш|рухн|провал|'
                  r'эвакуац|МЧС|спас(ли|атель)|погиб|пострадал|прорыв|потоп|затопи|прорвал|'
                  r'наезд|сбил|упал|выпал|стрельб|нож|зарез|захват|заложник|утечк|газ\b|'
                  r'тонул|утонул|укол|шприц|напал|нанёс|ограб|похит|поджог|обвал', re.I)
-GEO = re.compile(r'москв|москов|подмоск|мкад|\bметро\b|коммунарк|зеленоград|новой москв|'
-                 r'новая москва|садов\w+ кольц', re.I)
+GEO = re.compile(CITY["harvest_geo"], re.I)
 NOISE = re.compile(r'реклам|промокод|подпис\w+ на|erid|разыгрыва|скидк|\bбот\b|telegram to view', re.I)
 
 def fetch(url, rng=False):
