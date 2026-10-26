@@ -72,18 +72,32 @@ def sig(text):
 
 # --- собрать и отфильтровать ---
 all_posts = []
+def channel_posts(ch, n):
+    """The channel's last ~n posts: t.me/s shows ~20 per page, older pages via ?before=<oldest id>."""
+    posts, before = [], None
+    for _ in range(max(1, n // 15 + 2)):
+        raw = fetch(f"https://t.me/s/{ch}" + (f"?before={before}" if before else "")).decode("utf-8", "replace")
+        ids = [int(i) for i in re.findall(rf'data-post="{re.escape(ch)}/(\d+)"', raw)]
+        posts += parse(ch, raw)
+        if not ids or len(posts) >= n or (before and min(ids) >= before):  # enough, or no older page
+            break
+        before = min(ids)
+        time.sleep(1.0)
+    return posts
+
 for ch, is_msk in CHANNELS:
     try:
-        raw = fetch(f"https://t.me/s/{ch}").decode("utf-8", "replace")
+        posts = channel_posts(ch, N)
     except Exception as e:
         print(f"  ! {ch}: {e}"); continue
     kept = 0
-    for p in parse(ch, raw):
+    for p in posts:
         if NOISE.search(p["text"]): continue
         if not CHP.search(p["text"]): continue
         if not is_msk and not GEO.search(p["text"]): continue
         all_posts.append(p); kept += 1
-    print(f"  {ch}: ЧП-постов отобрано {kept}")
+    span = f'{min(p["dt"] for p in posts)}…{max(p["dt"] for p in posts)}' if posts else "-"
+    print(f"  {ch}: постов {len(posts)} ({span}), ЧП-постов отобрано {kept}")
 
 # --- дедуп по подписи события, слияние каналов ---
 events = {}
