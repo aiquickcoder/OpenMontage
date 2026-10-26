@@ -28,7 +28,8 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
      post, use that instead.
    - Say which event you took, its score and why. Write `source.key` into the story so it is never offered again.
 2. **Story.** Write `projects/news-<slug>/story.json`.
-   - Facts only from the post(s); numbers as words; no names of victims or suspects; 75–85 words in total.
+   - Facts only from the post(s); numbers as words; no names of victims or suspects; 55–62 words in total
+     (≈31–34 s; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
    - Run `build.py … --voice-only` to learn how many 3-second shots are needed, then list exactly that many.
 3. **Pictures.**
    - Footage or photos from the post: copy them to `media/`, choose strong `in` points, add a `credit` to each.

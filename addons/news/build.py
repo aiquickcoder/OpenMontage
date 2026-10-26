@@ -394,7 +394,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         full = h / w > 1.4
         bh = H if full else box_h(w, h)
         top = 430 if full else BOX_Y - bh // 2
-        bottom = 330 if full else H - (BOX_Y + bh // 2)
+        bottom = H - 1480 if full else H - (BOX_Y + bh // 2)  # full frame: sit just above the captions (top 1500)
         if it.get("label"):
             chips.append(f'    <div id="chip{k}" class="clip chip label" data-layout-ignore style="bottom:{bottom + 14}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="4">{esc(it["label"])}</div>')
