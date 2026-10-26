@@ -12,7 +12,8 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 `projects/news-novatorskaya-shpric/story.json` is the approved reference for an event with no footage.
 
 ## Defaults (owner's choices, 2026-10-24)
-- About 30 s, 9:16, Russian.
+- About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.
+- Kazan has its own agent, `news-chp-kazan` — same pipeline, other channels and anchor (README «Города»).
 - Cat anchor `addons/news/anchor_cat` reads the intro and the fixed outro; the story is voice-over.
 - Voice: `"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"`, the same voice for the whole film.
 - 3-second cuts, music `tension_suspense_building_delosound.mp3` at 0.22 (owner: must be audible), `sound` block (place ambience +
@@ -21,7 +22,7 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - On the server run build.py with `https_proxy=http://127.0.0.1:10809` (OpenRouter blocks the RU IP).
 
 ## Steps
-1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --base <base>`. It harvests the channels, drops
+1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.
    - Mac base: `~/memes/msk_chp_base`. Server base: `/srv/factory/news_base`.
    - Take candidate #1 unless there is a reason not to, and say the reason. If the user named an event or gave a
