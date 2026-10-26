@@ -6,8 +6,14 @@
   "anchor": "addons/news/anchor_cat",
   "base": "~/memes/msk_chp_base",
   "server_base": "/srv/factory/news_base",
-  "channels": [["moscowach", true], ["moscowmap", true],
-               ["shot_shot", false], ["mash", false], ["bazabazon", false], ["ostorozhno_novosti", false]],
+  "channels": [
+   ["moscowach", true],
+   ["moscowmap", true],
+   ["shot_shot", false],
+   ["mash", false],
+   ["bazabazon", false],
+   ["ostorozhno_novosti", false]
+  ],
   "harvest_geo": "москв|москов|подмоск|мкад|\\bметро\\b|коммунарк|зеленоград|новой москв|новая москва|садов\\w+ кольц",
   "geo": "москв|москов|\\bметро\\b|мкад|зеленоград|коммунарк|новая москва|новой москв|садов\\w+ кольц",
   "_note": "geo (pick) is stricter than harvest_geo: Подмосковье is harvested but is not «ЧП Москва»"
@@ -19,11 +25,21 @@
   "anchor": "addons/news/anchor_kzn",
   "base": "~/memes/kzn_chp_base",
   "server_base": "/srv/factory/news_base_kzn",
-  "channels": [["tatarstansos", true], ["incident_kazan", true], ["mash_iptash", true], ["tatar_news", true],
-               ["kazan_chs_1", true], ["zhest_dtp16", true], ["kazancity", true],
-               ["shot_shot", false], ["mash", false], ["bazabazon", false], ["ostorozhno_novosti", false]],
-  "harvest_geo": "казан|татарстан|\\bрт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|\\bарск|мамадыш|тетюш",
-  "geo": "казан|татарстан|\\bрт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|\\bарск|мамадыш|тетюш",
+  "channels": [
+   ["tatarstansos", true],
+   ["incident_kazan", true],
+   ["mash_iptash", true],
+   ["tatar_news", true],
+   ["kazan_chs_1", true],
+   ["zhest_dtp16", true],
+   ["kazancity", true],
+   ["shot_shot", false],
+   ["mash", false],
+   ["bazabazon", false],
+   ["ostorozhno_novosti", false]
+  ],
+  "harvest_geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
+  "geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
   "_note": "channels checked through t.me/s on 2026-10-26; zhest_dtp16 is anonymous — prefer a second source for its stories"
  }
 }
