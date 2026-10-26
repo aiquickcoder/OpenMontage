@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -175,8 +176,12 @@ def generate(kind: str, brief: str, attachments: list[str], *, count: int,
         with driver_cls(profile_name()) as drv:
             drv.credits()
             project_url = drv.open_project(_project_url(flow_project))
+            started = time.monotonic()
             res = drv.ask(brief, expect=kind, count=count, timeout=timeout, attachments=attachments,
                           confirm_up_to=confirm_up_to)
+            if res.queued and not res.media:  # parked in Flow's queue: poll the project page, it never pushes
+                res.media = drv.collect(project_url, expect=kind, count=count,
+                                        timeout=max(60.0, timeout - (time.monotonic() - started)))
             data = {"project_url": project_url, "models_mentioned": res.models_mentioned,
                     "credits_before": res.credits_before, "credits_after": res.credits_after,
                     "confirmed_costs": res.confirmed_costs, "reply": res.reply_text[-600:]}

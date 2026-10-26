@@ -93,6 +93,10 @@ CONFIRM_ASK = re.compile(
     r"should i (?:go ahead|proceed|start)|ready to (?:kick off|start|generate)", re.I)
 QUOTED_COST = re.compile(r"cost(?:ing|s)?\s*(?:about|around|~)?\s*(\d+)\s*credits?", re.I)
 CONFIRM_REPLY = "Yes, go ahead."
+# A paid clip parked in Flow's shared queue ("scheduled and is waiting in the queue due to high demand"): the open
+# page never pushes it when it is done, so the caller reloads the project instead of watching a stale page.
+QUEUED = re.compile(r"waiting in the queue|has been scheduled|high demand", re.I)
+QUEUE_GRACE_S = 60
 # Flow's go-ahead is a radiogroup inside <flow-permission-message>, not buttons:
 # <div role="radio" aria-label="Approve" aria-checked="false">. Never "Always approve".
 APPROVE_OPTION = ('flow-permission-message [role="radio"][aria-label="Approve"]'
@@ -152,6 +156,7 @@ class AgentResult:
     refused: Optional[str] = None
     confirmed_costs: list[int] = field(default_factory=list)
     declined_cost: Optional[int] = None
+    queued: bool = False  # Flow parked the request in its queue; collect() it from the project page
 
     @property
     def credits_spent(self) -> Optional[int]:
@@ -376,6 +381,7 @@ class FlowAgentDriver:
         deadline = time.monotonic() + timeout
         turn_mark, turn_start = mark, time.monotonic()
         ready_at: Optional[float] = None
+        queued_at: Optional[float] = None
         soft_bodies, soft_since = -1, time.monotonic()
         while time.monotonic() < deadline:
             self.page.wait_for_timeout(5_000)
@@ -421,6 +427,11 @@ class FlowAgentDriver:
             if len(media) >= count:
                 ready_at = ready_at or time.monotonic()
                 if time.monotonic() - ready_at >= settle:
+                    break
+            elif result.confirmed_costs and QUEUED.search(self._reply_text()):
+                queued_at = queued_at or time.monotonic()
+                if time.monotonic() - queued_at >= QUEUE_GRACE_S:
+                    result.queued = True
                     break
         result.media = self._new_media(mark, known, expect)
         result.stream_log = "\n".join(b for u, b in self._bodies[mark:] if "StreamChat" in u)

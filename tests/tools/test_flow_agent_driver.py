@@ -372,3 +372,10 @@ def test_image_brief_names_uploaded_refs():
     assert refs == ["/x/lena.png", "/y/loc.png"]
     assert "2 images I just uploaded to this project (lena.png, loc.png)" in brief
     assert "attached" not in brief
+
+
+def test_queued_reply_is_recognised():
+    from tools.flow.agent_driver import QUEUED
+
+    assert QUEUED.search("Your video generation has been scheduled and is waiting in the queue due to high demand.")
+    assert not QUEUED.search("I am generating 1 video from your uploaded image using Veo 3.1 - Lite.")
