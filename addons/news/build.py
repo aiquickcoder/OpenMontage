@@ -16,9 +16,10 @@ story.json (see addons/news/README.md and story.example.json):
   sound (video shots with sound keep it at 0.35 by default; "audio": 0 mutes it). SFX files live in SFX_DIRS.
 
 Digest (several stories in one film): instead of "narration.text" + "shots", give
-  "stories": [{"lead": "<the anchor's line before this story>", "text": "<voice-over>", "headline", "shots",
+  "stories": [{"lead": "<the anchor's line before this story>", "text": "<voice-over>",
+               "comment": "<the anchor's short reaction after it (no new facts)>", "headline", "shots",
                "sound": {"ambience": ...}, "date"?, "source"?}, ...]
-The anchor reads intro + stories[0].lead, then each later story's lead between the stories, then the outro; each
+The anchor reads intro + stories[0].lead, then after each story its comment and the next lead, then the outro; each
 story gets its own b-roll window, plate (headline, "1 из 3") and ambience. One voice take covers the whole film.
 
 Each shot holds SHOT_S seconds (the last one stretches to the end). A video shot without "in" continues where the
@@ -95,6 +96,8 @@ def parts(story: dict) -> list[dict]:
             lead = f'{a.get("intro", "")} {lead}'
         out.append({"kind": "anchor", "text": lead.strip(), "i": i})
         out.append({"kind": "story", "text": (s.get("text") or story["narration"]["text"]).strip(), "i": i})
+        if story.get("stories"):  # the anchor's own short reaction right after the story, before the next lead
+            out.append({"kind": "anchor", "text": s.get("comment", "").strip(), "i": i})
     out.append({"kind": "anchor", "text": a.get("outro", "").strip(), "i": None})
     return [p for p in out if p["text"]]
 

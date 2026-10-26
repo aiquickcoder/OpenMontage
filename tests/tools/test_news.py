@@ -34,6 +34,10 @@ def test_digest_reads_leads_between_stories_and_gets_one_window_each():
     assert build.story_windows(one, [[w, i, i + 0.8] for i, w in enumerate("Привет. Горит театр. Пока.".split())],
                                5.0) == [[0.95, 2.9]]
     assert build.windows({"broll": [1, 2]}) == [[1, 2]]
+    s["stories"][0]["comment"] = "Берегите себя."
+    assert build.full_text(s) == "Привет. Первое. Горит театр. Берегите себя. Дальше. Ищут девушку. Пока."
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
+    assert build.story_windows(s, words, 11.0)[0] == [1.95, 3.9]  # b-roll ends where the comment begins
 
 
 def test_slots_fill_broll_window_and_continue_video(tmp_path: Path, monkeypatch):
