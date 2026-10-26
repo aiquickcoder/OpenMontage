@@ -38,6 +38,9 @@ def test_digest_reads_leads_between_stories_and_gets_one_window_each():
     assert build.full_text(s) == "Привет. Первое. Горит театр. Берегите себя. Дальше. Ищут девушку. Пока."
     words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
     assert build.story_windows(s, words, 11.0)[0] == [1.95, 3.9]  # b-roll ends where the comment begins
+    timing = {"words": words, "windows": build.story_windows(s, words, 11.0)}
+    # monitor: story 0 from its lead (not the greeting) and through its comment; story 1 from its lead
+    assert build.tv_schedule(s, timing) == [(0, 0.9, 2.15), (0, 3.7, 6.05), (1, 5.9, 7.15)]
 
 
 def test_slots_fill_broll_window_and_continue_video(tmp_path: Path, monkeypatch):

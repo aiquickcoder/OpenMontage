@@ -409,6 +409,57 @@ def greeting_clip(proj: Path, story: dict, timing: dict, ws: Path) -> Optional[t
     return round(start, 3), round(dur, 3)
 
 
+TV_BOX = (486, 102, 568, 326)  # the right studio monitor in the anchor frame (x, y, w, h), anchor_cat
+
+
+def tv_schedule(story: dict, timing: dict) -> list[tuple[int, float, float]]:
+    """When the studio monitor shows story i: while the anchor leads into it and while he comments on it."""
+    if not story.get("stories"):
+        return []
+    words, out, k = timing["words"], [], 0
+    n_intro = len(plain((story.get("anchor") or {}).get("intro", "")).split())
+    W_ = windows(timing)
+    for p in parts(story):
+        n = len(plain(p["text"]).split())
+        if p["kind"] == "anchor" and p["i"] is not None and n:
+            first = k + (n_intro if k == 0 else 0)  # the greeting itself keeps the monitor's own picture
+            b0, b1 = W_[p["i"]]
+            if first < k + n and words[first][1] < b0:  # the lead before story i
+                out.append((p["i"], round(words[first][1] - 0.1, 3), round(b0 + 0.2, 3)))
+            elif words[k][1] > b1:  # the comment after story i
+                out.append((p["i"], round(b1 - 0.2, 3), round(words[k + n - 1][2] + 0.25, 3)))
+        k += n
+    return out
+
+
+def tv_stills(proj: Path, story: dict, ws: Path) -> list[Optional[str]]:
+    """One 16:9 still per story for the studio monitor: its first real photo/video frame, else its first picture."""
+    out = []
+    for i, s in enumerate(stories(story)):
+        shots = s.get("shots") or []
+        pick = next((x for x in shots if not x.get("label")), shots[0] if shots else None)
+        if not pick or not s.get("tv"):
+            out.append(None)
+            continue
+        src = (proj / pick["src"]).resolve()
+        dst = ws / "assets" / f"tv{i}.jpg"
+        if pick.get("label"):  # a Flow picture: paint out its corner sparkle before cropping
+            import cv2
+
+            from addons.mural.build import remove_sparkle
+
+            clean = ws / "assets" / f"tv{i}.src.png"
+            cv2.imwrite(str(clean), remove_sparkle(cv2.imread(str(src))))
+            src = clean
+        w, h = TV_BOX[2] * 2, TV_BOX[3] * 2
+        inp = ["-ss", f"{float(pick.get('in', 0.3)) + 1.0:.2f}", "-i", str(src)] if src.suffix.lower() in VIDEO_EXT \
+            else ["-i", str(src)]
+        sh(["ffmpeg", "-v", "error", "-y", *inp, "-frames:v", "1", "-vf",
+            f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}", "-q:v", "3", str(dst)])
+        out.append(dst.name)
+    return out
+
+
 def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -440,8 +491,22 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             shutil.copy2(L / f, ws / "assets" / "anchor" / f)
         imgs = "".join(f'<img id="a_{k}" class="patch" src="assets/anchor/{k}.png" alt="" '
                        f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px" />' for k, (x, y, w, h) in layers.items())
+        # the studio monitor behind the anchor shows the story he is leading into / commenting on
+        tv_js, tv_html = [], ""
+        stills = tv_stills(proj, story, ws)
+        if any(stills):
+            x, y, w, h = TV_BOX
+            screens = "".join(
+                f'<div id="tv{i}" class="tvs"><img src="assets/{f}" alt="" />'
+                f'<div class="tvbar">{esc(stories(story)[i]["tv"])}</div></div>' for i, f in enumerate(stills) if f)
+            tv_html = f'<div id="tv" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">{screens}</div>'
+            for i, t_on, t_off in tv_schedule(story, timing):
+                if stills[i]:
+                    tv_js.append(f'  tl.to("#tv{i}", {{opacity: 1, duration: 0.2, ease: "none"}}, {t_on:.2f});')
+                    tv_js.append(f'  tl.to("#tv{i}", {{opacity: 0, duration: 0.2, ease: "none"}}, {t_off:.2f});')
         anchor_html = (f'    <div id="anchor" class="clip" data-start="0" data-duration="{duration}" data-track-index="1">'
-                       f'<div id="anchor-cam"><img id="a_base" src="assets/anchor/base.jpg" alt="" />{imgs}</div></div>')
+                       f'<div id="anchor-cam"><img id="a_base" src="assets/anchor/base.jpg" alt="" />{imgs}{tv_html}'
+                       f'</div></div>')
         # the anchor is on screen in the gaps around the stories' b-roll: intro, the leads between stories, outro
         edges = [0.0] + [t for w in W_ for t in w] + [duration]
         on_air = [(edges[k], edges[k + 1]) for k in range(0, len(edges), 2) if edges[k + 1] - edges[k] > 0.2]
@@ -465,7 +530,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         if "blink" in layers:
             for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
-        anchor_js = "\n".join(js)
+        anchor_js = "\n".join(js + tv_js)
     caps = word_cues(timing["words"])
     caps_html = "\n".join(
         f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
@@ -546,6 +611,11 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     #anchor-cam img {{ position: absolute; display: block; }}
     #a_base {{ left: 0; top: 0; width: {W}px; height: {H}px; }}
     #anchor-cam .patch {{ opacity: 0; }}
+    #tv {{ position: absolute; overflow: hidden; }}
+    #tv .tvs {{ position: absolute; inset: 0; opacity: 0; }}
+    #tv .tvs img {{ position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }}
+    #tv .tvbar {{ position: absolute; left: 0; right: 0; bottom: 0; background: #e3001b; color: #fff; font-size: 30px;
+                 font-weight: 900; letter-spacing: 1px; padding: 8px 16px 6px; white-space: nowrap; overflow: hidden; }}
     #greet {{ position: absolute; left: 0; top: 0; width: {W}px; height: {H}px; object-fit: cover; z-index: 2;
               transform-origin: 50% 32%; }}
     #lower {{ position: absolute; left: 40px; right: 40px; top: 1180px; z-index: 6; }}
