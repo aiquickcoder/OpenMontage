@@ -22,6 +22,20 @@ def test_full_text_wraps_story_with_anchor():
     assert build.full_text({"narration": {"text": "Новость."}}) == "Новость."
 
 
+def test_digest_reads_leads_between_stories_and_gets_one_window_each():
+    s = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"voice": "cedar"},
+         "stories": [{"lead": "Первое.", "text": "Горит театр.", "headline": "A"},
+                     {"lead": "Дальше.", "text": "Ищут девушку.", "headline": "B"}]}
+    assert build.full_text(s) == "Привет. Первое. Горит театр. Дальше. Ищут девушку. Пока."
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
+    # «Первое.» ends at 1.8 -> b-roll 1 from 1.95 to «Дальше.» at 4.0; b-roll 2 from 4.95 to «Пока.» at 7.0
+    assert build.story_windows(s, words, 9.0) == [[1.95, 3.9], [4.95, 6.9]]
+    one = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"text": "Горит театр."}}
+    assert build.story_windows(one, [[w, i, i + 0.8] for i, w in enumerate("Привет. Горит театр. Пока.".split())],
+                               5.0) == [[0.95, 2.9]]
+    assert build.windows({"broll": [1, 2]}) == [[1, 2]]
+
+
 def test_slots_fill_broll_window_and_continue_video(tmp_path: Path, monkeypatch):
     clip = tmp_path / "a.mp4"
     clip.write_bytes(b"x")

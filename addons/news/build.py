@@ -15,6 +15,12 @@ story.json (see addons/news/README.md and story.example.json):
   per shot: "sfx": {"src": "...", "volume": 0.4, "offset": 0} = one-shot at the cut; "audio": 0.35 = the clip's own
   sound (video shots with sound keep it at 0.35 by default; "audio": 0 mutes it). SFX files live in SFX_DIRS.
 
+Digest (several stories in one film): instead of "narration.text" + "shots", give
+  "stories": [{"lead": "<the anchor's line before this story>", "text": "<voice-over>", "headline", "shots",
+               "sound": {"ambience": ...}, "date"?, "source"?}, ...]
+The anchor reads intro + stories[0].lead, then each later story's lead between the stories, then the outro; each
+story gets its own b-roll window, plate (headline, "1 из 3") and ambience. One voice take covers the whole film.
+
 Each shot holds SHOT_S seconds (the last one stretches to the end). A video shot without "in" continues where the
 previous use of the same file stopped, so one source clip can feed several cuts. B-roll is pre-composed with ffmpeg
 into one silent 1080x1920 clip (blurred fill behind the picture, slow push-in on stills); HyperFrames lays the
@@ -74,9 +80,45 @@ def norm(token: str) -> str:
     return re.sub(r"[^\wё]", "", token.lower().replace("ё", "е"))
 
 
-def full_text(story: dict) -> str:
+def stories(story: dict) -> list[dict]:
+    """The film's stories: a digest's "stories", else the story itself (a one-story film)."""
+    return story["stories"] if story.get("stories") else [story]
+
+
+def parts(story: dict) -> list[dict]:
+    """What is read, in order: anchor lines and story voice-overs ({"kind": "anchor"|"story", "text", "i"})."""
     a = story.get("anchor") or {}
-    return " ".join(t.strip() for t in (a.get("intro", ""), story["narration"]["text"], a.get("outro", "")) if t.strip())
+    out = []
+    for i, s in enumerate(stories(story)):
+        lead = s.get("lead", "") if story.get("stories") else ""
+        if i == 0:
+            lead = f'{a.get("intro", "")} {lead}'
+        out.append({"kind": "anchor", "text": lead.strip(), "i": i})
+        out.append({"kind": "story", "text": (s.get("text") or story["narration"]["text"]).strip(), "i": i})
+    out.append({"kind": "anchor", "text": a.get("outro", "").strip(), "i": None})
+    return [p for p in out if p["text"]]
+
+
+def full_text(story: dict) -> str:
+    return " ".join(p["text"] for p in parts(story))
+
+
+def windows(timing: dict) -> list[list[float]]:
+    """One b-roll window per story (timing.json from before digests has only "broll")."""
+    return timing.get("windows") or [timing["broll"]]
+
+
+def story_windows(story: dict, words: list, duration: float) -> list[list[float]]:
+    """Each story's b-roll runs from just after the anchor's preceding line to just before the next one."""
+    out, k = [], 0
+    for p in parts(story):
+        n = len(plain(p["text"]).split())
+        if p["kind"] == "story":
+            b0 = round(words[k - 1][2] + 0.15, 3) if k else 0.0
+            b1 = round(words[k + n][1] - 0.1, 3) if k + n < len(words) else duration
+            out.append([b0, b1])
+        k += n
+    return out
 
 
 def speak(n: dict, out: Path) -> None:
@@ -159,12 +201,9 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, transcribe(audio))]
     speech_end = float(words[-1][2])
     duration = round(speech_end + TAIL_S, 2)
-    a = story.get("anchor") or {}
-    n_in, n_out = len(plain(a.get("intro", "")).split()), len(plain(a.get("outro", "")).split())
-    # b-roll window: from the end of the anchor's intro to the start of the outro (the whole film without an anchor)
-    b0 = round(words[n_in - 1][2] + 0.15, 3) if n_in else 0.0
-    b1 = round(words[len(words) - n_out][1] - 0.1, 3) if n_out else duration
-    timing = {"words": words, "speech_end": speech_end, "duration": duration, "broll": [b0, b1]}
+    ws = story_windows(story, words, duration)
+    timing = {"words": words, "speech_end": speech_end, "duration": duration, "windows": ws,
+              "broll": [ws[0][0], ws[-1][1]]}
     (A / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=1), encoding="utf-8")
     return timing
 
@@ -230,19 +269,25 @@ def segment(item: dict, dst: Path) -> None:
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
 
 
-def broll(proj: Path, items: list[dict]) -> Path:
+def broll(proj: Path, items: list[dict]) -> list[Path]:
+    """One silent clip per story window: assets/broll0.mp4, broll1.mp4, …"""
     d = proj / "assets" / "broll"
     shutil.rmtree(d, ignore_errors=True)
     d.mkdir(parents=True)
-    lst = []
-    for i, it in enumerate(items):
-        seg = d / f"s{i:02d}.mp4"
-        segment(it, seg)
-        lst.append(f"file '{seg.name}'")
-    (d / "list.txt").write_text("\n".join(lst) + "\n")
-    out = proj / "assets" / "broll.mp4"
-    sh(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(d / "list.txt"), "-c", "copy", str(out)])
-    return out
+    outs = []
+    for w in sorted({it["w"] for it in items}):
+        lst = []
+        for i, it in enumerate(items):
+            if it["w"] == w:
+                seg = d / f"s{i:02d}.mp4"
+                segment(it, seg)
+                lst.append(f"file '{seg.name}'")
+        (d / f"list{w}.txt").write_text("\n".join(lst) + "\n")
+        out = proj / "assets" / f"broll{w}.mp4"
+        sh(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(d / f"list{w}.txt"), "-c", "copy",
+            str(out)])
+        outs.append(out)
+    return outs
 
 
 # -- sound bed --------------------------------------------------------------------------------------
@@ -267,7 +312,7 @@ def has_audio(src: Path) -> bool:
 
 def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optional[Path]:
     """Every effect layer mixed into one track (assets/sfx.wav) that starts at 0 and lasts the whole film."""
-    snd, (b0, b1), total = story.get("sound") or {}, timing["broll"], timing["duration"]
+    snd, total = story.get("sound") or {}, timing["duration"]
     layers = []  # (input args, filter chain, start time)
 
     def clip(src, start, dur, vol, offset=0.0, fade_in=0.05, fade_out=0.3, loop=False):
@@ -287,13 +332,14 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     if snd.get("sting"):
         x = snd["sting"]
         clip(find_sfx(x["src"]), float(x.get("at", 0.0)), float(x.get("dur", 3.5)), x.get("volume", 0.45), fade_out=0.8)
-    if snd.get("ambience") and b1 > b0:
-        x = snd["ambience"]
-        clip(find_sfx(x["src"]), b0, b1 - b0, x.get("volume", 0.22), float(x.get("offset", 0)), 0.5, 0.6, loop=True)
-    if snd.get("whoosh"):
-        x = snd["whoosh"]
-        for t in ([b0] if b0 > 0.5 else []) + ([b1] if b1 < total - 0.5 else []):
-            clip(find_sfx(x["src"]), max(0.0, t - 0.3), float(x.get("dur", 1.0)), x.get("volume", 0.35), fade_out=0.4)
+    for s, (b0, b1) in zip(stories(story), windows(timing)):
+        x = (s.get("sound") or {}).get("ambience") or snd.get("ambience")  # a digest story may bring its own place
+        if x and b1 > b0:
+            clip(find_sfx(x["src"]), b0, b1 - b0, x.get("volume", 0.22), float(x.get("offset", 0)), 0.5, 0.6, loop=True)
+        if snd.get("whoosh"):
+            w = snd["whoosh"]
+            for t in ([b0] if b0 > 0.5 else []) + ([b1] if b1 < total - 0.5 else []):
+                clip(find_sfx(w["src"]), max(0.0, t - 0.3), float(w.get("dur", 1.0)), w.get("volume", 0.35), fade_out=0.4)
     for it in items:
         if it["video"] and it.get("audio", SOURCE_AUDIO) and has_audio(it["path"]):
             clip(it["path"], it["start"], it["dur"], it.get("audio", SOURCE_AUDIO), it["in"], 0.12, 0.12)
@@ -339,7 +385,9 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     shutil.rmtree(ws / "assets", ignore_errors=True)
     (ws / "assets").mkdir(parents=True)
     shutil.copy2(REPO / "addons" / "mural" / "vendor" / "gsap.min.js", ws / "assets" / "gsap.min.js")
-    shutil.copy2(proj / "assets" / "broll.mp4", ws / "assets" / "broll.mp4")
+    W_ = windows(timing)
+    for w in range(len(W_)):
+        shutil.copy2(proj / "assets" / f"broll{w}.mp4", ws / "assets" / f"broll{w}.mp4")
     shutil.copy2(proj / "assets" / "narration.mp3", ws / "assets" / "narration.mp3")
     duration = timing["duration"]
     music = dict(story.get("music") or {})
@@ -348,7 +396,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         print(f"music {music['src']} not found — rendering without music", flush=True)
     if found:
         shutil.copy2(found, ws / "assets" / "music.mp3")
-    b0, b1 = timing["broll"]
+    b0 = W_[0][0]
     anchor_html, anchor_js = "", ""
     a = story.get("anchor") or {}
     if a.get("dir"):
@@ -361,17 +409,20 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
                        f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px" />' for k, (x, y, w, h) in layers.items())
         anchor_html = (f'    <div id="anchor" class="clip" data-start="0" data-duration="{duration}" data-track-index="1">'
                        f'<div id="anchor-cam"><img id="a_base" src="assets/anchor/base.jpg" alt="" />{imgs}</div></div>')
-        windows = [(0.0, b0)] + ([(b1, duration)] if b1 < duration - 0.2 else [])
+        # the anchor is on screen in the gaps around the stories' b-roll: intro, the leads between stories, outro
+        edges = [0.0] + [t for w in W_ for t in w] + [duration]
+        on_air = [(edges[k], edges[k + 1]) for k in range(0, len(edges), 2) if edges[k + 1] - edges[k] > 0.2]
         js = []
-        for w0, w1 in windows:  # slow push-in while the anchor speaks
-            js.append(f'  tl.fromTo("#anchor-cam", {{scale: 1.0}}, {{scale: 1.045, duration: {w1 - w0:.2f}, ease: "none"}}, {w0:.2f});')
+        for k, (w0, w1) in enumerate(on_air):  # slow push-in while the anchor speaks
+            js.append(f'  tl.fromTo("#anchor-cam", {{scale: 1.0}}, {{scale: 1.045, duration: {w1 - w0:.2f}, ease: "none", '
+                      f'immediateRender: {str(k == 0).lower()}}}, {w0:.2f});')
         if "open" in layers:
-            for t, st in anc.mouth_track(proj / "assets" / "narration.mp3", FPS, windows, VOICE_AT, "mid" in layers):
+            for t, st in anc.mouth_track(proj / "assets" / "narration.mp3", FPS, on_air, VOICE_AT, "mid" in layers):
                 js.append(f'  tl.set("#a_open", {{opacity: {int(st == "open")}}}, {t});')
                 if "mid" in layers:
                     js.append(f'  tl.set("#a_mid", {{opacity: {int(st == "mid")}}}, {t});')
         if "blink" in layers:
-            for t, d in anc.blink_track(windows):
+            for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
         anchor_js = "\n".join(js)
     caps = word_cues(timing["words"])
@@ -414,7 +465,23 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         audio += (f'\n    <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="{duration}" '
                   f'data-track-index="12" data-volume="1"></audio>')
     audio_js = f'  tl.to("#bgm", {{ volume: 0, duration: 1.5, ease: "power1.in" }}, {duration - 1.5:.2f});' if found else ""
-    head = esc(story["headline"])
+    head = esc(story.get("headline") or stories(story)[0]["headline"])
+    S_ = stories(story)
+    broll_html, plate_html, plate_js = [], [], []
+    for w, (s, (w0, w1)) in enumerate(zip(S_, W_)):
+        date = esc(s.get("date") or story.get("date", ""))
+        if len(S_) > 1:
+            date = f"{w + 1} из {len(S_)} · {date}" if date else f"{w + 1} из {len(S_)}"
+        broll_html.append(f'    <video id="broll{w}" class="clip broll" src="assets/broll{w}.mp4" data-start="{w0}" '
+                          f'data-duration="{w1 - w0:.3f}" data-track-index="0" muted playsinline></video>')
+        plate_html.append(
+            f'    <div id="plate{w}" class="clip plate" data-start="{w0}" data-duration="{w1 - w0:.3f}" data-track-index="3">\n'
+            f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span><span class="date">{date}</span>\n'
+            f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n    </div>')
+        plate_js.append(
+            f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {w0 + 0.05:.2f});\n'
+            f'  tl.from("#plate{w} .date", {{ opacity: 0, duration: 0.3 }}, {w0 + 0.25:.2f});\n'
+            f'  tl.from("#plate{w} .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {w0 + 0.15:.2f});')
     lower_html = lower_js = ""
     if b0 > 0.5:  # anchor intro: the headline sits as a lower third over the desk
         lower_html = (f'    <div id="lower" class="clip" data-start="0" data-duration="{b0}" data-track-index="2">'
@@ -432,7 +499,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     body {{ margin: 0; background: #0b0b0d; }}
     #root {{ position: relative; width: {W}px; height: {H}px; overflow: hidden; background: #0b0b0d;
              font-family: "Arial Black", "DejaVu Sans", Arial, sans-serif; }}
-    #broll {{ position: absolute; left: 0; top: 0; width: {W}px; height: {H}px; object-fit: cover; z-index: 2; }}
+    .broll {{ position: absolute; left: 0; top: 0; width: {W}px; height: {H}px; object-fit: cover; z-index: 2; }}
     #anchor {{ position: absolute; inset: 0; overflow: hidden; z-index: 1; }}
     #anchor-cam {{ position: absolute; left: 0; top: 0; width: {W}px; height: {H}px; transform-origin: 50% 32%; }}
     #anchor-cam img {{ position: absolute; display: block; }}
@@ -443,13 +510,13 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
                    letter-spacing: 2px; padding: 9px 20px 7px; border-radius: 6px; }}
     #lower .head {{ margin-top: 12px; background: rgba(10,10,12,.88); color: #fff; font-size: 50px; line-height: 1.12;
                     font-weight: 900; padding: 18px 24px; border-left: 10px solid #e3001b; border-radius: 4px; }}
-    #plate {{ position: absolute; left: 48px; right: 48px; top: 120px; z-index: 6; }}
-    #plate .tag {{ display: inline-block; background: #e3001b; color: #fff; font-size: 40px; font-weight: 900;
+    .plate {{ position: absolute; left: 48px; right: 48px; top: 120px; z-index: 6; }}
+    .plate .tag {{ display: inline-block; background: #e3001b; color: #fff; font-size: 40px; font-weight: 900;
                    letter-spacing: 2px; padding: 10px 22px 8px; border-radius: 6px; }}
-    #plate .date {{ display: inline-block; margin-left: 14px; color: #fff; font-family: Arial, "DejaVu Sans", sans-serif;
+    .plate .date {{ display: inline-block; margin-left: 14px; color: #fff; font-family: Arial, "DejaVu Sans", sans-serif;
                     font-weight: 700; font-size: 34px; background: rgba(10,10,12,.86); padding: 9px 16px 8px;
                     border-radius: 6px; }}
-    #plate .head {{ margin-top: 18px; background: rgba(10,10,12,.86); color: #fff; font-size: 54px; line-height: 1.12;
+    .plate .head {{ margin-top: 18px; background: rgba(10,10,12,.86); color: #fff; font-size: 54px; line-height: 1.12;
                     font-weight: 900; padding: 20px 26px; border-left: 10px solid #e3001b; border-radius: 4px; }}
     .chip {{ position: absolute; z-index: 6; font-family: Arial, "DejaVu Sans", sans-serif; font-weight: 700; color: #fff; }}
     .chip.label {{ right: 22px; font-size: 20px; font-weight: 400; color: rgba(255,255,255,.42);
@@ -464,13 +531,10 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 </head>
 <body>
   <div id="root" data-composition-id="main" data-width="{W}" data-height="{H}" data-duration="{duration}">
-    <video id="broll" class="clip" src="assets/broll.mp4" data-start="{b0}" data-duration="{b1 - b0:.3f}" data-track-index="0" muted playsinline></video>
+{chr(10).join(broll_html)}
 {anchor_html}
 {lower_html}
-    <div id="plate" class="clip" data-start="{b0}" data-duration="{b1 - b0:.3f}" data-track-index="3">
-      <span class="tag">{esc(story.get('tag', 'ЧП · МОСКВА'))}</span><span class="date">{esc(story.get('date', ''))}</span>
-      <div class="head">{head}</div>
-    </div>
+{chr(10).join(plate_html)}
 {chr(10).join(chips)}
 {caps_html}
     <div id="fade" class="clip" data-start="0" data-duration="{duration}" data-track-index="8"></div>
@@ -479,9 +543,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 <script>
   window.__timelines = window.__timelines || {{}};
   const tl = gsap.timeline({{ paused: true }});
-  tl.from("#plate .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {b0 + 0.05:.2f});
-  tl.from("#plate .date", {{ opacity: 0, duration: 0.3 }}, {b0 + 0.25:.2f});
-  tl.from("#plate .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {b0 + 0.15:.2f});
+{chr(10).join(plate_js)}
 {lower_js}
 {anchor_js}
 {caps_js}
@@ -528,13 +590,14 @@ def main() -> None:
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
     timing = voice(proj, story, a.retime)
-    b0, b1 = timing["broll"]
-    need = max(1, math.ceil((b1 - b0) / SHOT_S - 0.15))
-    print(f"speech {timing['speech_end']:.1f}s, video {timing['duration']:.1f}s, shots needed {need} "
-          f"(have {len(story.get('shots', []))})", flush=True)
+    need = [(max(1, math.ceil((b1 - b0) / SHOT_S - 0.15)), len(s.get("shots", [])))
+            for s, (b0, b1) in zip(stories(story), windows(timing))]
+    print(f"speech {timing['speech_end']:.1f}s, video {timing['duration']:.1f}s, shots needed "
+          + ", ".join(f"{n} (have {h})" for n, h in need), flush=True)
     if a.voice_only:
         return
-    items = slots(story, timing["broll"], proj)
+    items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
+             for it in slots(s, win, proj)]
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
     sound_bed(proj, story, timing, items)
