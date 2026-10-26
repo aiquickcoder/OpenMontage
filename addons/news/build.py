@@ -22,6 +22,9 @@ Digest (several stories in one film): instead of "narration.text" + "shots", giv
 The anchor reads intro + stories[0].lead, then after each story its comment and the next lead, then the outro; each
 story gets its own b-roll window, plate (headline, "1 из 3") and ambience. One voice take covers the whole film.
 
+"anchor": {"greeting_clip": {"src": "addons/news/anchor_cat/greet_hello.mp4", "speech": [0.78, 4.1], "words": 4}}
+puts a generated (Veo) clip of the anchor saying the first n words over the opening, muted and re-timed to the voice.
+
 Each shot holds SHOT_S seconds (the last one stretches to the end). A video shot without "in" continues where the
 previous use of the same file stopped, so one source clip can feed several cuts. B-roll is pre-composed with ffmpeg
 into one silent 1080x1920 clip (blurred fill behind the picture, slow push-in on stills); HyperFrames lays the
@@ -379,6 +382,33 @@ def anchor_dir(proj: Path, d: str) -> Path:
     return (proj / p).resolve() if (proj / p).is_dir() else (REPO / p).resolve()
 
 
+def greeting_clip(proj: Path, story: dict, timing: dict, ws: Path) -> Optional[tuple[float, float]]:
+    """A generated video of the anchor saying the greeting (anchor.greeting_clip: {"src", "speech": [t0, t1] in the
+    clip, "words": n script words it says}) is re-timed so its line lands on the narration's first n words, muted,
+    and laid over the lip-flap anchor; returns (start, duration) in composition time."""
+    g = (story.get("anchor") or {}).get("greeting_clip")
+    if not g:
+        return None
+    src = (proj / g["src"]) if (proj / g["src"]).is_file() else (REPO / g["src"])
+    v0, v1 = g["speech"]
+    words = timing["words"][:int(g["words"])]
+    g0, g1 = words[0][1], words[-1][2]
+    k = (g1 - g0) / (v1 - v0)  # >1 slows the clip down
+    if not 0.7 <= k <= 1.4:
+        print(f"warning: greeting clip re-timed by {k:.2f} — lip sync will look off", flush=True)
+    _, _, length = probe(src)
+    t_start = g0 - v0 * k
+    in_off = max(0.0, -t_start / k)
+    in_end = min(length, v1 + float(g.get("tail", 0.6)))
+    start = max(0.0, t_start)
+    dur = min((in_end - in_off) * k, windows(timing)[0][0] - start)
+    sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{in_off:.3f}", "-t", f"{dur / k:.3f}", "-i", str(src), "-an", "-vf",
+        f"setpts=(PTS-STARTPTS)*{k:.4f},fps={FPS},scale={W}:{H}:flags=lanczos,format=yuv420p",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", str(ws / "assets" / "greet.mp4")])
+    print(f"greeting clip: x{k:.2f}, {start:.2f}s + {dur:.2f}s", flush=True)
+    return round(start, 3), round(dur, 3)
+
+
 def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -419,6 +449,14 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         for k, (w0, w1) in enumerate(on_air):  # slow push-in while the anchor speaks
             js.append(f'  tl.fromTo("#anchor-cam", {{scale: 1.0}}, {{scale: 1.045, duration: {w1 - w0:.2f}, ease: "none", '
                       f'immediateRender: {str(k == 0).lower()}}}, {w0:.2f});')
+        greet = greeting_clip(proj, story, timing, ws)
+        if greet:  # the generated greeting sits over the lip-flap anchor with the same push-in, then dissolves into it
+            g0, gd = greet
+            w0, w1 = on_air[0]
+            anchor_html += (f'\n    <video id="greet" class="clip" src="assets/greet.mp4" data-start="{g0}" '
+                            f'data-duration="{gd}" data-track-index="6" muted playsinline></video>')
+            js.append(f'  tl.fromTo("#greet", {{scale: 1.0}}, {{scale: 1.045, duration: {w1 - w0:.2f}, ease: "none"}}, {w0:.2f});')
+            js.append(f'  tl.to("#greet", {{opacity: 0, duration: 0.3, ease: "none"}}, {g0 + gd - 0.3:.2f});')
         if "open" in layers:
             for t, st in anc.mouth_track(proj / "assets" / "narration.mp3", FPS, on_air, VOICE_AT, "mid" in layers):
                 js.append(f'  tl.set("#a_open", {{opacity: {int(st == "open")}}}, {t});')
@@ -508,6 +546,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     #anchor-cam img {{ position: absolute; display: block; }}
     #a_base {{ left: 0; top: 0; width: {W}px; height: {H}px; }}
     #anchor-cam .patch {{ opacity: 0; }}
+    #greet {{ position: absolute; left: 0; top: 0; width: {W}px; height: {H}px; object-fit: cover; z-index: 2;
+              transform-origin: 50% 32%; }}
     #lower {{ position: absolute; left: 40px; right: 40px; top: 1180px; z-index: 6; }}
     #lower .tag {{ display: inline-block; background: #e3001b; color: #fff; font-size: 38px; font-weight: 900;
                    letter-spacing: 2px; padding: 9px 20px 7px; border-radius: 6px; }}
