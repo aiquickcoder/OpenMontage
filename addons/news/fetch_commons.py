@@ -37,7 +37,8 @@ for t in titles:
         art = strip((em.get("Artist") or {}).get("value", "?"))
         src = ii.get("thumburl") or ii.get("url")
         if not src: print("  ! no url:", t); continue
-        fn = re.sub(r'[^A-Za-z0-9._-]', '_', t.replace("File:", ""))[:60]
+        stem, ext = os.path.splitext(t.replace("File:", ""))
+        fn = re.sub(r'[^\wА-Яа-яЁё.-]', '_', stem)[:60] + ext.lower()  # keep Cyrillic and the extension
         dst = os.path.join(outdir, fn)
         try:
             req = urllib.request.Request(src, headers={"User-Agent": UA})
