@@ -182,3 +182,21 @@ def test_pick_weights_crime_and_can_keep_only_it():
     assert pick.judge({**e, "key": "j", "channels": ["fontankaspb"], "text": vyborg}, now, 36, set(), set(), "spb")["skip"] == []
     assert "война/БПЛА/политика" in pick.judge({**e, "key": "k", "channels": ["fontankaspb"],
                                                 "text": "Наблюдателя на выборах задержали"}, now, 36, set(), set(), "spb")["skip"]
+
+
+def test_pick_keeps_crashes_with_hurt_children_and_scams_that_mention_war():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 27, 15, 0, tzinfo=timezone.utc)
+    e = {"dt": "2026-10-27T10:00", "links": [], "media_got": ["photo"], "channels": ["tatarstansos"]}
+    crash = "8-летний ребенок пострадал в массовом ДТП на проспекте Универсиады в Казани, столкнулись пять машин"
+    assert pick.judge({**e, "key": "a", "text": crash}, now, 36, set(), set(), "kazan")["skip"] == []
+    assert "дети-жертвы" in pick.judge({**e, "key": "b", "text": "Двухлетний ребёнок погиб в ДТП на трассе"},
+                                       now, 36, set(), set(), "kazan")["skip"]
+    scam = ("Мошенники стали чаще обманывать татарстанцев под предлогом «замены домофона»: лжесотрудники пугают "
+            "незаконными переводами, в том числе для нужд ВСУ, и забирают деньги через курьеров")
+    assert pick.judge({**e, "key": "c", "text": scam}, now, 36, set(), set(), "kazan")["skip"] == []
+    assert "война/БПЛА/политика" in pick.judge({**e, "key": "d", "text": "ВСУ атаковали дроны над Татарстаном, пожар"},
+                                               now, 36, set(), set(), "kazan")["skip"]

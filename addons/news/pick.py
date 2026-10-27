@@ -30,14 +30,17 @@ REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import topics  # noqa: E402
 
-# never covered (README «Какое событие брать»)
+# never covered (README «Какое событие брать»). Children: deaths and violence only — a child hurt in a crash or a
+# fire is ordinary city news and stays (owner 2026-10-27, the five-car crash on проспект Универсиады)
 SKIP = {
     "война/БПЛА/политика": r"\bВСУ\b|\bСВО\b|БПЛА|беспилот|дрон|ракет|воздушн\w* тревог|в укрыти|обстрел|атак\w* (?:на|ВСУ)|мобилиз|санкци\w* (?:против|ЕС|США|Запад)|антироссийск\w* санкци|вв[её]л\w* санкци|выбор(?!г)|депутат|госдум|в кремле|кремль (?:заяв|сообщ|ответ|прокоммент|назва)|песков|митинг|теракт|политолог|оппозиц|иноагент|госизмен|экстремист",
     "суицид": r"суицид|самоубий|покончил\w* с собой|свёл счёты|свел счеты",
     "сексуальное насилие": r"изнасил|домогат|педофил|растлен|развращ",
-    "дети-жертвы": r"(?:ребён|ребен|младен|малыш|школьни|подрост|\d+-летн\w+ (?:мальчик|девочк))\w*.{0,60}(?:погиб|умер|скончал|пострадал|ранен|сбит|выпал|утонул)"
+    "дети-жертвы": r"(?:ребён|ребен|младен|малыш|школьни|подрост|\d+-летн\w+ (?:мальчик|девочк))\w*.{0,60}(?:погиб|умер|скончал|утонул|насмерть)"
                   r"|(?:убий|убил|убит|зарез|задуш|расправ|напал|нападени)\w*.{0,60}?(?:ребён|ребен|младен|малыш|мальчик|девочк|школьни)",
 }
+SCAM = r"мошенн|афер|лжесотрудник|лжеполицейск"
+SCAM_WAR = r"(?:на |для |в пользу )?(?:нужд\w* |финансирован\w* |помощ\w* )?ВСУ"
 # how much of a real incident it is: strong words score, curiosities do not
 CRIME_BONUS, DETENTION_BONUS = 1.0, 1.0  # the format's focus: crimes, and detentions above all
 STRONG = r"пожар|(?<![а-яё])горит|загорел|взрыв|ДТП|авари|столкн|сбил|наезд|(?<![а-яё])нож|зарез|стрельб|выстрел|шприц|укол|напал|ограб|похит|обрушен|рухн|провал|затопи|прорыв|эвакуац|задержан|пропал\w* без вести|исчез"
@@ -88,7 +91,9 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
           city: str = "moscow", crime_only: bool = False) -> dict:
     text = e.get("text", "")
     tags = topics.tags(text)
-    why_not = [name for name, rx in SKIP.items() if re.search(rx, text, re.I)]
+    # fraud scripts scare victims with «переводы для нужд ВСУ» — that is a scam story, not war news
+    checked = re.sub(SCAM_WAR, " ", text, flags=re.I) if re.search(SCAM, text, re.I) else text
+    why_not = [name for name, rx in SKIP.items() if re.search(rx, checked, re.I)]
     if not topics.is_event(text):  # the base may come from an older harvester or from the owner's own one
         why_not.append("не ЧП")
     if crime_only and "crime" not in tags:
