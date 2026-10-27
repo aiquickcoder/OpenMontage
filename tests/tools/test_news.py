@@ -172,3 +172,13 @@ def test_pick_weights_crime_and_can_keep_only_it():
                           "kazan")["skip"] == [], crime
     for politics in ("Евросоюз ввёл санкции против главы республики", "В Кремле заявили о новых мерах"):
         assert "война/БПЛА/политика" in pick.judge({**e, "key": "g", "text": politics}, now, 36, set(), set())["skip"]
+    for child in ("Учителя подозревают в убийстве двухлетнего ребёнка и его бабушки",
+                  "Задержан подозреваемый в убийстве женщины и ребенка", "Мужчина напал на 15-летнюю школьницу"):
+        assert "дети-жертвы" in pick.judge({**e, "key": "h", "channels": ["fontankaspb"], "text": child}, now, 36,
+                                           set(), set(), "spb")["skip"], child
+    assert pick.judge({**e, "key": "i", "channels": ["fontankaspb"], "text": "Задержан подозреваемый в убийстве соседа"},
+                      now, 36, set(), set(), "spb")["skip"] == []
+    vyborg = "В Выборгском районе Петербурга наряд Росгвардии задержал женщину, находившуюся в розыске"
+    assert pick.judge({**e, "key": "j", "channels": ["fontankaspb"], "text": vyborg}, now, 36, set(), set(), "spb")["skip"] == []
+    assert "война/БПЛА/политика" in pick.judge({**e, "key": "k", "channels": ["fontankaspb"],
+                                                "text": "Наблюдателя на выборах задержали"}, now, 36, set(), set(), "spb")["skip"]
