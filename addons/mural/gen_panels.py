@@ -12,6 +12,7 @@ Writes <out_dir>/<sheet id>.png, <panel id>.png (+ _2 variant) and .prompt.txt. 
 re-run resumes; pass panel ids to redraw only those (delete their old files first). Prints DONE at the end.
 """
 import json
+import os
 import shutil
 import sys
 import time
@@ -32,12 +33,15 @@ FALLBACK_MODEL = "nano2"  # Nano Banana 2: separate per-model daily quota, same 
 # After PRO_DOWN_AFTER such empty Pro answers in a row, the rest of the run goes straight to the fallback model.
 PRO_DOWN_AFTER = 2
 _pro_empty = 0
-_state: Path | None = None  # <out>/.pro_state.json: {"day": UTC date, "empty": n} — survives re-runs on the same day
+# {"day": UTC date, "empty": n}, shared by every project of the account: a Pro outage seen by one run is not
+# re-learned by the next one (each new project used to burn two ~11-min empty Pro tries first)
+_state: Path | None = None
 
 
 def _load_state(out: Path) -> None:
     global _pro_empty, _state
-    _state = out / ".pro_state.json"
+    _state = Path(os.environ.get("FLOW_PRO_STATE") or Path.home() / ".cache" / "openmontage" / "flow_pro_state.json")
+    _state.parent.mkdir(parents=True, exist_ok=True)
     try:
         data = json.loads(_state.read_text())
         _pro_empty = data["empty"] if data.get("day") == time.strftime("%Y-%m-%d", time.gmtime()) else 0
