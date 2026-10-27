@@ -27,6 +27,8 @@ The approved Kazan reference is `projects/news-kzn-vypusk-26-10/story.json` (a f
    - One event often comes as several candidates from different channels (different first words): merge them,
      list every link and key in `source`, prefer the version with the most facts and media.
    - Air-raid alerts, drones and missiles are war, not this format (pick.py drops them).
+   - Detentions and crimes come first, as for Moscow (`--crime` lists only them); «Кремлёвская дамба/набережная» is a
+     Kazan place, not politics.
 2. **Anchor.** Already built in `addons/news/anchor_kzn` (base + open/mid/blink layers). To rebuild it from a new owner
    picture: `addons/news/gen_anchor.py <picture> <dir> --left "ЧП · КАЗАНЬ" --right "ПРОИСШЕСТВИЯ"` on the server,
    then boxes in `anchor.json` and `anchor.prepare(<dir>)` (README «Ведущий»).

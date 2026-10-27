@@ -25,11 +25,14 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.
    - Mac base: `~/memes/msk_chp_base`. Server base: `/srv/factory/news_base`.
+   - Focus (owner, 2026-10-27): detentions and crimes. `pick.py` already weights them (🔒 detention, 🚔 crime);
+     `--crime` lists only them. A digest of 3–4 stories should hold at least one crime story when there is one.
    - Take candidate #1 unless there is a reason not to, and say the reason. If the user named an event or gave a
      post, use that instead.
    - Say which event you took, its score and why. Write `source.key` into the story so it is never offered again.
 2. **Story.** Write `projects/news-<slug>/story.json`.
-   - Facts only from the post(s); numbers as words; no names of victims or suspects; 55–62 words in total
+   - Facts only from the post(s); numbers as words; no names of victims or suspects; until a verdict a person is a
+     suspect («задержан подозреваемый», «по версии следствия»), never «преступник» or «убийца»; 55–62 words in total
      (≈31–34 s; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
    - Run `build.py … --voice-only` to learn how many 3-second shots are needed, then list exactly that many.
 3. **Pictures.**

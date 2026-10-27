@@ -122,3 +122,34 @@ def test_pick_city_geo_from_cities_json():
                              now, 36, set(), set(), "kazan")
     assert local["skip"] == [] and federal_kzn["skip"] == [] and federal_msk["skip"] == ["не Казань"]
     assert pick.judge({**e, "key": "d", "channels": ["moscowach"], "text": "Пожар на складе"}, now, 36, set(), set())["skip"] == []
+
+
+def test_topics_tag_crimes_and_detentions_from_word_starts():
+    from addons.news import topics
+
+    assert topics.tags("Полиция задержала подозреваемого") == ["crime", "detention"]
+    assert topics.tags("Перестрелка в Химках, следователи возбудили дело")[0] == "crime"
+    assert topics.tags("Двое погибли в ДТП") == ["accident", "dtp", "fatal"]
+    for calm in ("Вследствие дождей размыло дорогу", "Новая посуда", "Задержка рейса на три часа",
+                 "Девушка решила испытать судьбу", "Тараканы захватили общагу", "Захватывающий матч"):
+        assert topics.tags(calm) == ["other"], calm
+    assert topics.is_event("Мошенники обманули пенсионерку") and not topics.is_event("Открыли новый парк")
+
+
+def test_pick_weights_crime_and_can_keep_only_it():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+    e = {"dt": "2026-10-27T10:00", "channels": ["moscowach"], "links": [], "media_got": ["photo"]}
+    arrest = pick.judge({**e, "key": "a", "text": "В Москве задержали мужчину, который напал на прохожего"}, now, 36, set(), set())
+    theft = pick.judge({**e, "key": "b", "text": "В Москве украли самокат у подъезда"}, now, 36, set(), set())
+    oddity = pick.judge({**e, "key": "c", "text": "В Москве открыли новый парк"}, now, 36, set(), set())
+    assert arrest["tags"][:2] == ["crime", "detention"] and arrest["score"] > theft["score"] > oddity["score"]
+    assert pick.judge({**e, "key": "c", "text": "Пожар на складе"}, now, 36, set(), set(), crime_only=True)["skip"] == ["не криминал"]
+    political = pick.judge({**e, "key": "d", "text": "Суд арестовал политолога"}, now, 36, set(), set())
+    assert "война/БПЛА/политика" in political["skip"]
+    dam = pick.judge({**e, "key": "e", "channels": ["mash_iptash"], "text": "Гонщика с Кремлёвской дамбы лишили прав"},
+                     now, 36, set(), set(), "kazan")
+    assert dam["skip"] == []

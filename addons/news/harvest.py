@@ -1,15 +1,20 @@
-"""Харвестер базы московских ЧП из Telegram-каналов (веб-превью t.me/s/<ch>).
-Тянет набор каналов → фильтрует московские происшествия → дедуп по тексту →
-качает медиа (фото/видео) СРАЗУ (токены в ссылках короткоживущие) → base.json.
+"""Харвестер базы ЧП города (Москва, Казань — cities.json) из Telegram-каналов (веб-превью t.me/s/<ch>).
+Тянет набор каналов → фильтрует происшествия и преступления города → дедуп по тексту →
+качает медиа (фото/видео) СРАЗУ (токены в ссылках короткоживущие) → base.json + crime.json.
+Каждое событие помечено тегами topics.py (crime, detention, accident, fire, dtp, fatal);
+crime.json — срез с тегом crime (задержания, убийства, кражи, мошенничество, суд…).
 
 Запуск:  python3 -I addons/news/harvest.py [N_постов_на_канал] [--city moscow|kazan] [--out DIR]
-Вывод:   DIR/base.json  +  DIR/media/<key>/{NN_mp4.mp4,NN_photo.jpg}
+Вывод:   DIR/base.json  +  DIR/crime.json  +  DIR/media/<key>/{NN_mp4.mp4,NN_photo.jpg}
          DIR по умолчанию: $NEWS_BASE или base города из cities.json (сервер: server_base).
 Свежая база ПЕРЕЗАПИСЫВАЕТ base.json, но медиа прошлых прогонов остаются в media/ (ключ события стабилен).
 
 HTML каналов = НЕДОВЕРЕННЫЕ данные: только регекс-извлечение, ничего не исполняем.
 """
 import os, re, sys, json, html, time, hashlib, subprocess, urllib.request, urllib.error
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import topics  # noqa: E402
 
 _args = sys.argv[1:]
 _opt = {}
@@ -29,12 +34,9 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/
 # (handle, городской-ли канал целиком) из cities.json. Для федеральных применяем гео-фильтр города.
 CHANNELS = [tuple(c) for c in CITY["channels"]]
 
-CHP = re.compile(r'пожар|(?<![а-яё])(?:за|с|вы|по|до)?гор(ит|ел|ящ|яч)|взрыв|задым|дым\b|ДТП|авар|столкн|обруш|рухн|провал|'
-                 r'эвакуац|МЧС|спас(ли|атель)|погиб|пострадал|прорыв|потоп|затопи|прорвал|'
-                 r'наезд|сбил|упал|выпал|стрельб|(?<![а-яё])нож|зарез|захват|заложник|утечк|газ\b|'
-                 r'тонул|утонул|укол|шприц|напал|нанёс|ограб|похит|поджог|обвал', re.I)
 GEO = re.compile(CITY["harvest_geo"], re.I)
-NOISE = re.compile(r'реклам|промокод|подпис\w+ на|erid|разыгрыва|скидк|\bбот\b|telegram to view', re.I)
+NOISE = re.compile(r'реклам|промокод|подпис\w+ на|erid|разыгрыва|скидк|\bбот\b|telegram to view|'
+                   r'кухонн\w* нож|набор\w* нож|мурал|памятник погибш|в память погибш', re.I)
 
 def fetch(url, rng=False):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": "https://t.me/",
@@ -94,7 +96,7 @@ for ch, is_msk in CHANNELS:
     kept = 0
     for p in posts:
         if NOISE.search(p["text"]): continue
-        if not CHP.search(p["text"]): continue
+        if not topics.is_event(p["text"]): continue
         if not is_msk and not GEO.search(p["text"]): continue
         all_posts.append(p); kept += 1
     span = f'{min(p["dt"] for p in posts)}…{max(p["dt"] for p in posts)}' if posts else "-"
@@ -136,9 +138,15 @@ for e in events.values():
     e["media_got"] = got
 
 out = sorted(events.values(), key=lambda x: x["dt"], reverse=True)
+for e in out:
+    e["tags"] = topics.tags(e["text"])
 json.dump(out, open(os.path.join(BASE, "base.json"), "w"), ensure_ascii=False, indent=2)
+crime = [e for e in out if "crime" in e["tags"]]
+json.dump(crime, open(os.path.join(BASE, "crime.json"), "w"), ensure_ascii=False, indent=2)
 
-print(f"\n=== БАЗА: {len(out)} событий → base.json ===")
+det = sum("detention" in e["tags"] for e in out)
+print(f"\n=== БАЗА: {len(out)} событий · {len(crime)} крим · {det} задержаний → base.json + crime.json ===")
 for e in out:
     media = "".join({"mp4": "🎬", "photo": "🖼"}.get(g, "") for g in e.get("media_got", [])) or "·"
-    print(f'[{e["dt"]}] {media:3} {"+".join(e["channels"]):<22} {e["text"][:88]}')
+    mark = "🔒" if "detention" in e["tags"] else "🚔" if "crime" in e["tags"] else "  "
+    print(f'{mark}[{e["dt"]}] {media:3} {"+".join(e["channels"]):<22} {e["text"][:88]}')
