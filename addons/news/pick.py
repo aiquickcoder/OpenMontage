@@ -1,6 +1,6 @@
 """Stage 1 of the news workflow: find the city's fresh incidents and crimes and rank them for a «ЧП» short.
 
-    python3 -I addons/news/pick.py [--city moscow|kazan] [--base DIR] [--posts 150] [--hours 36] [--top 5] [--no-harvest] [--crime]
+    python3 -I addons/news/pick.py [--city moscow|kazan|spb] [--base DIR] [--posts 150] [--hours 36] [--top 5] [--no-harvest] [--crime]
 
 1. Runs harvest.py (Telegram previews -> <base>/base.json + media/), unless --no-harvest.
 2. Drops what the format never covers (war / drones / politics, suicide, sexual violence, child victims), events that

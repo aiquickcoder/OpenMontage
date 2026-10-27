@@ -1,10 +1,10 @@
-"""Харвестер базы ЧП города (Москва, Казань — cities.json) из Telegram-каналов (веб-превью t.me/s/<ch>).
+"""Харвестер базы ЧП города (Москва, Казань, Петербург — cities.json) из Telegram-каналов (веб-превью t.me/s/<ch>).
 Тянет набор каналов → фильтрует происшествия и преступления города → дедуп по тексту →
 качает медиа (фото/видео) СРАЗУ (токены в ссылках короткоживущие) → base.json + crime.json.
 Каждое событие помечено тегами topics.py (crime, detention, accident, fire, dtp, fatal);
 crime.json — срез с тегом crime (задержания, убийства, кражи, мошенничество, суд…).
 
-Запуск:  python3 -I addons/news/harvest.py [N_постов_на_канал] [--city moscow|kazan] [--out DIR]
+Запуск:  python3 -I addons/news/harvest.py [N_постов_на_канал] [--city moscow|kazan|spb] [--out DIR]
 Вывод:   DIR/base.json  +  DIR/crime.json  +  DIR/media/<key>/{NN_mp4.mp4,NN_photo.jpg}
          DIR по умолчанию: $NEWS_BASE или base города из cities.json (сервер: server_base).
 Свежая база ПЕРЕЗАПИСЫВАЕТ base.json, но медиа прошлых прогонов остаются в media/ (ключ события стабилен).

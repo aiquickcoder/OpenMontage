@@ -122,6 +122,12 @@ def test_pick_city_geo_from_cities_json():
                              now, 36, set(), set(), "kazan")
     assert local["skip"] == [] and federal_kzn["skip"] == [] and federal_msk["skip"] == ["не Казань"]
     assert pick.judge({**e, "key": "d", "channels": ["moscowach"], "text": "Пожар на складе"}, now, 36, set(), set())["skip"] == []
+    spb = [pick.judge({**e, "key": k, "channels": ["mash"], "text": t}, now, 36, set(), set(), "spb")["skip"]
+           for k, t in (("e", "В Петербурге задержали поджигателя"), ("f", "ДТП в Гатчине, пострадали двое"),
+                        ("g", "Авария на Ленинградском шоссе в Москве"))]
+    assert spb == [[], ["не Петербург"], ["не Петербург"]]  # Ленобласть is not «ЧП Петербург», as Подмосковье is not Moscow
+    assert pick.judge({**e, "key": "h", "channels": ["fontankaspb"], "text": "Пожар на складе"}, now, 36, set(), set(),
+                      "spb")["skip"] == []
 
 
 def test_topics_tag_crimes_and_detentions_from_word_starts():

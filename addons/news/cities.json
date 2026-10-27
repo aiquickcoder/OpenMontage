@@ -45,5 +45,30 @@
   "harvest_geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
   "geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
   "_note": "channels checked through t.me/s on 2026-10-26; zhest_dtp16 is anonymous — prefer a second source for its stories"
+ },
+ "spb": {
+  "name": "Петербург",
+  "show": "ЧП Петербург",
+  "tag": "ЧП · ПЕТЕРБУРГ",
+  "anchor": "addons/news/anchor_spb",
+  "base": "~/memes/spb_chp_base",
+  "server_base": "/srv/factory/news_base_spb",
+  "channels": [
+   ["fontankaspb", true],
+   ["dtp_spb78", true],
+   ["incident_spb", true],
+   ["Megapolisonline", true],
+   ["nevnov", true],
+   ["nevskie_novosti", true],
+   ["rotondamedia", true],
+   ["chp_piter", true],
+   ["shot_shot", false],
+   ["mash", false],
+   ["bazabazon", false],
+   ["ostorozhno_novosti", false]
+  ],
+  "harvest_geo": "петербур|\\bспб\\b|\\bпитер|ленинградск\\w* облас|ленобласт|петроград|кронштадт|колпино|петергоф|пулково|купчино|девяткино|гатчин|всеволожск|\\bвыборг",
+  "geo": "петербур|\\bспб\\b|\\bпитер|петроград|кронштадт|колпино|петергоф|пулково|купчино|сестрорецк|зеленогорск|невск\\w* проспект",
+  "_note": "channels from the owner's ~/memes/spb_chp_base/harvest_chp.py (checked 2026-10-27); Ленобласть is harvested but is not «ЧП Петербург», as Подмосковье is not «ЧП Москва»; a bare «ленинградск» would catch Moscow's Ленинградское шоссе"
  }
 }
