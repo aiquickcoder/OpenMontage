@@ -9,10 +9,14 @@
   "channels": [
    ["moscowach", true],
    ["moscowmap", true],
+   ["ostorozhno_moskva", true],
+   ["moscowcourts", true],
    ["shot_shot", false],
    ["mash", false],
    ["bazabazon", false],
-   ["ostorozhno_novosti", false]
+   ["ostorozhno_novosti", false],
+   ["infomoscow24", false],
+   ["breakingmash", false]
   ],
   "harvest_geo": "москв|москов|подмоск|мкад|\\bметро\\b|коммунарк|зеленоград|новой москв|новая москва|садов\\w+ кольц",
   "geo": "москв|москов|\\bметро\\b|мкад|зеленоград|коммунарк|новая москва|новой москв|садов\\w+ кольц",
