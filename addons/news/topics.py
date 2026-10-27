@@ -18,11 +18,15 @@ CRIME = re.compile(WS + r"(?:задержа(?:н|л|ни)|арест|под ст
                    r"перестрел|стрел(?:ял|ьб)|выстрел|напал|нападени|напавш|нож|поджог|поджёг|ограб|граб[её]ж|грабител|разбой|краж|"
                    r"украл|вор(?:а|ы|ов)?(?![а-яё])|воровств|похит|похищ|мошенн|афер|избил|избиени|побо(?:и|ев)|наркот|"
                    r"закладк|вымогат|взятк|взяточ|коррупц|хищени|контрабанд|заложник|укол|шприц|хулиган|"
-                   r"изнасил|растлен|педофил|развращ)", re.I)
+                   r"изнасил|растлен|педофил|развращ|лиш\w* прав|лишени\w* прав|пьян\w* (?:за рул|водител)|нетрезв|без прав)", re.I)
 DETENTION = re.compile(WS + r"(?:задержа(?:н|л|ни)|арест|под стражу|сизо(?![а-яё])|розыск|разыск|ориентировк)", re.I)
 FIRE = re.compile(WS + r"(?:пожар|(?:за|с|вы|по|до)?гор(?:ит|ел|ящ|яч)|поджог|поджёг|задым)", re.I)
 DTP = re.compile(WS + r"(?:ДТП|авар|столкн|наезд|сбил|перевернул)", re.I)
 FATAL = re.compile(WS + r"(?:погиб|смерт|насмерть|скончал|труп|тел[оа](?![а-яё]))", re.I)
+
+# «рейс задержали на 14 часов», «задержка поездов»: a delayed flight or train is not a detention
+DELAY = re.compile(r"(?:рейс|вылет|поезд|электричк)\w*[^.!?]{0,60}?задерж\w*|"
+                   r"задерж\w*[^.!?]{0,40}?(?:рейс|вылет|поезд|электричк)\w*", re.I)
 
 TAGS = (("crime", CRIME), ("detention", DETENTION), ("accident", ACCIDENT), ("fire", FIRE), ("dtp", DTP),
         ("fatal", FATAL))
@@ -30,9 +34,11 @@ TAGS = (("crime", CRIME), ("detention", DETENTION), ("accident", ACCIDENT), ("fi
 
 def tags(text: str) -> list[str]:
     """Event tags, e.g. ["crime", "detention"]; ["other"] when nothing matches."""
+    text = DELAY.sub(" ", text)
     return [name for name, rx in TAGS if rx.search(text)] or ["other"]
 
 
 def is_event(text: str) -> bool:
     """An incident or a crime — what the harvester keeps."""
+    text = DELAY.sub(" ", text)
     return bool(ACCIDENT.search(text) or CRIME.search(text))

@@ -88,6 +88,8 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     text = e.get("text", "")
     tags = topics.tags(text)
     why_not = [name for name, rx in SKIP.items() if re.search(rx, text, re.I)]
+    if not topics.is_event(text):  # the base may come from an older harvester or from the owner's own one
+        why_not.append("не ЧП")
     if crime_only and "crime" not in tags:
         why_not.append("не криминал")
     chans = set(e.get("channels") or [])

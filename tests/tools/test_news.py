@@ -133,7 +133,8 @@ def test_topics_tag_crimes_and_detentions_from_word_starts():
     for calm in ("Вследствие дождей размыло дорогу", "Новая посуда", "Задержка рейса на три часа",
                  "Девушка решила испытать судьбу", "Тараканы захватили общагу", "Захватывающий матч",
                  "Харри Кейн — лучший нападающий года", "Суд приостановил работу трёх кафе",
-                 "Мосгорсуд удовлетворил иск телеканала"):
+                 "Мосгорсуд удовлетворил иск телеканала", "Около 100 рейсов задержаны в Шереметьево",
+                 "Рейс Москва-Мурманск задержали на 14 часов"):
         assert topics.tags(calm) == ["other"], calm
     assert topics.tags("Судья отправил его в СИЗО")[:2] == ["crime", "detention"]
     assert topics.tags("В суде огласили приговор") == ["crime"]
@@ -152,6 +153,8 @@ def test_pick_weights_crime_and_can_keep_only_it():
     oddity = pick.judge({**e, "key": "c", "text": "В Москве открыли новый парк"}, now, 36, set(), set())
     assert arrest["tags"][:2] == ["crime", "detention"] and arrest["score"] > theft["score"] > oddity["score"]
     assert pick.judge({**e, "key": "c", "text": "Пожар на складе"}, now, 36, set(), set(), crime_only=True)["skip"] == ["не криминал"]
+    assert "не ЧП" in pick.judge({**e, "key": "h", "text": "Харри Кейн — лучший нападающий года, Москва"}, now, 36, set(),
+                                 set())["skip"]
     political = pick.judge({**e, "key": "d", "text": "Суд арестовал политолога"}, now, 36, set(), set())
     assert "война/БПЛА/политика" in political["skip"]
     dam = pick.judge({**e, "key": "e", "channels": ["mash_iptash"], "text": "Гонщика с Кремлёвской дамбы лишили прав"},
