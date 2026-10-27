@@ -128,7 +128,7 @@ def main() -> None:
         p = subprocess.run([sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--city", a.city,
                             "--out", str(base)],
                            capture_output=True, text=True)
-        print("\n".join(l for l in p.stdout.splitlines() if l.startswith("  ")), flush=True)  # per-channel counts
+        print("\n".join(l for l in p.stdout.splitlines() if re.match(r"  (?:!|\S+: постов)", l)), flush=True)  # per-channel counts
         if p.returncode != 0:
             sys.exit(f"harvest failed: {p.stderr.strip()[-400:]}")
     events = json.loads((base / "base.json").read_text(encoding="utf-8"))
