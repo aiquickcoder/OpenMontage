@@ -153,3 +153,9 @@ def test_pick_weights_crime_and_can_keep_only_it():
     dam = pick.judge({**e, "key": "e", "channels": ["mash_iptash"], "text": "Гонщика с Кремлёвской дамбы лишили прав"},
                      now, 36, set(), set(), "kazan")
     assert dam["skip"] == []
+    for crime in ("Казанца задержали за передачу мошенникам денег, санкция статьи — до десяти лет",
+                  "В Казанском кремле нашли коррупционные нарушения"):
+        assert pick.judge({**e, "key": "f", "channels": ["tatarstansos"], "text": crime}, now, 36, set(), set(),
+                          "kazan")["skip"] == [], crime
+    for politics in ("Евросоюз ввёл санкции против главы республики", "В Кремле заявили о новых мерах"):
+        assert "война/БПЛА/политика" in pick.judge({**e, "key": "g", "text": politics}, now, 36, set(), set())["skip"]
