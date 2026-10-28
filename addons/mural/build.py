@@ -99,6 +99,9 @@ def word_cues(words: list) -> list[tuple[float, float, str]]:
     """Captions from real word timings: 2–4 words, split after punctuation, on screen while spoken."""
     cues, cur = [], []
     for w in words:
+        if not cur and cues and not any(ch.isalnum() for ch in w[0]):  # a lone «—» rides with the cue before it
+            cues[-1].append(w)
+            continue
         cur.append(w)
         if len(cur) >= MAX_CUE_WORDS or w[0].rstrip().endswith(CUE_PUNCT):
             cues.append(cur)
@@ -115,7 +118,8 @@ def word_cues(words: list) -> list[tuple[float, float, str]]:
     for k in range(len(out) - 1):  # never overlap the next cue
         if out[k][1] > out[k + 1][0]:
             out[k] = (out[k][0], out[k + 1][0], out[k][2])
-    return out
+    # a zero-length cue would stay on screen to the end of the film (HyperFrames reads no duration as «all of it»)
+    return [c for c in out if c[1] - c[0] >= 0.05]
 
 
 def panel_timing(proj: Path, story: dict) -> Optional[dict]:

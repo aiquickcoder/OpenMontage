@@ -247,3 +247,14 @@ def test_script_words_keeps_a_dash_next_to_its_neighbours():
     out = build.script_words("За неделю в Татарстане — шесть таких случаев. Никому не называйте коды", heard)
     dash = next(w for w in out if w[0] == "—")
     assert 1.5 <= dash[1] <= dash[2] <= 2.1  # between «Татарстане» (1.5–1.9) and «шесть» (2.0), not at the far «—»
+
+
+def test_word_cues_never_leave_a_lone_dash_or_an_empty_cue():
+    from addons.mural.build import word_cues
+
+    words = [["За", 55.0, 55.3], ["неделю", 55.3, 55.7], ["в", 55.7, 55.8], ["Татарстане", 56.2, 56.82],
+             ["—", 56.82, 57.02], ["шесть", 56.82, 57.18], ["таких", 57.2, 57.5], ["случаев.", 57.5, 58.0]]
+    cues = word_cues(words)
+    assert all(b - a >= 0.05 for a, b, _ in cues)
+    assert not any(t.strip() == "—" for _, _, t in cues)
+    assert cues[0][2].endswith("Татарстане —")
