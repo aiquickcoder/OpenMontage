@@ -237,3 +237,13 @@ def test_build_refuses_post_footage_that_was_not_cleaned():
         {"src": "illustrations/i1.png", "label": "ИИ-иллюстрация"}]}]}
     assert build.unclean_footage(story) == ["media/clip.mp4"]
     assert build.unclean_footage({**story, "footage_clean": False}) == []
+
+
+def test_script_words_keeps_a_dash_next_to_its_neighbours():
+    from addons.news import build
+
+    heard = [{"word": w, "start": i * 0.5, "end": i * 0.5 + 0.4} for i, w in enumerate(
+        ["за", "неделю", "в", "татарстане", "шесть", "таких", "случаев", "—", "никому", "не", "называйте", "коды"])]
+    out = build.script_words("За неделю в Татарстане — шесть таких случаев. Никому не называйте коды", heard)
+    dash = next(w for w in out if w[0] == "—")
+    assert 1.5 <= dash[1] <= dash[2] <= 2.1  # between «Татарстане» (1.5–1.9) and «шесть» (2.0), not at the far «—»

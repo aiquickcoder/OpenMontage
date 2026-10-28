@@ -186,7 +186,10 @@ def transcribe(audio: Path) -> list[dict]:
 def script_words(text: str, heard: list[dict]) -> list[list]:
     """Captions show the SCRIPT's words (whisper misspells names) at the times they were heard."""
     script = plain(text).split()
-    a, b = [norm(t) for t in script], [norm(w["word"]) for w in heard]
+    # a dash or a lone quote normalises to "", and "" would match any empty heard token far away (a 28 s «—» caption,
+    # 2026-10-28): such tokens never match and are spread between their heard neighbours like an unheard word
+    a = [norm(t) or f"\0{i}" for i, t in enumerate(script)]
+    b = [norm(w["word"]) or "\1" for w in heard]
     pos = {}
     for blk in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
         for k in range(blk.size):

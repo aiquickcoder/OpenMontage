@@ -1,8 +1,10 @@
 """The unattended morning digest: Claude Code headless runs the news agent so the film is in the owner's bot by 9:00.
 
-    .venv/bin/python addons/news/morning.py [--city russia] [--deadline 08:45]
+    .venv/bin/python addons/news/morning.py [--city russia] [--deadline 08:45]      # a new digest from today's news
+    .venv/bin/python addons/news/morning.py --project projects/<slug> [--deadline HH:MM]  # finish a started one
 
-Started by news-morning-ru.timer at 06:00 MSK with /opt/openmontage/.env and /opt/watermark-cleaner/deploy/.env, after
+Timers (all MSK): news-morning-ru 06:00 (in the bot by 9:00); news-evening-kazan 17:30, -moscow 17:50, -spb 18:10
+(in the bot by 20:45, the best evening window by the 14-day channel stats). Started with /opt/openmontage/.env and /opt/watermark-cleaner/deploy/.env, after
 the night pre-clean (01:00–07:00) has cleaned the best candidates' footage. Same launch as the factory worker
 (factory/runner.py): `claude -p`, acceptEdits, Bash/Read/Write/Edit/Glob/Grep, Anthropic traffic through
 FACTORY_CLAUDE_PROXY. The agent's last line is MORNING_RESULT; anything else (or the deadline) is reported to the
@@ -11,6 +13,7 @@ owner's Telegram so a missing morning film never goes unnoticed. Log: projects/n
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -34,19 +37,28 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--city", default="russia", choices=sorted(AGENTS))
     ap.add_argument("--deadline", default="08:45", help="MSK; the agent is stopped at this time")
+    ap.add_argument("--project", type=Path, help="finish this started digest (story.json, maybe its voice) instead")
     a = ap.parse_args()
     now = datetime.now(MSK)
+    if a.project:
+        a.city = json.loads((REPO / a.project / "story.json").read_text(encoding="utf-8")).get("city", a.city)
     h, m = map(int, a.deadline.split(":"))
     stop = now.replace(hour=h, minute=m, second=0, microsecond=0)
     if stop <= now:
         stop += timedelta(days=1)
-    slug = SLUG[a.city].format(d=now.strftime("%d-%m"))
+    slug = a.project.name if a.project else SLUG[a.city].format(d=now.strftime("%d-%m") + ("" if now.hour < 12 else "-vecher"))
     proj = REPO / "projects" / slug
     proj.mkdir(parents=True, exist_ok=True)
     agent = (REPO / ".claude" / "agents" / f"{AGENTS[a.city]}.md").read_text(encoding="utf-8")
     prompt = "\n".join([
         "You are running OpenMontage unattended on the server (no human will answer questions).",
-        f"Make today's digest as the agent below describes. Project: projects/{slug}. Today is {now:%Y-%m-%d}.",
+        (f"Finish the started digest projects/{slug}: its story.json (texts, sources) is final — do not rewrite the "
+         "texts; if assets/narration.mp3 exists the voice is done (use build.py --voice-only only to read the shot "
+         "counts, it reuses nothing: run it only when there is no voice yet). Copy the stories' post media from the "
+         "city base (candidates.json media_local by source.key) where media/ lacks it, set exactly the shots asked, "
+         "write illustrations for what has no footage, check the footage masks, then produce.py."
+         if a.project else f"Make today's digest as the agent below describes. Project: projects/{slug}."),
+        f"Today is {now:%Y-%m-%d}.",
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
         "reuse the night pre-clean (clean_footage.py cuts from it), prefer post footage to illustrations, redraw a "
         "failed picture at most once.",
