@@ -229,7 +229,10 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 5. `addons/news/build.py projects/<id>`. Открыть `qa/contact.jpg` и 2 кадра ведущего.
 6. `addons/mural/publish.py projects/<id> --caption "<заголовок>" --tags "#москва #чп #новости ..."`.
 7. Отправить в Telegram на одобрение: `addons/mural/send_telegram.py` через `systemd-run --wait` с `EnvironmentFile`.
-8. Последняя строка: `AUTOPILOT_RESULT: READY projects/<id>`.
+8. Сразу после отправки — залить ролик в Kinescope (решение владельца 2026-10-28): `addons/news/kinescope_upload.py projects/<id>`
+   через `systemd-run --wait` с `EnvironmentFile` (`KINESCOPE_API_TOKEN`, `KINESCOPE_PARENT_ID` — проект «My project»; токен
+   не печатать). Ссылка — в `projects/<id>/kinescope.json` и в отчёте. Пересобранный ролик — с `--replace` (тот же id).
+9. Последняя строка: `AUTOPILOT_RESULT: READY projects/<id>`.
 
 ## Нельзя
 - Убирать незаметный ярлык `ИИ-иллюстрация` с реалистичных ИИ-кадров.

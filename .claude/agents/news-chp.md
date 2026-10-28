@@ -57,6 +57,13 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
      `AUTOPILOT_RESULT: READY projects/<id>`.
    - Report the event, the length, what you checked, and anything you compromised on.
 
+
+## After delivery: Kinescope (owner, 2026-10-28)
+Every finished digest goes to Kinescope right after it is sent to the bot: on the server
+`systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/openmontage/.env --working-directory=/opt/openmontage
+.venv/bin/python addons/news/kinescope_upload.py projects/<slug>` (`--replace` after a rebuild). Report the link from
+`projects/<slug>/kinescope.json`. The token lives only in the server `.env` — never print it or put it in the repo.
+
 ## Never
 - Never drop the near-invisible `"label": "ИИ-иллюстрация"` from a generated shot (realistic style, owner's choice).
 - Never invent facts, times, places or details that are not in the source.
