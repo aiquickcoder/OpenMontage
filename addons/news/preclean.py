@@ -11,7 +11,7 @@ Run by the news-preclean.timer every night (01:00 MSK) with /opt/openmontage/.en
    recorded as clean.
 3. Results go to the cache (NEWS_CLEAN_CACHE, /srv/factory/news_clean_cache), keyed by the file's SHA-1:
    <key>.clean.mp4, <key>.json ({"len", "clean": "done"|"none", "how", "mask_area", "src"}), <key>.preview.jpg.
-4. At --until (MSK) nothing new is sent and queued jobs are cancelled: the morning digests must not wait behind the night.
+4. At --until (MSK, 05:45 — the 06:00 digests need the cleaner) nothing new is sent and queued jobs are cancelled: the morning digests must not wait behind the night.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cities", nargs="*", default=sorted(CITIES))
     ap.add_argument("--harvest", action="store_true")
-    ap.add_argument("--until", default="07:00")
+    ap.add_argument("--until", default="05:45")
     ap.add_argument("--videos", type=int, default=4)
     ap.add_argument("--photos", type=int, default=6)
     ap.add_argument("--seconds", type=float, default=30.0)

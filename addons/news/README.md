@@ -260,6 +260,16 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 Одна на формат: `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID), **громкость 0,22** — её должно быть слышно под голосом (на 0,12 её забивала подложка). `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac.
 
 ## Автопилот (фабрика, сервер)
+**Расписание** (systemd-таймеры на сервере, МСК; решение владельца 2026-10-28 — города дважды в день):
+| Время | Что | Итог |
+|---|---|---|
+| 01:00–05:45 | `news-preclean` — сбор новостей и ночная очистка футажей всех форматов | кеш `/srv/factory/news_clean_cache` |
+| 06:00 | `news-morning-ru` — «Пушистое ЧП · Россия» | в боте и Kinescope к 8:45 |
+| 06:15 / 06:30 / 06:45 | `news-digest-{kazan,moscow,spb}-am` — утренние выпуски городов | к 9:30 |
+| 17:30 / 17:50 / 18:10 | `news-digest-{kazan,moscow,spb}-pm` — вечерние (`-vecher`) | к 20:45 |
+Каждый запуск — `addons/news/morning.py` (Claude Code headless с агентом формата); сбой или срок — предупреждение
+в бот, лог в `projects/<id>/morning.log`. Начатый вручную выпуск доделывается так же: `morning.py --project projects/<id>`.
+
 **Одной командой после `story.json`** (голос, планы, `illustrations`, рамки `media/wm.json` уже есть):
 `systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/openmontage/.env -p EnvironmentFile=/opt/watermark-cleaner/deploy/.env
 -E HOME=/home/factory --working-directory=/opt/openmontage .venv/bin/python addons/news/produce.py projects/<id> --caption <файл> --send --kinescope`
