@@ -134,7 +134,7 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--city", default="moscow", choices=sorted(CITIES))
-    ap.add_argument("--base", default=os.environ.get("NEWS_BASE"), help="default: the city's base in cities.json")
+    ap.add_argument("--base", default=os.environ.get("NEWS_BASE"), help="default: the city's server_base when it exists here, else its base")
     ap.add_argument("--posts", type=int, default=150)
     ap.add_argument("--hours", type=float, default=36)
     ap.add_argument("--top", type=int, default=5)
@@ -143,7 +143,8 @@ def main() -> None:
     ap.add_argument("--fill-days", type=float, default=7, help="how far back «добор» looks for uncovered incidents")
     ap.add_argument("--fill-top", type=int, default=10)
     a = ap.parse_args()
-    base = Path(a.base or CITIES[a.city]["base"]).expanduser()
+    srv = CITIES[a.city].get("server_base")  # on the server its base, on the Mac the owner's folder
+    base = Path(a.base or (srv if srv and Path(srv).is_dir() else CITIES[a.city]["base"])).expanduser()
     if not a.no_harvest:
         harvester = CITIES[a.city].get("harvester", "harvest.py")
         cmd = ([sys.executable, "-I", str(HERE / harvester), str(int(a.hours)), "--out", str(base)]
