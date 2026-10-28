@@ -1,6 +1,7 @@
 """Stage 1 of the news workflow: find the city's fresh incidents and crimes and rank them for a «ЧП» short.
 
     python3 -I addons/news/pick.py [--city moscow|kazan|spb] [--base DIR] [--posts 150] [--hours 36] [--top 5] [--no-harvest] [--crime]
+                                   [--fill-days 7] [--fill-top 10]
 
 1. Runs harvest.py (Telegram previews -> <base>/base.json + media/), unless --no-harvest.
 2. Drops what the format never covers (war / drones / politics, suicide, sexual violence, child victims), events that
@@ -9,6 +10,9 @@
    it, freshness, and how much of a real incident it is (fire / knife / syringe / crash … vs. a curiosity).
    Crimes and above all detentions get extra weight — the format's focus since 2026-10-27; --crime keeps only them.
 4. Writes <base>/candidates.json (ranked, with the reasons) and prints the top list.
+5. «Добор» (owner 2026-10-28): incidents, arrests and detentions from the last --fill-days that no film has covered
+   yet, ranked the same way, go to candidates.json["fill"] and print after the fresh list. When the fresh news is too
+   thin for a digest (mornings, quiet days), the agent tops the digest up from there — with the event's own date.
 
 The agent (or the owner) takes #1 unless there is a reason not to (say it); the facts still come only from the post.
 """
@@ -130,6 +134,8 @@ def main() -> None:
     ap.add_argument("--top", type=int, default=5)
     ap.add_argument("--no-harvest", action="store_true")
     ap.add_argument("--crime", action="store_true", help="only crimes and detentions")
+    ap.add_argument("--fill-days", type=float, default=7, help="how far back «добор» looks for uncovered incidents")
+    ap.add_argument("--fill-top", type=int, default=10)
     a = ap.parse_args()
     base = Path(a.base or CITIES[a.city]["base"]).expanduser()
     if not a.no_harvest:
@@ -144,14 +150,25 @@ def main() -> None:
     now = datetime.now(timezone.utc)
     ranked = sorted((judge(e, now, a.hours, links, keys, a.city, a.crime) for e in events), key=lambda c: -c["score"])
     ok = [c for c in ranked if not c["skip"]]
+    fresh = {c["key"] for c in ok}
+    fill = [c for c in sorted((judge(e, now, a.fill_days * 24, links, keys, a.city, a.crime) for e in events),
+                              key=lambda c: -c["score"])
+            if not c["skip"] and c["key"] not in fresh and {"crime", "detention", "accident"} & set(c["tags"])]
     out = {"generated_at": now.isoformat(timespec="seconds"), "base": str(base),
-           "candidates": ok, "skipped": [c for c in ranked if c["skip"]]}
+           "candidates": ok, "fill": fill, "skipped": [c for c in ranked if c["skip"]]}
     (base / "candidates.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"\nкандидаты: {len(ok)} из {len(ranked)} → {base / 'candidates.json'}")
     for i, c in enumerate(ok[:a.top], 1):
         media = "видео" if "mp4" in c["media"] else ("фото" if "photo" in c["media"] else "без медиа")
         mark = "🔒 " if "detention" in c["tags"] else "🚔 " if "crime" in c["tags"] else ""
         print(f"{i}. {mark}[{c['score']:5.2f}] {c['age_h']:4.1f} ч · {media} · реакций {c['reactions']} · "
+              f"{'+'.join(c['channels'])}\n   {c['text'][:150]}")
+    if fill:
+        print(f"\nдобор — ещё не освещённые ЧП, аресты и задержания за {a.fill_days:g} дн. (брать, если свежих мало):")
+    for i, c in enumerate(fill[:a.fill_top], 1):
+        media = "видео" if "mp4" in c["media"] else ("фото" if "photo" in c["media"] else "без медиа")
+        mark = "🔒 " if "detention" in c["tags"] else "🚔 " if "crime" in c["tags"] else ""
+        print(f"д{i}. {mark}[{c['score']:5.2f}] {c['dt'][:10]} · {media} · реакций {c['reactions']} · "
               f"{'+'.join(c['channels'])}\n   {c['text'][:150]}")
     for c in out["skipped"]:
         print(f"   — пропуск ({', '.join(c['skip'])}): {c['text'][:80]}")

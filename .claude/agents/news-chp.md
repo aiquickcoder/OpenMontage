@@ -25,6 +25,9 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.
    - Mac base: `~/memes/msk_chp_base`. Server base: `/srv/factory/news_base`.
+   - Too little fresh news for the digest (mornings, quiet days)? Top it up from the «добор» list that pick.py prints
+     after the fresh one (`candidates.json` → `fill`): uncovered incidents, arrests and detentions of the last 7 days
+     (owner, 2026-10-28). Fresh stories go first; a «добор» story carries its own event date on the plate and in the text.
    - Focus (owner, 2026-10-27): detentions and crimes. `pick.py` already weights them (🔒 detention, 🚔 crime);
      `--crime` lists only them. A digest of 3–4 stories should hold at least one crime story when there is one.
    - Take candidate #1 unless there is a reason not to, and say the reason. If the user named an event or gave a

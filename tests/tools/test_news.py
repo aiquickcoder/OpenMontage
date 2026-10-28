@@ -200,3 +200,27 @@ def test_pick_keeps_crashes_with_hurt_children_and_scams_that_mention_war():
     assert pick.judge({**e, "key": "c", "text": scam}, now, 36, set(), set(), "kazan")["skip"] == []
     assert "война/БПЛА/политика" in pick.judge({**e, "key": "d", "text": "ВСУ атаковали дроны над Татарстаном, пожар"},
                                                now, 36, set(), set(), "kazan")["skip"]
+
+
+def test_pick_fill_lists_uncovered_older_incidents(tmp_path):
+    import json
+    import subprocess
+    import sys
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    at = lambda h: (now - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M")  # noqa: E731
+    events = [
+        {"key": "fresh1", "dt": at(3), "channels": ["tatarstansos"], "links": [], "text": "Пожар на складе в Казани"},
+        {"key": "old_det", "dt": at(80), "channels": ["tatarstansos"], "links": [],
+         "text": "В Казани задержали мужчину, угрожавшего ножом продавцу"},
+        {"key": "old_calm", "dt": at(80), "channels": ["tatarstansos"], "links": [], "text": "В Казани открыли новый сквер"},
+        {"key": "too_old", "dt": at(24 * 9), "channels": ["tatarstansos"], "links": [], "text": "В Казани задержали вора"},
+    ]
+    (tmp_path / "base.json").write_text(json.dumps(events, ensure_ascii=False), encoding="utf-8")
+    p = subprocess.run([sys.executable, "-I", "addons/news/pick.py", "--city", "kazan", "--base", str(tmp_path),
+                        "--no-harvest", "--hours", "30"], capture_output=True, text=True, check=True)
+    out = json.loads((tmp_path / "candidates.json").read_text(encoding="utf-8"))
+    assert [c["key"] for c in out["candidates"]] == ["fresh1"]
+    assert [c["key"] for c in out["fill"]] == ["old_det"]  # older but uncovered; not the calm one, not 9 days old
+    assert "добор" in p.stdout
