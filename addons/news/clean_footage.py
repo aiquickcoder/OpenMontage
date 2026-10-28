@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -42,6 +43,8 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 TEMPLATES = HERE / "watermarks"
+# addons/news/preclean.py cleans the best candidates' footage at night; a piece cut from there needs no service job
+CACHE = Path(os.environ.get("NEWS_CLEAN_CACHE", "/srv/factory/news_clean_cache"))
 SERVICE = "http://127.0.0.1:8786"
 SHOT_S, LAST_S = 3.4, 6.0   # a shot lasts 3 s (+ a margin); the last one of a story is held longer
 EDGE_THR = 12.0       # consistent edge strength: Region 116 at 12, a moving background stays under it
@@ -133,6 +136,20 @@ def boxes_mask(shape: tuple[int, int], boxes: list[list[int]]) -> np.ndarray:
     return mask
 
 
+def digest(path: Path) -> str:
+    h = hashlib.sha1()
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()[:20]
+
+
+def cached(path: Path) -> dict | None:
+    """The night pre-clean of this exact file: {"len": cleaned seconds from 0, "clean": "done"|"none", ...}."""
+    meta = CACHE / f"{digest(path)}.json"
+    return {**json.loads(meta.read_text()), "key": meta.stem} if meta.is_file() else None
+
+
 def even(n: int) -> int:
     return n - n % 2
 
@@ -184,6 +201,15 @@ class Cleaner:
                 if e.code != 429:
                     raise
                 time.sleep(20)
+
+    def status(self, jid: str) -> dict:
+        return json.loads(self.call(f"/api/jobs/{jid}"))
+
+    def download(self, jid: str, out: Path) -> None:
+        out.write_bytes(self.call(f"/api/jobs/{jid}/download"))
+
+    def cancel(self, jid: str) -> None:
+        self.call(f"/api/jobs/{jid}/cancel", b"", "application/x-www-form-urlencoded")
 
     def wait(self, jobs: dict[str, Path]) -> None:
         """jobs: id -> output path. Downloads each result as soon as it is ready."""
@@ -270,8 +296,25 @@ def main() -> None:
         start = min(piece["start"], max(0.0, dur - 0.5)) if is_video else 0.0
         length = min(piece["len"], dur - start) if is_video else 0.0
         clip = work / f"{Path(src).stem}_{start:g}.in.mp4"
-        prepare(path, start, length, clip)
         name = Path(src).name
+        night = cached(path) if name not in hand else None
+        if night and (not is_video or start + length <= night["len"] + 0.05):
+            out = work / f"{Path(src).stem}_{start:g}.clean.mp4"
+            if night["clean"] == "done" and not out.is_file():
+                if is_video:
+                    sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(CACHE / f"{night['key']}.clean.mp4"),
+                        "-t", f"{length:.3f}", "-an", "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", str(out)])
+                else:
+                    shutil.copy2(CACHE / f"{night['key']}.clean.mp4", out)
+            if (CACHE / f"{night['key']}.preview.jpg").is_file():
+                shutil.copy2(CACHE / f"{night['key']}.preview.jpg", qa_dir / f"wm_{Path(src).stem}.jpg")
+            plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "how": f"pre-cleaned at night ({night.get('how', '')})",
+                         "unchecked": False, "night": night["clean"]}
+            if night["clean"] == "done":
+                plan[key]["out_mp4"] = out
+            print(f"{key}: {plan[key]['how']}, window {start:.1f}–{start + length:.1f} s", flush=True)
+            continue
+        prepare(path, start, length, clip)
         if src in masks:
             plan[key] = {**plan[next(k for k in plan if plan[k]["src"] == src)], "clip": clip, "start": start}
             print(f"{key}: same mask as {src}, window {start:.1f}–{start + length:.1f} s", flush=True)
@@ -306,6 +349,10 @@ def main() -> None:
     cleaner, jobs = Cleaner(), {}
     for key, p in plan.items():
         src = p["src"]
+        if p.get("night"):  # cut from the night pre-clean (or found clean at night)
+            if p["night"] == "none":
+                print(f"  {key}: no watermark (night check) — kept as is", flush=True)
+            continue
         mask = cv2.imread(str(work / (Path(src).stem + ".mask.png")), cv2.IMREAD_GRAYSCALE)
         if not np.any(mask):
             print(f"  {key}: no watermark to remove — kept as is", flush=True)
