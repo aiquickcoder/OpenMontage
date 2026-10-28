@@ -130,13 +130,27 @@ def tags_for(t):
 # --- собрать и отфильтровать ---
 all_posts, dropped = [], []
 tier = dict(CHANNELS)
+def channel_posts(ch, pages=8):
+    """t.me/s shows ~20 posts a page: walk back (?before=<id>) until the window is covered — busy channels (Topor)
+    post 20 times in a few hours, and the morning run needs yesterday's daytime too."""
+    out, before = [], ""
+    for _ in range(pages):
+        raw = fetch(f"https://t.me/s/{ch}{before}").decode("utf-8", "replace")
+        got = parse(ch, raw)
+        out += got
+        ids = [int(m) for m in re.findall(r'data-post="[^/"]+/(\d+)"', raw)]
+        if not got or not ids or all(not recent(p["dt"]) for p in got[:3]):
+            break
+        before = f"?before={min(ids)}"
+    return out
+
 for ch, _ in CHANNELS:
     try:
-        raw = fetch(f"https://t.me/s/{ch}").decode("utf-8", "replace")
+        posts_ch = channel_posts(ch)
     except Exception as e:
         print(f"  ! {ch}: {e}"); continue
     kept = 0
-    for p in parse(ch, raw):
+    for p in posts_ch:
         if NOISE.search(p["text"]): continue
         if not recent(p["dt"]): continue
         if WARPOL.search(p["text"]):

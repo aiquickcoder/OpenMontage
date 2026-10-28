@@ -95,10 +95,13 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
           city: str = "moscow", crime_only: bool = False) -> dict:
     text = e.get("text", "")
     tags = topics.tags(text)
+    note = ""
     # fraud scripts scare victims with «переводы для нужд ВСУ» — that is a scam story, not war news
     checked = re.sub(SCAM_WAR, " ", text, flags=re.I) if re.search(SCAM, text, re.I) else text
     why_not = [name for name, rx in SKIP.items() if re.search(rx, checked, re.I)]
     c = CITIES[city]
+    if c.get("skip_extra") and re.search(c["skip_extra"], text, re.I):  # a format's own exclusions (geopolitics, ads)
+        why_not.append("не формат")
     if c.get("events_only", True) and not topics.is_event(text):  # the base may come from an older/own harvester
         why_not.append("не ЧП")
     if crime_only and "crime" not in tags:
@@ -120,12 +123,15 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
         score = (math.log10(1 + (e.get("hype") or 0)) * 2 + media + 0.8 * (len(chans) - 1)
                  + 0.5 * crime - age / 12)
         if chans and chans <= {"topor", "toporlive"}:  # the owner's digest marks these «сверить факт»
-            why_not.append("только Топор — нужен второй источник")
+            if {"crime", "detention", "fatal"} & set(tags):  # an accusation or a death needs a second source
+                why_not.append("только Топор — нужен второй источник")
+            else:
+                note = "только Топор — сверить факт"
     else:
         score = (math.log10(1 + react) * 1.5 + media + 1.0 * (len(chans) - 1) + min(strong, 3) * 0.8
                  + CRIME_BONUS * crime + DETENTION_BONUS * ("detention" in tags)
                  - age / 12 - (2.0 if strong == 0 and not crime else 0.0))
-    return {"key": e.get("key"), "dt": e.get("dt"), "age_h": round(age, 1), "score": round(score, 2),
+    return {"key": e.get("key"), "dt": e.get("dt"), "age_h": round(age, 1), "score": round(score, 2), "note": note,
             "skip": why_not, "tags": tags, "reactions": react, "media": got, "channels": sorted(chans), "links": e.get("links"),
             "strong_words": strong, "text": clean(text),
             "media_local": [m.get("local") for m in e.get("media", []) if m.get("local")]}
@@ -171,7 +177,7 @@ def main() -> None:
         media = "видео" if "mp4" in c["media"] else ("фото" if "photo" in c["media"] else "без медиа")
         mark = "🔒 " if "detention" in c["tags"] else "🚔 " if "crime" in c["tags"] else ""
         print(f"{i}. {mark}[{c['score']:5.2f}] {c['age_h']:4.1f} ч · {media} · реакций {c['reactions']} · "
-              f"{'+'.join(c['channels'])}\n   {c['text'][:150]}")
+              f"{'+'.join(c['channels'])}{' · ⚠ ' + c['note'] if c.get('note') else ''}\n   {c['text'][:150]}")
     if fill:
         print(f"\nдобор — ещё не освещённые ЧП, аресты и задержания за {a.fill_days:g} дн. (брать, если свежих мало):")
     for i, c in enumerate(fill[:a.fill_top], 1):
