@@ -18,7 +18,7 @@ The approved digest references are `projects/news-kzn-vypusk-27-10/story.json` (
   `addons/news/anchor_spb`, Mac base `~/memes/spb_chp_base`, server base `/srv/factory/news_base_spb`.
   («ЧП Питер» is an existing Telegram channel — never brand the show with that name.)
 - Intro starts «Здравствуйте, это «ЧП Петербург».»; the outro is the same as Moscow's.
-- Voice, music, sound bed, realistic b-roll, AI mark, digest format: identical to Moscow.
+- Voice, music, sound bed, realistic b-roll, nothing written over the footage, digest format: identical to Moscow.
 - Illustrations: realistic Petersburg places (put «Saint Petersburg, Russia» into `illustration_style`).
 
 ## Steps that differ

@@ -15,7 +15,7 @@ The approved Kazan reference is `projects/news-kzn-vypusk-26-10/story.json` (a f
 - City `kazan` in `addons/news/cities.json`: brand «ЧП Казань», plate tag `ЧП · КАЗАНЬ`, anchor `addons/news/anchor_kzn`,
   Mac base `~/memes/kzn_chp_base`, server base `/srv/factory/news_base_kzn`.
 - Intro starts «Здравствуйте, это «ЧП Казань».»; the outro is the same as Moscow's.
-- Voice, music, sound bed, realistic b-roll, AI mark, digest format: identical to Moscow.
+- Voice, music, sound bed, realistic b-roll, nothing written over the footage, digest format: identical to Moscow.
 - Illustrations: realistic Kazan / Tatarstan places (put «Kazan, Tatarstan» into `illustration_style`).
 
 ## Steps that differ

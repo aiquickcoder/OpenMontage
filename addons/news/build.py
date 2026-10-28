@@ -552,7 +552,9 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         bh = H if full else box_h(w, h)
         top = 430 if full else BOX_Y - bh // 2
         bottom = H - 1480 if full else H - (BOX_Y + bh // 2)  # full frame: sit just above the captions (top 1500)
-        if it.get("label"):
+        # no on-screen AI mark (owner 2026-10-28: a faint overlay reads as a foreign watermark and cuts reach; the owner
+        # ticks the platform's AI-content box at upload). "label" still marks Flow pictures for the build itself
+        if it.get("label") and story.get("show_ai_label"):
             chips.append(f'    <div id="chip{k}" class="clip chip label" data-layout-ignore style="bottom:{bottom + 14}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="4">{esc(it["label"])}</div>')
             k += 1

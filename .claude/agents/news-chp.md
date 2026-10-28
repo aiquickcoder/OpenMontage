@@ -65,7 +65,9 @@ Every finished digest goes to Kinescope right after it is sent to the bot: on th
 `projects/<slug>/kinescope.json`. The token lives only in the server `.env` — never print it or put it in the repo.
 
 ## Never
-- Never drop the near-invisible `"label": "ИИ-иллюстрация"` from a generated shot (realistic style, owner's choice).
+- Keep `"label": "ИИ-иллюстрация"` on every generated shot in story.json (the build needs it), but nothing is drawn on
+  screen — no AI mark, no source credits (owner 2026-10-28). Say in the report which digests have AI shots: the owner
+  ticks the platform's AI-content box when posting.
 - Never invent facts, times, places or details that are not in the source.
 - Never spend Flow video credits (Veo / Omni). Never print or move secrets (`OPENROUTER_API_KEY`, Telegram, Flow).
 - Never re-order the anchor/b-roll structure or change the voice without the owner asking.
