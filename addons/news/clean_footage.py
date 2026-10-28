@@ -45,6 +45,8 @@ TEMPLATES = HERE / "watermarks"
 SERVICE = "http://127.0.0.1:8786"
 SHOT_S, LAST_S = 3.4, 6.0   # a shot lasts 3 s (+ a margin); the last one of a story is held longer
 EDGE_THR = 12.0       # consistent edge strength: Region 116 at 12, a moving background stays under it
+TEMPLATE_MIN = 0.5    # normalised correlation of steady-edge maps that counts as the same logo
+TEMPLATE_TEXT_MIN = 0.6  # a lettering template (name contains "text") looks like any text: stricter
 STILL_SHIFT = 0.8     # px: median frame-to-frame camera shift below it = a still camera (CCTV, traffic camera)
 VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 
@@ -97,26 +99,30 @@ def auto_mask(fr: list[np.ndarray]) -> tuple[np.ndarray, float]:
     return cv2.dilate(mask, np.ones((9, 9), np.uint8)), moving
 
 
-def template_mask(frame: np.ndarray) -> np.ndarray:
-    """Known logos (addons/news/watermarks/*.png — steady-edge crops saved by --save-template) found in the frame's
-    gradient at several scales."""
-    h, w = frame.shape[:2]
+def template_mask(fr: list[np.ndarray]) -> np.ndarray:
+    """Known logos (addons/news/watermarks/*.png — steady-edge crops saved by --save-template) found in the clip's own
+    steady-edge map at several scales: one frame is too noisy for a semi-transparent logo, the map is not."""
+    h, w = fr[0].shape[:2]
     mask = np.zeros((h, w), np.uint8)
-    g = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32), (3, 3), 0)
-    fg = cv2.magnitude(cv2.Sobel(g, cv2.CV_32F, 1, 0), cv2.Sobel(g, cv2.CV_32F, 0, 1))
+    fg = np.clip(steady_edges(fr) * 4, 0, 255).astype(np.float32)
     for p in sorted(TEMPLATES.glob("*.png")):
         t = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE)
         if t is None:
             continue
-        for s in (0.5, 0.67, 0.8, 1.0, 1.25, 1.5, 2.0):
+        best = (0.0, None)  # one match per logo: the best over all scales
+        for s in (0.5, 0.6, 0.67, 0.75, 0.85, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0):
             tw, th = int(t.shape[1] * s), int(t.shape[0] * s)
             if tw < 16 or th < 16 or tw >= w or th >= h:
                 continue
-            tg = cv2.resize(t, (tw, th)).astype(np.float32)
-            r = cv2.matchTemplate(fg, tg, cv2.TM_CCOEFF_NORMED)
-            _, best, _, (x, y) = cv2.minMaxLoc(r)
-            if best > 0.55:
-                mask[max(0, y - 6):y + th + 6, max(0, x - 6):x + tw + 6] = 255
+            r = cv2.matchTemplate(fg, cv2.resize(t, (tw, th)).astype(np.float32), cv2.TM_CCOEFF_NORMED)
+            _, score, _, (x, y) = cv2.minMaxLoc(r)
+            if score > best[0]:
+                best = (score, (x, y, tw, th))
+        if os.environ.get("WM_DEBUG"):
+            print(f"    template {p.stem}: {best[0]:.2f} at {best[1]}", flush=True)
+        if best[0] > (TEMPLATE_TEXT_MIN if "text" in p.stem else TEMPLATE_MIN):
+            x, y, tw, th = best[1]
+            mask[max(0, y - 6):y + th + 6, max(0, x - 6):x + tw + 6] = 255
     return mask
 
 
@@ -278,7 +284,7 @@ def main() -> None:
             how = f"auto (camera moves {moving:.1f} px/frame)"
             if moving < STILL_SHIFT:
                 mask, how = np.zeros_like(mask), f"still camera ({moving:.1f} px): needs hand boxes in media/wm.json"
-        known = template_mask(fr[len(fr) // 2])
+        known = template_mask(fr)
         if np.any(known):
             how += " + known logos"
         mask = np.maximum(mask, known)
