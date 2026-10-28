@@ -144,10 +144,17 @@ def digest(path: Path) -> str:
     return h.hexdigest()[:20]
 
 
+def templates_changed() -> float:
+    return max((t.stat().st_mtime for t in TEMPLATES.glob("*.png")), default=0.0)
+
+
 def cached(path: Path) -> dict | None:
-    """The night pre-clean of this exact file: {"len": cleaned seconds from 0, "clean": "done"|"none", ...}."""
+    """The night pre-clean of this exact file: {"len": cleaned seconds from 0, "clean": "done"|"none", ...}.
+    One made before a logo template was added never looked for that logo, so it does not count."""
     meta = CACHE / f"{digest(path)}.json"
-    return {**json.loads(meta.read_text()), "key": meta.stem} if meta.is_file() else None
+    if not meta.is_file() or meta.stat().st_mtime < templates_changed():
+        return None
+    return {**json.loads(meta.read_text()), "key": meta.stem}
 
 
 def even(n: int) -> int:
@@ -346,7 +353,7 @@ def main() -> None:
     unchecked = sorted({p["src"] for p in plan.values() if p["unchecked"]})
     if unchecked:  # a still camera hides its watermark from the auto mask: someone has to look first
         sys.exit("still-camera footage without hand boxes in media/wm.json ([] if it is clean): " + ", ".join(unchecked))
-    cleaner, jobs = Cleaner(), {}
+    cleaner, jobs, sigs = Cleaner(), {}, {}
     for key, p in plan.items():
         src = p["src"]
         if p.get("night"):  # cut from the night pre-clean (or found clean at night)
@@ -358,10 +365,16 @@ def main() -> None:
             print(f"  {key}: no watermark to remove — kept as is", flush=True)
             continue
         p["out_mp4"] = work / f"{Path(src).stem}_{p['start']:g}.clean.mp4"
-        if not p["out_mp4"].is_file():  # a rerun after a failure keeps what is done
+        # a rerun keeps what is done, but only if it was cleaned with this very mask: pieces cleaned before the
+        # mask learned the Region 116 emblem kept it after the mask was fixed (Kazan 28.10, owner's screenshot)
+        sig, sigs[p["out_mp4"]] = p["out_mp4"].with_suffix(".mask.sha1"), hashlib.sha1(mask.tobytes()).hexdigest()
+        if not (p["out_mp4"].is_file() and sig.is_file() and sig.read_text() == sigs[p["out_mp4"]]):
             jobs[cleaner.submit(p["clip"], mask)] = p["out_mp4"]
     print(f"queued {len(jobs)} pieces", flush=True)
     cleaner.wait(jobs)
+    for out in jobs.values():
+        if out.is_file():
+            out.with_suffix(".mask.sha1").write_text(sigs[out])
     for key, p in plan.items():
         if "out_mp4" not in p:
             continue

@@ -85,7 +85,7 @@ def main() -> None:
             print("deadline: nothing new is sent", flush=True)
             break
         key = cf.digest(path)
-        if (cf.CACHE / f"{key}.json").is_file():
+        if cf.cached(path):  # done, and after the newest logo template
             continue
         video = path.suffix.lower() in cf.VIDEO
         dur = float(cf.sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]) or 0) \
