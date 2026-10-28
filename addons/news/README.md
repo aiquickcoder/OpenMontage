@@ -237,6 +237,12 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 Одна на формат: `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID), **громкость 0,22** — её должно быть слышно под голосом (на 0,12 её забивала подложка). `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac.
 
 ## Автопилот (фабрика, сервер)
+**Одной командой после `story.json`** (голос, планы, `illustrations`, рамки `media/wm.json` уже есть):
+`systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/openmontage/.env -p EnvironmentFile=/opt/watermark-cleaner/deploy/.env
+-E HOME=/home/factory --working-directory=/opt/openmontage .venv/bin/python addons/news/produce.py projects/<id> --caption <файл> --send --kinescope`
+— сама выбирает быстрый выход для Flow, параллельно рисует иллюстрации и чистит футажи, собирает под общей блокировкой
+(два рендера разом душат сервер), шлёт в Telegram и заливает в Kinescope. Последняя строка — `PRODUCE_RESULT: READY|FAILED`;
+логи шагов — `projects/<id>/logs/`. Ниже — то же по шагам.
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
 **OpenRouter (модели OpenAI) не пускает российский IP сервера (403)** — `build.py` запускать с `https_proxy=http://127.0.0.1:10809` (локальный выход фабрики).
 Сборка на сервере: `systemd-run --uid=factory -p EnvironmentFile=/opt/openmontage/.env -E HYPERFRAMES_BIN=/opt/node22/hyperframes.sh -E PATH=/opt/node22/bin:/usr/bin:/bin -E https_proxy=http://127.0.0.1:10809 … addons/news/build.py projects/<id>`.

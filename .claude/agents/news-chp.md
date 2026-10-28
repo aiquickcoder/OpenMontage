@@ -63,6 +63,9 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
    - Open `qa/contact.jpg` plus one frame from the anchor intro and one from the outro.
    - Check the plate text and that the captions match the voice. Nothing but our plate and captions is written over
      the footage: no source credits, no AI mark, no foreign watermarks (owner, 2026-10-28).
+   On the server all of 3–5 is one unattended command once story.json has its voice, shots, illustrations and
+   `media/wm.json`: `addons/news/produce.py projects/<slug> --caption <file> --send --kinescope` (launch line in
+   README «Автопилот»). It ends with `PRODUCE_RESULT: READY|FAILED`; on FAILED read `projects/<slug>/logs/`.
 5. **Deliver.**
    - On the Mac: copy to `~/Desktop/news_pilot/<slug>.mp4` and open it.
    - In factory runs: `addons/mural/publish.py` plus Telegram approval (`addons/mural/send_telegram.py`), then
