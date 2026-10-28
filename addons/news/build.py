@@ -556,7 +556,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             chips.append(f'    <div id="chip{k}" class="clip chip label" data-layout-ignore style="bottom:{bottom + 14}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="4">{esc(it["label"])}</div>')
             k += 1
-        if it.get("credit"):
+        # source credits stay in story.json and the post text, not on screen (owner 2026-10-28); a story can opt back in
+        if it.get("credit") and story.get("show_credits"):
             chips.append(f'    <div id="chip{k}" class="clip chip credit" style="bottom:{bottom + 18}px" '
                          f'data-start="{it["start"]}" data-duration="{it["dur"]}" data-track-index="4">'
                          f'{esc(it["credit"])}</div>')
