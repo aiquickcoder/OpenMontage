@@ -22,6 +22,9 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - Realistic b-roll (documentary-photo style of the real place); only the anchor is a cartoon.
 - On the server run build.py with `https_proxy=http://127.0.0.1:10809` (OpenRouter blocks the RU IP).
 
+Leads between stories (owner, 2026-10-28): never «Дальше —». Name the topic straight away («Приговор за обман с
+пенсией.») or use «Теперь —», «Ещё одна история», «А в …»; no transition twice in one film.
+
 ## Steps
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.
