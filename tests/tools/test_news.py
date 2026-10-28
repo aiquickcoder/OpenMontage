@@ -49,9 +49,20 @@ def test_slots_fill_broll_window_and_continue_video(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(build, "probe", lambda p: (1280, 720, 30.0))
     story = {"shots": [{"src": "a.mp4"}, {"src": "a.mp4"}, {"src": "a.mp4", "in": 20}]}
     items = build.slots(story, [6.0, 14.0], tmp_path)
-    assert [i["start"] for i in items] == [6.0, 9.0, 12.0]
-    assert items[-1]["dur"] == 2.0                      # last cut stretches/shrinks to the window end
-    assert items[0]["in"] == 0.3 and items[1]["in"] == 3.3 and items[2]["in"] == 20
+    assert [i["start"] for i in items] == [6.0, 8.667, 11.333]  # no words: the window is split evenly
+    assert round(sum(i["dur"] for i in items), 3) == 8.0
+    assert items[0]["in"] == 0.3 and items[1]["in"] == 2.967 and items[2]["in"] == 20
+
+
+def test_cuts_land_between_words_and_prefer_sentence_ends():
+    # window 0..9, three shots: targets 3.0 and 6.0
+    words = [["Раз", 0.1, 0.5], ["два", 0.6, 1.0], ["три.", 1.1, 2.6], ["Четыре", 3.0, 3.6], ["пять", 3.7, 5.7],
+             ["шесть", 5.75, 6.3], ["семь.", 6.35, 8.9]]
+    cuts = build.cut_points([0.0, 9.0], 3, words, 5.95)
+    assert cuts[0] == 2.8          # the pause after «три.» (2.6–3.0), not 3.0 inside nothing — a sentence end
+    assert cuts[1] == 5.725        # «пять» runs 3.7–5.7: the cut goes to the boundary after it, not inside «шесть»
+    for c in cuts:
+        assert not any(a < c < b for _, a, b in words)
 
 
 def test_mouth_track_closes_and_holds_on_twos(monkeypatch):
@@ -270,3 +281,10 @@ def test_delivery_cues_reach_the_voice_but_not_the_captions():
                                    "Берегите себя. [pause] Второе. Ищут девушку. [pause] Пока.")
     words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.plain(build.full_text(s)).split())]
     assert build.story_windows(s, words, 14.0)[0] == [1.95, 4.9]  # cues do not shift the word count
+
+
+def test_a_long_word_moves_the_cut_further_than_the_snap():
+    # «огнетушителей» read for 1.56 s right over the 3.0 s target (Россия 28.10): no boundary within ±0.6 s
+    words = [["шести", 1.2, 2.0], ["огнетушителей", 2.0, 3.65], ["с", 3.65, 3.8], ["полок", 3.8, 5.6]]
+    cut = build.cut_points([0.0, 6.0], 2, words, 5.95)[0]
+    assert cut == 2.0 and not any(a < cut < b for _, a, b in words)  # 1 s early, inside the 1.8–3.35 s shot

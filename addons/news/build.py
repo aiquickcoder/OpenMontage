@@ -52,6 +52,8 @@ from addons.mural.build import FPS, H, W, find_music, render, word_cues  # noqa:
 from addons.news import anchor as anc  # noqa: E402
 
 SHOT_S = 3.0
+CUT_MIN, SNAP_S = 1.8, 0.6  # a cut moves up to SNAP_S to land between words; no shot shorter than CUT_MIN
+PIECE_S, LAST_PIECE_S = 3.35, 5.95  # cleaned post clips are 3.4 s, a story's last one 6 s (clean_footage.py)
 TAIL_S = 1.2           # hold after the last word
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
 BOX_Y = 930            # centre line of the picture box (the plate sits above it, captions below)
@@ -245,15 +247,42 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
 
 
 # -- b-roll ------------------------------------------------------------------------------------------
-def slots(story: dict, window: list[float], proj: Path) -> list[dict]:
+def cut_points(window: list[float], n: int, words: list, last_cap: float) -> list[float]:
+    """The n-1 cuts inside one story window: evenly spaced, then each moved to the nearest boundary between two
+    spoken words within SNAP_S — a pause or a sentence end preferred — so no cut falls inside a word (owner,
+    2026-10-28). Every shot stays CUT_MIN..PIECE_S long (the last one up to last_cap): a cleaned clip is no longer."""
+    t0, t1 = window
+    step, bounds = (t1 - t0) / n, []
+    for (w, _, b), (_, c, _) in zip(words, words[1:]):
+        if t0 < b and c < t1:
+            end = w.rstrip("»\")")[-1:]
+            bonus = min(c - b, 0.4) * 0.5 + (0.25 if end in ".!?…" else 0.1 if end in ",;:—" else 0.0)
+            bounds.append(((b + c) / 2, bonus))
+    cuts, prev = [], t0
+    for k in range(1, n):
+        target, left = t0 + k * step, n - k
+        lo = max(prev + CUT_MIN, t1 - (left - 1) * PIECE_S - last_cap)
+        hi = min(prev + PIECE_S, t1 - left * CUT_MIN)
+        near = [(abs(t - target) - bonus, t) for t, bonus in bounds
+                if max(lo, target - SNAP_S) <= t <= min(hi, target + SNAP_S)]
+        # a long, slowly read word can cover the whole ±SNAP_S: then the nearest boundary the shot lengths allow
+        near = near or [(abs(t - target), t) for t, _ in bounds if lo <= t <= hi]
+        cut = min(near)[1] if near else (min(max(target, lo), hi) if lo <= hi else target)
+        cuts.append(round(cut, 3))
+        prev = cut
+    return cuts
+
+
+def slots(story: dict, window: list[float], proj: Path, words: list = ()) -> list[dict]:
     t0, duration = window[0], window[1] - window[0]
     shots, n = story["shots"], max(1, math.ceil(duration / SHOT_S - 0.15))
     if len(shots) < n:
         print(f"warning: {len(shots)} shots for {n} slots — the last shot is held longer", flush=True)
+    edges = [t0, *cut_points(window, n, list(words), LAST_PIECE_S if len(shots) <= n else PIECE_S), window[1]]
     used: dict[str, float] = {}
     out, t = [], 0.0
     for i, s in enumerate(shots[:n]):
-        d = SHOT_S if i < min(n, len(shots)) - 1 else round(duration - t, 3)
+        d = round((edges[i + 1] if i < min(n, len(shots)) - 1 else window[1]) - edges[i], 3)
         src = (proj / s["src"]).resolve() if not Path(s["src"]).is_absolute() else Path(s["src"])
         if not src.is_file():
             sys.exit(f"shot {i}: {src} not found")
@@ -761,7 +790,7 @@ def main() -> None:
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
-             for it in slots(s, win, proj)]
+             for it in slots(s, win, proj, timing["words"])]
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
     sound_bed(proj, story, timing, items)
