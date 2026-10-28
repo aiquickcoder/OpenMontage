@@ -343,7 +343,7 @@ def test_attach_waits_for_late_uploads(monkeypatch):
     up = "https://flow-content.google/image/11111111-2222-3333-4444-555555555555?Expires=1&Signature=s"
     drv.page = _UploadPage(drv, up, delay=4)
     monkeypatch.setattr(drv, "_clear_overlays", lambda *a, **k: None)
-    drv._await_uploads(0, 1, per_file_wait_ms=1, settle_timeout_ms=60_000)
+    drv._await_uploads(0, set(), 1, per_file_wait_ms=1, settle_timeout_ms=60_000)
     known = set(drv._media_since(0))
     assert ("image", "11111111-2222-3333-4444-555555555555") in known  # the upload is never a "result"
 
@@ -379,3 +379,17 @@ def test_queued_reply_is_recognised():
 
     assert QUEUED.search("Your video generation has been scheduled and is waiting in the queue due to high demand.")
     assert not QUEUED.search("I am generating 1 video from your uploaded image using Veo 3.1 - Lite.")
+
+
+def test_new_images_are_found_on_the_project_page_tiles():
+    """Since 2026-10-28 Flow puts no flow-content URL for a new image in its RPCs; the grid tile has it."""
+    drv = ad.FlowAgentDriver.__new__(ad.FlowAgentDriver)
+    drv._bodies = []
+    tiles = [["46b0f625-3dca-4471-a771-c803ddee48b2", "https://flow.google.com/asb/ANqv_tok=s1600-rw"]]
+    drv.page = type("P", (), {"evaluate": lambda self, js: tiles})()
+    known = set()
+    media = drv._new_media(0, known, "image")
+    assert [(m.kind, m.media_id, m.url) for m in media] == [
+        ("image", "46b0f625-3dca-4471-a771-c803ddee48b2", "https://flow.google.com/asb/ANqv_tok=s0")]
+    assert drv._new_media(0, {("image", "46b0f625-3dca-4471-a771-c803ddee48b2")}, "image") == []
+    assert drv._new_media(0, known, "video") == []

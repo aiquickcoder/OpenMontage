@@ -36,6 +36,10 @@ FLOW_HOME = "https://flow.google.com/"
 GATE_URL = re.compile(r".*/batchexecute\?rpcids=KV2T2d.*")
 GATE_RESULT = re.compile(r'(\["wrb\.fr","KV2T2d",)"\[\d\]"')
 MEDIA_URL = re.compile(r"https://flow-content\.google/(image|video)/([0-9a-f-]{36})\?[^\"\\\s]+")
+# Since 2026-10-28 the RPCs carry no flow-content URL for a new image: the project grid shows it as
+# <img data-media-id="<id>" src="https://flow.google.com/asb/<token>=s1600-rw">, and "=s0" is the full-size file.
+TILE_IMAGES = """() => [...document.querySelectorAll('img[data-media-id]')]
+    .filter(e => /\\/asb\\/|flow-content/.test(e.src)).map(e => [e.dataset.mediaId, e.src])"""
 CREDITS = re.compile(r'\["wrb\.fr","nzlxg","\[(\d+),(\d+)')
 COMPOSER = "textarea:visible, [contenteditable='true']:visible"
 
@@ -238,9 +242,18 @@ class FlowAgentDriver:
                     found[key] = Media(kind=m.group(1), media_id=m.group(2), url=m.group(0))
         return found
 
+    def _tiles(self) -> dict[tuple[str, str], Media]:
+        """Images on the project page (the only place a new image's URL shows up now, see TILE_IMAGES)."""
+        try:
+            tiles = self.page.evaluate(TILE_IMAGES)
+        except Exception:  # mid-navigation
+            return {}
+        return {("image", mid): Media(kind="image", media_id=mid, url=src.split("=")[0] + "=s0" if "/asb/" in src else src)
+                for mid, src in tiles}
+
     def _new_media(self, mark: int, known: set[tuple[str, str]], expect: str) -> list[Media]:
-        return [m for key, m in self._media_since(mark).items()
-                if key not in known and expect in ("any", m.kind)]
+        found = {**self._tiles(), **self._media_since(mark)}  # a signed RPC URL, when there is one, wins
+        return [m for key, m in found.items() if key not in known and expect in ("any", m.kind)]
 
     def _last_credits(self) -> Optional[int]:
         for _, body in reversed(self._bodies):
@@ -284,7 +297,7 @@ class FlowAgentDriver:
         files = list(dict.fromkeys(str(Path(p).resolve()) for p in paths))
         if not files:
             return
-        mark = len(self._bodies)
+        mark, tiles = len(self._bodies), set(self._tiles())
         inputs = self.page.locator("input[type=file]")
         if inputs.count() == 0:
             # the file input is created lazily behind the composer's "add" button
@@ -295,17 +308,18 @@ class FlowAgentDriver:
                 with self.page.expect_file_chooser(timeout=15_000) as chooser:
                     upload.first.click()
                 chooser.value.set_files(files)
-                self._await_uploads(mark, len(files), per_file_wait_ms, settle_timeout_ms)
+                self._await_uploads(mark, tiles, len(files), per_file_wait_ms, settle_timeout_ms)
                 return
         inputs.last.set_input_files(files)
-        self._await_uploads(mark, len(files), per_file_wait_ms, settle_timeout_ms)
+        self._await_uploads(mark, tiles, len(files), per_file_wait_ms, settle_timeout_ms)
 
-    def _await_uploads(self, mark: int, count: int, per_file_wait_ms: int, settle_timeout_ms: int) -> None:
+    def _await_uploads(self, mark: int, tiles: set[tuple[str, str]], count: int, per_file_wait_ms: int,
+                       settle_timeout_ms: int) -> None:
         self.page.wait_for_timeout(per_file_wait_ms * count)
         waited = 0
         while waited < settle_timeout_ms:
             uploaded = [m for m in self._media_since(mark).values() if m.kind == "image"]
-            if len(uploaded) >= count:
+            if len(uploaded) >= count or len(set(self._tiles()) - tiles) >= count:
                 break
             self.page.wait_for_timeout(2_000)
             waited += 2_000
@@ -373,7 +387,7 @@ class FlowAgentDriver:
         """
         result = AgentResult(project_url=self.page.url, credits_before=self._last_credits())
         self.attach(list(attachments or []))
-        known = set(self._media_since(0))
+        known = set(self._media_since(0)) | set(self._tiles())
         mark = len(self._bodies)
         approve_seen = self._visible_approvals()  # stale buttons from earlier turns are ignored
         self._send(prompt)
@@ -458,7 +472,7 @@ class FlowAgentDriver:
             self.page.goto(project_url, wait_until="domcontentloaded", timeout=90_000)
             self.page.wait_for_timeout(15_000)
             self._check_gate()
-            media = [m for m in self._media_since(mark).values() if expect in ("any", m.kind)]
+            media = [m for m in {**self._tiles(), **self._media_since(mark)}.values() if expect in ("any", m.kind)]
             if len(media) >= count or time.monotonic() + poll > deadline:
                 return media
             self.page.wait_for_timeout(int(poll * 1000))
