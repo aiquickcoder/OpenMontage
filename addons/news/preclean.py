@@ -42,10 +42,12 @@ def deadline(until: str) -> datetime:
     return d if d > now else d + timedelta(days=1)
 
 
-def media_of(base: Path, videos: int, photos: int) -> list[Path]:
+def media_of(base: Path, videos: int, photos: int, keys: set[str] | None = None) -> list[Path]:
     cand = json.loads((base / "candidates.json").read_text(encoding="utf-8"))
     vids, pics, seen = [], [], set()
     for c in cand.get("candidates", []) + cand.get("fill", []):
+        if keys and c.get("key") not in keys:
+            continue
         for m in c.get("media_local") or []:
             p = Path(m)
             if not p.is_file() or p in seen:
@@ -63,6 +65,7 @@ def main() -> None:
     ap.add_argument("--videos", type=int, default=4)
     ap.add_argument("--photos", type=int, default=6)
     ap.add_argument("--seconds", type=float, default=30.0)
+    ap.add_argument("--keys", nargs="*", help="only these candidates (the stories already chosen for the next digests)")
     a = ap.parse_args()
     stop = deadline(a.until)
     cf.CACHE.mkdir(parents=True, exist_ok=True)
@@ -75,7 +78,7 @@ def main() -> None:
             subprocess.run([py, "-I", str(HERE / "pick.py"), "--city", city, "--base", str(base), "--hours", "30",
                             "--top", "0"], stdout=subprocess.DEVNULL, check=False)
         if (base / "candidates.json").is_file():
-            todo += media_of(base, a.videos, a.photos)
+            todo += media_of(base, 99 if a.keys else a.videos, 99 if a.keys else a.photos, set(a.keys or []) or None)
     cleaner, jobs = cf.Cleaner(), {}  # job id -> (cache key, meta)
     for path in todo:
         if datetime.now(MSK) >= stop:
