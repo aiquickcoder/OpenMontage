@@ -70,5 +70,33 @@
   "harvest_geo": "петербур|\\bспб\\b|\\bпитер|ленинградск\\w* облас|ленобласт|петроград|кронштадт|колпино|петергоф|пулково|купчино|девяткино|гатчин|всеволожск|\\bвыборг",
   "geo": "петербур|\\bспб\\b|\\bпитер|петроград|кронштадт|колпино|петергоф|пулково|купчино|сестрорецк|зеленогорск|невск\\w* проспект",
   "_note": "channels from the owner's ~/memes/spb_chp_base/harvest_chp.py (checked 2026-10-27); Ленобласть is harvested but is not «ЧП Петербург», as Подмосковье is not «ЧП Москва»; a bare «ленинградск» would catch Moscow's Ленинградское шоссе"
+ },
+ "russia": {
+  "name": "Россия",
+  "show": "Пушистое ЧП · Россия",
+  "tag": "ЧП · РОССИЯ",
+  "anchor": "addons/news/anchor_ru",
+  "base": "~/memes/rf_top_base",
+  "server_base": "/srv/factory/news_base_ru",
+  "harvester": "harvest_top.py",
+  "rank": "hype",
+  "events_only": false,
+  "stories": 7,
+  "max_seconds": 120,
+  "channels": [
+   ["readovkanews", true],
+   ["toporlive", true],
+   ["mash", true],
+   ["bbbreaking", true],
+   ["bazabazon", true],
+   ["ostorozhno_novosti", true],
+   ["shot_shot", true],
+   ["topor", true],
+   ["rbc_news", true],
+   ["tass_agency", true]
+  ],
+  "harvest_geo": ".",
+  "geo": ".",
+  "_note": "owner's daily top of Russian hype (2026-10-28): the owner's harvest_top.py ranks by views x channels; hybrid scope — incidents, crime, weird, celebs, prices, laws; never war or politics. A story that only Topor carries needs a second source"
  }
 }

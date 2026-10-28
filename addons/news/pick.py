@@ -98,12 +98,12 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     # fraud scripts scare victims with «переводы для нужд ВСУ» — that is a scam story, not war news
     checked = re.sub(SCAM_WAR, " ", text, flags=re.I) if re.search(SCAM, text, re.I) else text
     why_not = [name for name, rx in SKIP.items() if re.search(rx, checked, re.I)]
-    if not topics.is_event(text):  # the base may come from an older harvester or from the owner's own one
+    c = CITIES[city]
+    if c.get("events_only", True) and not topics.is_event(text):  # the base may come from an older/own harvester
         why_not.append("не ЧП")
     if crime_only and "crime" not in tags:
         why_not.append("не криминал")
     chans = set(e.get("channels") or [])
-    c = CITIES[city]
     if not (chans & {h for h, local in c["channels"] if local}) and not re.search(c["geo"], text, re.I):
         why_not.append(f'не {c["name"]}')
     age = age_hours(e.get("dt", ""), now)
@@ -116,9 +116,15 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     strong = len(set(m.lower() for m in re.findall(STRONG, text, re.I)))
     react = reactions(text)
     crime = "crime" in tags
-    score = (math.log10(1 + react) * 1.5 + media + 1.0 * (len(chans) - 1) + min(strong, 3) * 0.8
-             + CRIME_BONUS * crime + DETENTION_BONUS * ("detention" in tags)
-             - age / 12 - (2.0 if strong == 0 and not crime else 0.0))
+    if c.get("rank") == "hype":  # the top-of-Russia format: views x channels from harvest_top.py, freshness, media
+        score = (math.log10(1 + (e.get("hype") or 0)) * 2 + media + 0.8 * (len(chans) - 1)
+                 + 0.5 * crime - age / 12)
+        if chans and chans <= {"topor", "toporlive"}:  # the owner's digest marks these «сверить факт»
+            why_not.append("только Топор — нужен второй источник")
+    else:
+        score = (math.log10(1 + react) * 1.5 + media + 1.0 * (len(chans) - 1) + min(strong, 3) * 0.8
+                 + CRIME_BONUS * crime + DETENTION_BONUS * ("detention" in tags)
+                 - age / 12 - (2.0 if strong == 0 and not crime else 0.0))
     return {"key": e.get("key"), "dt": e.get("dt"), "age_h": round(age, 1), "score": round(score, 2),
             "skip": why_not, "tags": tags, "reactions": react, "media": got, "channels": sorted(chans), "links": e.get("links"),
             "strong_words": strong, "text": clean(text),
@@ -139,9 +145,11 @@ def main() -> None:
     a = ap.parse_args()
     base = Path(a.base or CITIES[a.city]["base"]).expanduser()
     if not a.no_harvest:
-        p = subprocess.run([sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--city", a.city,
-                            "--out", str(base)],
-                           capture_output=True, text=True)
+        harvester = CITIES[a.city].get("harvester", "harvest.py")
+        cmd = ([sys.executable, "-I", str(HERE / harvester), str(int(a.hours)), "--out", str(base)]
+               if harvester != "harvest.py" else
+               [sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--city", a.city, "--out", str(base)])
+        p = subprocess.run(cmd, capture_output=True, text=True)
         print("\n".join(l for l in p.stdout.splitlines() if re.match(r"  (?:!|\S+: постов)", l)), flush=True)  # per-channel counts
         if p.returncode != 0:
             sys.exit(f"harvest failed: {p.stderr.strip()[-400:]}")
