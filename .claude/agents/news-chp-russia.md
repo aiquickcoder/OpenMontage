@@ -22,7 +22,8 @@ You make «Пушистое ЧП · Россия» in the OpenMontage repo (serv
 1. `python3 -I addons/news/pick.py --city russia --hours 30 --top 25` (server: as factory, `https_proxy=http://127.0.0.1:10809`).
    Take the top seven that pass; skip a story already made (pick.py does) and two takes of one event.
 2. `projects/news-ru-<dd-mm>/story.json` like a city digest: `"city": "russia"`, `"tag": "ЧП · РОССИЯ"`,
-   `"anchor": {"dir": "addons/news/anchor_ru", ...}`, voice cedar, music as Moscow. Each story: `date`, `headline`
+   `"anchor": {"dir": "addons/news/anchor_ru", ...}`, the owner's Fish voice (Drama 3, cedar fallback) as in news-chp,
+   music as Moscow. Each story: `date`, `headline`
    (plate), `source` (channels, links, key). `build.py --voice-only`; if the film is over 120 s, shorten and redo.
 3. Shots: post video/photos first (media_local of the candidate; copy into `media/`), Commons for places, realistic
    illustrations for the rest (`"illustrations"`, labelled shots). Exactly as many shots as `--voice-only` asks.
@@ -31,7 +32,5 @@ You make «Пушистое ЧП · Россия» in the OpenMontage repo (serv
 5. `addons/news/produce.py projects/<slug> --caption <file> --send --kinescope` — pictures + cleaning in parallel,
    build, Telegram, Kinescope. The caption is the post text: headline, one line per story, sources, hashtags
    (#ЧП #новости #Россия …), then a line «— для модерации: …» (people in frame, AI shots → the owner ticks «ИИ»).
-6. Send the owner the narration text to re-record (he may voice it himself): `addons/mural/send_telegram.py
-   "<text>"` with no file. When his recording comes, it replaces `assets/narration.mp3` and the film is rebuilt with
-   `build.py --retime` (it transcribes and aligns), then `kinescope_upload.py --replace`.
+6. The narration is the owner's Fish Audio voice (Drama 3), so no text needs to go out for re-recording.
 7. Unattended runs end with one line: `MORNING_RESULT: READY projects/<slug>` or `MORNING_RESULT: FAILED <reason>`.

@@ -15,7 +15,8 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.
 - Kazan has its own agent, `news-chp-kazan` — same pipeline, other channels and anchor (README «Города»).
 - Cat anchor `addons/news/anchor_cat` reads the intro and the fixed outro; the story is voice-over.
-- Voice: `"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"`, the same voice for the whole film.
+- Voice (owner, 2026-10-28): the owner's Fish Audio voice, model Drama 3 — `"narration": {"engine": "fishaudio", "voice": "806321a400cf425485059061394f6b14", "model": "drama-3", "fallback": {"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"}}` — the same voice for
+  the whole film. Abbreviations stay as written (ЧП, МВД, СИЗО…); never spell them out. cedar is only the fallback.
 - 3-second cuts, music `tension_suspense_building_delosound.mp3` at 0.22 (owner: must be audible), `sound` block (place ambience +
   whoosh) and per-shot `sfx` from `/opt/openmontage/sfx` — see README «Звук».
 - Realistic b-roll (documentary-photo style of the real place); only the anchor is a cartoon.

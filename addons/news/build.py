@@ -135,6 +135,19 @@ def speak(n: dict, out: Path) -> None:
 
         or_speak(n["text"], out, n.get("voice", "ash"), n.get("model", "openai/gpt-audio-mini"), n.get("style", STYLE))
         return
+    if engine == "fishaudio":  # the owner's voice, Fish Audio Drama 3 (addons/news/fish_voice.py)
+        from addons.news.fish_voice import DIRECTION, OWNER_VOICE
+        from addons.news.fish_voice import speak as fish_speak
+
+        try:
+            fish_speak(n["text"], out, n.get("voice", OWNER_VOICE), n.get("model", "drama-3"),
+                       n.get("direction", DIRECTION), float(n.get("speed", 1.0)))
+            return
+        except SystemExit as e:  # key, balance or outage: the morning film must still come out
+            if not n.get("fallback"):
+                raise
+            print(f"fishaudio failed ({e}); falling back to {n['fallback']}", flush=True)
+            return speak({**n["fallback"], "text": n["text"]}, out)
     if engine == "fish":
         from tools.audio.fish_audio_tts import FishAudioTTS
 
