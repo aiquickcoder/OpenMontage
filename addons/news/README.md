@@ -199,7 +199,8 @@ Pixabay отдаёт страницы только настоящему брау
 - `sound.ambience` — атмосфера места под всем b-roll, зацикливается, плавный вход/выход (метро: `metro_moscow_station.mp3`; пожар: `fire_crackling.mp3`; улица: сирены).
 - `sound.whoosh` — на переходах кот → сюжет → кот.
 - `shots[i].sfx` — разовый звук на плане (двери вагона, паника, далёкая сирена), `offset` = откуда в файле.
-- Видео из поста со звуком — живой звук под голосом на 0,35 (`"audio": 0` — выключить).
+- **Звук футажей из постов убираем** (решение владельца 2026-10-28): по умолчанию видео из поста немое, звук места
+  даёт ambience/sfx. Вернуть живой звук одному плану — `"audio": 0,35`, только если в нём нет речи.
 Есть: metro_moscow_station, metro_train_doors_ru, metro_platform_muffled, news_intro_logo, news_jingle_radio, crowd_panic,
 siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh_simple, whoosh_transition.
 
@@ -207,13 +208,13 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 
 | Событие | `sound` | разовые `sfx` на планах | Эталон |
 |---|---|---|---|
-| Пожар, есть видео | ambience `fire_crackling` 0,08 (offset 3) · whoosh 0,3 | не нужны: живой звук видео 0,35 | «Узкое» (`story.example.json`) |
+| Пожар, есть видео | ambience `fire_crackling` 0,08 (offset 3) · whoosh 0,3 | треск огня из `fire_crackling` (живой звук видео выключен) | «Узкое» (`story.example.json`) |
 | Метро, без видео | ambience `metro_moscow_station` 0,14 (offset 5) · whoosh 0,3 | двери `metro_train_doors_ru` 0,45 (offset 20), паника `crowd_panic` 0,18, полиция `siren_ambulance_distant` 0,2 | «Новаторская» |
 | ДТП / улица | ambience `siren_passing` 0,15 · whoosh 0,3 | `siren_police` 0,3 на плане с полицией | — |
 | Нож, драка, задержание | ambience `metro_platform_muffled` или без · whoosh 0,3 | `siren_police` 0,3 | — |
 
-Перед тем как оставить живой звук видео из поста, проверить, нет ли в нём чужой речи (репортёр, крики с матом):
-`Transcriber` на клипе → если слова есть, ставить плану `"audio": 0` или 0,15.
+Если плану всё же включают живой звук (`"audio"`), сначала проверить, нет ли в нём чужой речи (репортёр, крики с
+матом): `Transcriber` на клипе → если слова есть, звук не включать.
 
 ## Музыка
 Одна на формат: `tension_suspense_building_delosound.mp3` (Pixabay, без Content ID), **громкость 0,22** — её должно быть слышно под голосом (на 0,12 её забивала подложка). `/opt/openmontage/music/` на сервере, `~/Desktop/pixabay_примеры/` на Mac.

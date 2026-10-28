@@ -13,7 +13,7 @@ story.json (see addons/news/README.md and story.example.json):
              "ambience": {"src": "metro_moscow_station.mp3", "volume": 0.22},  # place bed under the whole b-roll
              "whoosh": {"src": "whoosh_transition.mp3", "volume": 0.35}}}      # anchor <-> b-roll cuts
   per shot: "sfx": {"src": "...", "volume": 0.4, "offset": 0} = one-shot at the cut; "audio": 0.35 = the clip's own
-  sound (video shots with sound keep it at 0.35 by default; "audio": 0 mutes it). SFX files live in SFX_DIRS.
+  sound (post footage is muted by default, owner 2026-10-28; "audio" > 0 brings one shot's sound back). SFX files live in SFX_DIRS.
 
 Digest (several stories in one film): instead of "narration.text" + "shots", give
   "stories": [{"lead": "<the anchor's line before this story>", "text": "<voice-over>",
@@ -298,7 +298,7 @@ def broll(proj: Path, items: list[dict]) -> list[Path]:
 
 # -- sound bed --------------------------------------------------------------------------------------
 SFX_DIRS = [Path("/opt/openmontage/sfx"), Path.home() / "Downloads" / "sfx_chp", REPO / "sfx"]
-SOURCE_AUDIO = 0.35  # a news clip's own sound (sirens, crackle, crowd) under the voice
+SOURCE_AUDIO = 0.0  # post footage is silent (owner 2026-10-28); a shot may still opt in with "audio": 0.35
 
 
 def find_sfx(name: str) -> Path:
