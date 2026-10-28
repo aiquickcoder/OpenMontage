@@ -22,6 +22,10 @@ def main() -> None:
     if not tg.enabled:
         sys.exit("Telegram is not configured (run with EnvironmentFile=/opt/openmontage/.env)")
     caption, files = sys.argv[1], [Path(p) for p in sys.argv[2:] if Path(p).is_file()]
+    if not files:  # text only (a narration script for the owner to record, a note)
+        tg.send(caption)
+        print("text sent", flush=True)
+        return
     images = [p for p in files if p.suffix.lower() in IMAGES]
     for i in range(0, len(images), 10):
         chunk = images[i:i + 10]
