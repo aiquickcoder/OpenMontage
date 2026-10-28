@@ -58,7 +58,8 @@ BOX_Y = 930            # centre line of the picture box (the plate sits above it
 BOX_MIN, BOX_MAX = 760, 1000
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv"}
 PIPER_MODELS = Path(os.environ.get("PIPER_MODELS", Path.home() / ".piper" / "models"))
-TAG = re.compile(r"\[[^\]]*\]")
+TAG = re.compile(r"\[[^\]]*\]")    # delivery cues ([тревожно], [pause]): spoken by the voice, never captioned
+MARK = re.compile(r"</?[a-z]+>")    # Drama 3 tags wrapping words (<stress>двенадцать</stress>): dropped in place
 
 
 def sh(cmd: list[str]) -> str:
@@ -77,7 +78,7 @@ def probe(src: Path) -> tuple[int, int, float]:
 
 # -- voice -------------------------------------------------------------------------------------------
 def plain(text: str) -> str:
-    return re.sub(r"\s+", " ", TAG.sub(" ", text)).strip()
+    return re.sub(r"\s+", " ", MARK.sub("", TAG.sub(" ", text))).strip()
 
 
 def norm(token: str) -> str:
@@ -97,16 +98,28 @@ def parts(story: dict) -> list[dict]:
         lead = s.get("lead", "") if story.get("stories") else ""
         if i == 0:
             lead = f'{a.get("intro", "")} {lead}'
-        out.append({"kind": "anchor", "text": lead.strip(), "i": i})
-        out.append({"kind": "story", "text": (s.get("text") or story["narration"]["text"]).strip(), "i": i})
+        out.append({"kind": "anchor", "role": "lead", "text": lead.strip(), "i": i})
+        out.append({"kind": "story", "role": "story", "text": (s.get("text") or story["narration"]["text"]).strip(),
+                    "i": i})
         if story.get("stories"):  # the anchor's own short reaction right after the story, before the next lead
-            out.append({"kind": "anchor", "text": s.get("comment", "").strip(), "i": i})
-    out.append({"kind": "anchor", "text": a.get("outro", "").strip(), "i": None})
+            out.append({"kind": "anchor", "role": "comment", "text": s.get("comment", "").strip(), "i": i})
+    out.append({"kind": "anchor", "role": "outro", "text": a.get("outro", "").strip(), "i": None})
     return [p for p in out if p["text"]]
 
 
 def full_text(story: dict) -> str:
     return " ".join(p["text"] for p in parts(story))
+
+
+def voice_text(story: dict) -> str:
+    """What Fish Drama 3 reads: the script with its cues, and a [pause] before every next lead and the outro, so a
+    digest does not run on as one block (owner, 2026-10-28). Captions and alignment use full_text."""
+    out = []
+    for p in parts(story):
+        if out and p["role"] in ("lead", "outro"):
+            out.append("[pause]")
+        out.append(p["text"])
+    return " ".join(out)
 
 
 def windows(timing: dict) -> list[list[float]]:
@@ -147,7 +160,7 @@ def speak(n: dict, out: Path) -> None:
             if not n.get("fallback"):
                 raise
             print(f"fishaudio failed ({e}); falling back to {n['fallback']}", flush=True)
-            return speak({**n["fallback"], "text": n["text"]}, out)
+            return speak({**n["fallback"], "text": plain(n["text"])}, out)
     if engine == "fish":
         from tools.audio.fish_audio_tts import FishAudioTTS
 
@@ -219,7 +232,8 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     audio = A / "narration.mp3"
     text = full_text(story)
     if not (retime and audio.is_file()):
-        speak({**story["narration"], "text": text}, audio)
+        fish = story["narration"].get("engine") == "fishaudio"
+        speak({**story["narration"], "text": voice_text(story) if fish else text}, audio)
     words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, transcribe(audio))]
     speech_end = float(words[-1][2])
     duration = round(speech_end + TAIL_S, 2)

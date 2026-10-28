@@ -258,3 +258,15 @@ def test_word_cues_never_leave_a_lone_dash_or_an_empty_cue():
     assert all(b - a >= 0.05 for a, b, _ in cues)
     assert not any(t.strip() == "—" for _, _, t in cues)
     assert cues[0][2].endswith("Татарстане —")
+
+
+def test_delivery_cues_reach_the_voice_but_not_the_captions():
+    s = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"engine": "fishaudio"},
+         "stories": [{"lead": "Первое.", "text": "[тревожно] Нашли <stress>двенадцать</stress>, пачек.",
+                      "comment": "[мягко] Берегите себя."},
+                     {"lead": "Второе.", "text": "Ищут девушку."}]}
+    assert build.plain(build.full_text(s)) == "Привет. Первое. Нашли двенадцать, пачек. Берегите себя. Второе. Ищут девушку. Пока."
+    assert build.voice_text(s) == ("Привет. Первое. [тревожно] Нашли <stress>двенадцать</stress>, пачек. [мягко] "
+                                   "Берегите себя. [pause] Второе. Ищут девушку. [pause] Пока.")
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.plain(build.full_text(s)).split())]
+    assert build.story_windows(s, words, 14.0)[0] == [1.95, 4.9]  # cues do not shift the word count

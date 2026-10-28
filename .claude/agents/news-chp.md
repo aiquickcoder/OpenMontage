@@ -25,6 +25,11 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 Leads between stories (owner, 2026-10-28): never «Дальше —». Name the topic straight away («Приговор за обман с
 пенсией.») or use «Теперь —», «Ещё одна история», «А в …»; no transition twice in one film.
 
+Delivery cues (owner, 2026-10-28: the read was one flat block): start every story `text` with a Russian tone cue
+`[тревожно, сдержанно]` / `[строго, весомо]` / `[с лёгкой иронией]` … (neighbours differ), every `comment` with one
+(`[от себя, мягко]`, `[с улыбкой]`), and wrap one or two key facts per story in `<stress>…</stress>`. build.py adds
+the pauses between stories; captions never show the cues (README «Голос»).
+
 ## Steps
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.

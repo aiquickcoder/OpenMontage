@@ -4,7 +4,9 @@
 
 build.py uses it for "narration": {"engine": "fishaudio", "voice": "<fish.audio model id>", "model": "drama-3",
 "direction": "..."}. Drama 3 takes delivery directions inline in square brackets (fish.audio/ru/drama-3): one goes
-in front of the text, so the read stays a calm news anchor; the script, the captions and the alignment never see it.
+in front of the text (a live news anchor, not a flat read). The script carries its own cues too (README «Голос»):
+[тон] before a story or comment, <stress>…</stress> around a key fact, and build.py puts a [pause] between stories
+(owner: «сплошным текстом, монотонно», 2026-10-28). Cues are stripped before the take is compared with the script.
 Abbreviations are read right as written (ЧП, МВД, СИЗО, ОПГ, ГАИ, СМС — checked 2026-10-28; spelled-out «га-и» broke).
 Takes differ (the model is in preview): each take is transcribed and compared with the script, the best of up to
 `tries` is kept, like the cedar voice (openrouter_voice.py). The bar is 85 %: the transcript writes numbers as digits
@@ -17,6 +19,7 @@ import argparse
 import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -27,7 +30,9 @@ from pathlib import Path
 
 URL = "https://api.fish.audio/v1/tts"
 OWNER_VOICE = "806321a400cf425485059061394f6b14"  # https://fish.audio/ru/app/m/806321a400cf425485059061394f6b14/
-DIRECTION = "спокойный, уверенный тон ведущего новостей, чёткая дикция, без театральности"
+DIRECTION = ("живой ведущий новостей: интонация меняется по смыслу каждой новости, главное выделено голосом, "
+             "между новостями паузы; уверенно и вовлечённо, без монотонности и без театральной игры")
+CUES = re.compile(r"\[[^\]]*\]|</?[a-z]+>")  # never spoken as words, so never compared
 
 
 def speak_once(text: str, voice: str, model: str, direction: str, speed: float) -> bytes:
@@ -74,7 +79,7 @@ def speak(text: str, out: Path, voice: str = OWNER_VOICE, model: str = "drama-3"
             audio = speak_once(text, voice, model, direction, speed)
             take = Path(tmp) / f"take{k}.mp3"
             take.write_bytes(audio)
-            score = difflib.SequenceMatcher(None, norm(text), norm(heard(take)), autojunk=False).ratio()
+            score = difflib.SequenceMatcher(None, norm(CUES.sub(" ", text)), norm(heard(take)), autojunk=False).ratio()
             dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                         str(take)], capture_output=True, text=True).stdout or 0)
             print(f"fish {model} voice={voice[:8]} try{k + 1}: {dur:.1f}s audio, match {score:.0%}", flush=True)
