@@ -7,7 +7,8 @@ build.py uses it for "narration": {"engine": "fishaudio", "voice": "<fish.audio 
 in front of the text, so the read stays a calm news anchor; the script, the captions and the alignment never see it.
 Abbreviations are read right as written (ЧП, МВД, СИЗО, ОПГ, ГАИ, СМС — checked 2026-10-28; spelled-out «га-и» broke).
 Takes differ (the model is in preview): each take is transcribed and compared with the script, the best of up to
-`tries` is kept, like the cedar voice (openrouter_voice.py). Loudness -16 LUFS, 44.1 kHz.
+`tries` is kept, like the cedar voice (openrouter_voice.py). The bar is 85 %: the transcript writes numbers as digits
+(«112», «28») and glues words («уфилармонии»), so a correct read scores ~88–92 %. Loudness -16 LUFS, 44.1 kHz.
 Env: FISH_AUDIO_API_KEY (server: /opt/openmontage/.env; never printed). The server reaches api.fish.audio directly.
 """
 from __future__ import annotations
@@ -65,7 +66,7 @@ def norm(s: str) -> list[str]:
 
 
 def speak(text: str, out: Path, voice: str = OWNER_VOICE, model: str = "drama-3", direction: str = DIRECTION,
-          speed: float = 1.0, tries: int = 3, min_match: float = 0.93) -> float:
+          speed: float = 1.0, tries: int = 3, min_match: float = 0.85) -> float:
     """Write out.mp3; returns how closely the spoken transcript matched the script (0..1)."""
     best: tuple[float, bytes] = (-1.0, b"")
     with tempfile.TemporaryDirectory() as tmp:
