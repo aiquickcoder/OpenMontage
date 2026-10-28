@@ -63,7 +63,7 @@ def main() -> None:
     cmd = [env.get("FACTORY_CLAUDE_BIN", "claude"), "-p", prompt, "--permission-mode", "acceptEdits",
            "--allowedTools", "Bash Read Write Edit Glob Grep", "--max-turns", "400", "--output-format", "text"]
     try:
-        p = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True,
+        p = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                            timeout=max(60, (stop - now).total_seconds()))
         out = (p.stdout or "") + ("\n[stderr]\n" + p.stderr if p.stderr else "")
     except subprocess.TimeoutExpired as e:
