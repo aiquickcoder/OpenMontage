@@ -148,7 +148,7 @@ def speak(n: dict, out: Path) -> None:
 
         or_speak(n["text"], out, n.get("voice", "ash"), n.get("model", "openai/gpt-audio-mini"), n.get("style", STYLE))
         return
-    if engine == "fishaudio":  # the owner's voice, Fish Audio Drama 3 (addons/news/fish_voice.py)
+    if engine == "fishaudio":  # the news voice (Mita Miside), Fish Audio Drama 3 (addons/news/fish_voice.py)
         from addons.news.fish_voice import DIRECTION, OWNER_VOICE
         from addons.news.fish_voice import speak as fish_speak
 

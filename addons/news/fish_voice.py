@@ -1,4 +1,5 @@
-"""The owner's voice for the news: Fish Audio TTS, model Drama 3 (owner, 2026-10-28).
+"""The news voice: Fish Audio TTS, model Drama 3, voice «Mita Miside (Russian voice)» — the owner's pick of seven
+tried on the same opening (2026-10-28; before it «тучный жаб» 806321a4…).
 
     .venv/bin/python addons/news/fish_voice.py "<text>" out.mp3 [--voice <model id>] [--model drama-3]
 
@@ -29,7 +30,7 @@ import urllib.request
 from pathlib import Path
 
 URL = "https://api.fish.audio/v1/tts"
-OWNER_VOICE = "806321a400cf425485059061394f6b14"  # https://fish.audio/ru/app/m/806321a400cf425485059061394f6b14/
+OWNER_VOICE = "6dc11f3f67a543f6ad4537a4a347e224"  # https://fish.audio/ru/app/m/6dc11f3f67a543f6ad4537a4a347e224/
 DIRECTION = ("живой ведущий новостей: интонация меняется по смыслу каждой новости, главное выделено голосом, "
              "между новостями паузы; уверенно и вовлечённо, без монотонности и без театральной игры")
 CUES = re.compile(r"\[[^\]]*\]|</?[a-z]+>")  # never spoken as words, so never compared
