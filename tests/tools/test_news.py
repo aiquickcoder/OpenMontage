@@ -224,3 +224,16 @@ def test_pick_fill_lists_uncovered_older_incidents(tmp_path):
     assert [c["key"] for c in out["candidates"]] == ["fresh1"]
     assert [c["key"] for c in out["fill"]] == ["old_det"]  # older but uncovered; not the calm one, not 9 days old
     assert "добор" in p.stdout
+
+
+def test_build_refuses_post_footage_that_was_not_cleaned():
+    from addons.news import build
+
+    story = {"stories": [{"shots": [
+        {"src": "media/clip.mp4", "credit": "Видео: @moscowach"},
+        {"src": "media/clean/clip_3.clean.mp4", "src_orig": "media/clip.mp4"},
+        {"src": "media/place.jpg", "credit": "Фото: Автор / Wikimedia, CC BY 4.0"},
+        {"src": "media/post.jpg", "clean": "none"},
+        {"src": "illustrations/i1.png", "label": "ИИ-иллюстрация"}]}]}
+    assert build.unclean_footage(story) == ["media/clip.mp4"]
+    assert build.unclean_footage({**story, "footage_clean": False}) == []

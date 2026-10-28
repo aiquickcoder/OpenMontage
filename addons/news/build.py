@@ -696,6 +696,22 @@ def qa(proj: Path, video: Path, items: list[dict]) -> dict:
     return report
 
 
+def unclean_footage(story: dict) -> list[str]:
+    """Post media that has not been through addons/news/clean_footage.py (owner 2026-10-28: no foreign watermarks).
+    Commons photos (credit names Wikimedia) and illustrations are not post media; "footage_clean": false opts an old
+    project out."""
+    if story.get("footage_clean") is False:
+        return []
+    bad = []
+    for s in stories(story):
+        for sh_ in s.get("shots", []):
+            src = sh_.get("src", "")
+            if (src.startswith("media/") and not src.startswith("media/clean/") and sh_.get("clean") != "none"
+                    and "Wikimedia" not in (sh_.get("credit") or "")):
+                bad.append(src)
+    return sorted(set(bad))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
@@ -712,6 +728,8 @@ def main() -> None:
           + ", ".join(f"{n} (have {h})" for n, h in need), flush=True)
     if a.voice_only:
         return
+    if bad := unclean_footage(story):
+        sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
              for it in slots(s, win, proj)]
     broll(proj, items)

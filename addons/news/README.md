@@ -194,6 +194,21 @@
 
 Флаги: `--voice-only` (голос + сколько нужно планов), `--retime` (не заказывать голос заново: тот же `assets/narration.mp3`), `--no-render`.
 
+## Очистка футажей от чужих вотермарков (решение владельца 2026-10-28)
+Всё видео и все фото из постов проходят сервис очистки на этом же сервере (`/opt/watermark-cleaner`, MI-GAN на CPU,
+API `127.0.0.1:8786`, логин/пароль — `/opt/watermark-cleaner/deploy/.env`, не печатать). Commons и наши иллюстрации — нет.
+`addons/news/clean_footage.py projects/<id>`:
+- `--plan` — маски и превью `qa/wm_<файл>.jpg` (маска красным). Вотермарк = то, чьи контуры в каждом кадре на одном
+  месте, пока картинка движется (ловит и полупрозрачные: Region 116, «ГОСАВТОИНСПЕКЦИЯ КАЗАНИ»). На неподвижной камере
+  (CCTV, дорожная камера) и на фото так не видно — нужны рамки в `media/wm.json` (`--grid <файл>` рисует сетку с
+  координатами; `[]` = чисто). Известные логотипы находятся сами по образцам `addons/news/watermarks/*.png`
+  (`--save-template <имя> <файл> x y w h` — запомнить новый).
+- `--run` — чистит только показываемые секунды (план 3,4 с, последний план сюжета 6 с; ~1 мин CPU на 1 с 720p), все
+  куски сразу в очереди сервиса (до 10), переводит планы на `media/clean/…` (`src_orig`, `in_orig` сохраняются),
+  чистым ставит `"clean": "none"`. Повторный запуск не переделывает готовое.
+- `build.py` не собирает выпуск, если план из поста не прошёл очистку (старый проект — `"footage_clean": false`).
+- На сервере очистку запускать сразу после выбора планов, параллельно с иллюстрациями Flow; сборка — после обоих.
+
 ## Звук (`sound_bed`, одна дорожка `assets/sfx.wav`)
 Звуки — Pixabay (Content License, без Content ID), лежат в `/opt/openmontage/sfx` (+ `LICENSES.md`), на Mac — `~/Downloads/sfx_chp`.
 Pixabay отдаёт страницы только настоящему браузеру: новые звуки ищем через Chrome-расширение Claude (ссылку `cdn.pixabay.com/download/audio/…` берём со страницы), качаем curl'ом **с Mac** (с сервера CDN недоступен) и копируем на сервер.
@@ -231,6 +246,9 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 2. Взять кандидата №1 из `candidates.json`; другого — только с причиной (в `qa/notes.md`). Пусто → `AUTOPILOT_RESULT: FAILED projects/<id> no-news`.
 3. Написать `projects/news-<slug>/story.json`, скопировать медиа, при необходимости фото с Wikimedia.
 4. Нужны иллюстрации → `nohup .venv/bin/python addons/news/gen_shots.py … > projects/<id>/illustrations.log 2>&1 &`, ждать `DONE`. Код 3 → `AUTOPILOT_RESULT: BUDGET projects/<id>`. Открыть **каждую** картинку; брак — удалить и перерисовать один раз.
+   Параллельно — очистка футажей: `clean_footage.py projects/<id> --plan` (через `systemd-run` с
+   `EnvironmentFile=/opt/watermark-cleaner/deploy/.env`), проверить `qa/wm_*.jpg`, рамки для неподвижных камер в
+   `media/wm.json`, затем `--run` в фоне (раздел «Очистка футажей»).
 5. `addons/news/build.py projects/<id>`. Открыть `qa/contact.jpg` и 2 кадра ведущего.
 6. `addons/mural/publish.py projects/<id> --caption "<заголовок>" --tags "#москва #чп #новости ..."`.
 7. Отправить в Telegram на одобрение: `addons/mural/send_telegram.py` через `systemd-run --wait` с `EnvironmentFile`.

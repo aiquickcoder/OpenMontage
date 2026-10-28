@@ -47,10 +47,22 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
      with the factory `EnvironmentFile`, `DISPLAY=:99`, `HOME=/home/factory`, and wait for `DONE`.
    - Open **every** illustration. Check: no generated faces of victims or suspects, no blood, no gibberish text, the
      asked moment. Redraw a failure once.
+   - **Clean the post footage of other channels' watermarks** (owner, 2026-10-28) — as soon as the shots are set, in
+     parallel with the illustrations (the cleaner is a CPU service, Flow is the browser):
+     `systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/watermark-cleaner/deploy/.env
+     --working-directory=/opt/openmontage .venv/bin/python addons/news/clean_footage.py projects/<slug> --plan`.
+     It finds watermarks by itself on a moving camera and known logos anywhere (`addons/news/watermarks/`); a still
+     camera (CCTV, a traffic camera) or a photo needs boxes: `--grid <file>` → open `qa/grid_<file>.jpg` → write
+     `media/wm.json` `{"<file>": [[x, y, w, h], ...]}` (`[]` = clean). Open every `qa/wm_<file>.jpg` (the mask in red):
+     every logo, channel name, link and caption burnt into the picture covered, nothing else. A logo you boxed that will
+     come back (a channel's, an agency's): `--save-template <name> <file> x y w h`. Then the same command with `--run`
+     in the background (about a minute of CPU per second of footage; it cleans only the seconds the shots show). It
+     points the shots at `media/clean/`; `build.py` refuses post footage that has not been through it.
 4. **Build.** Run `.venv/bin/python addons/news/build.py projects/<slug>`. Use `--retime` for rebuilds, so the voice
    is not paid for again.
    - Open `qa/contact.jpg` plus one frame from the anchor intro and one from the outro.
-   - Check that the plate text, chips and credits are correct and that the captions match the voice.
+   - Check the plate text and that the captions match the voice. Nothing but our plate and captions is written over
+     the footage: no source credits, no AI mark, no foreign watermarks (owner, 2026-10-28).
 5. **Deliver.**
    - On the Mac: copy to `~/Desktop/news_pilot/<slug>.mp4` and open it.
    - In factory runs: `addons/mural/publish.py` plus Telegram approval (`addons/mural/send_telegram.py`), then
