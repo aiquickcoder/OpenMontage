@@ -1,12 +1,14 @@
 """Upload a finished «ЧП» digest to Kinescope — every digest goes there right after the build (owner, 2026-10-28).
 
-    .venv/bin/python addons/news/kinescope_upload.py projects/<slug> [--title "..."] [--replace]
+    .venv/bin/python addons/news/kinescope_upload.py projects/<slug> [--title "..."] [--replace] [--notify]
 
 The token and the target come from the environment (on the server: /opt/openmontage/.env): KINESCOPE_API_TOKEN and
 KINESCOPE_PARENT_ID (a project or folder id). The token is never printed. The title defaults to
 "<show> · <date> — <headline>" from story.json, the description to the stories' headlines. The result goes to
 projects/<slug>/kinescope.json; a project that is already there is skipped, unless --replace (a rebuilt digest
-replaces its old video and keeps the id).
+replaces its old video and keeps the id). --notify waits for Kinescope to finish processing and sends the owner's
+Telegram the title, the play link and a direct download link (the 1080p file: no expiry, no login; the original's
+link lives an hour) — owner, 2026-10-28. `--links-only` sends that message for a video uploaded before.
 """
 from __future__ import annotations
 
@@ -14,7 +16,9 @@ import argparse
 import http.client
 import json
 import os
+import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -24,11 +28,39 @@ HOST, PATH = "uploader.kinescope.io", "/v2/video"
 API = "https://api.kinescope.io/v1/videos/"
 
 
+def download_link(token: str, vid: str, wait_s: int = 900) -> tuple[str, str]:
+    """(status, link): the 1080p (else the best encoded) file's direct download link once Kinescope is done."""
+    t0, data = time.time(), {}
+    while time.time() - t0 < wait_s:
+        req = urllib.request.Request(API + vid, headers={"Authorization": f"Bearer {token}"})
+        data = json.loads(urllib.request.urlopen(req, timeout=60).read()).get("data", {})
+        if data.get("status") == "done":
+            break
+        time.sleep(20)
+    enc = [x for x in data.get("assets", []) if x.get("quality") != "original" and x.get("download_link")]
+    enc.sort(key=lambda x: (x.get("quality") != "1080p", -(x.get("file_size") or 0)))
+    return data.get("status", "?"), (enc[0]["download_link"] if enc else "")
+
+
+def notify(proj: Path, out: dict, token: str) -> None:
+    status, link = download_link(token, out["id"])
+    out["download_link"] = link
+    (proj / "kinescope.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    text = (f"🎬 {out['title']}\nСмотреть: {out['play_link']}\n"
+            + (f"Скачать (1080p): {link}" if link else f"Скачать: ещё обрабатывается ({status}), ссылка будет в Kinescope"))
+    repo = HERE.parents[1]
+    subprocess.run([sys.executable, str(repo / "addons" / "mural" / "send_telegram.py"), text], cwd=repo,
+                   env={**os.environ, "PYTHONPATH": str(repo)}, check=False)
+    print(f"links sent: {link or status}", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
     ap.add_argument("--title")
     ap.add_argument("--replace", action="store_true", help="replace the video uploaded for this project before")
+    ap.add_argument("--notify", action="store_true", help="send the play + download links to the owner's Telegram")
+    ap.add_argument("--links-only", action="store_true", help="only send the links of the video uploaded before")
     a = ap.parse_args()
     token, parent = os.environ.get("KINESCOPE_API_TOKEN"), os.environ.get("KINESCOPE_PARENT_ID")
     if not token or not parent:
@@ -39,6 +71,11 @@ def main() -> None:
         sys.exit(f"no render: {video}")
     done = a.project / "kinescope.json"
     old = json.loads(done.read_text(encoding="utf-8")) if done.is_file() else None
+    if a.links_only:
+        if not old:
+            sys.exit("not on Kinescope yet")
+        notify(a.project, old, token)
+        return
     if old and not a.replace:
         print(f"already on Kinescope: {old['id']} {old.get('play_link', '')} (use --replace after a rebuild)")
         return
@@ -74,7 +111,9 @@ def main() -> None:
     out = {"id": data.get("id"), "title": title, "play_link": data.get("play_link") or f"https://kinescope.io/{data.get('id')}",
            "embed_link": data.get("embed_link") or f"https://kinescope.io/embed/{data.get('id')}"}
     done.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"KINESCOPE {out['id']} {out['play_link']}")
+    print(f"KINESCOPE {out['id']} {out['play_link']}", flush=True)
+    if a.notify:
+        notify(a.project, out, token)
 
 
 if __name__ == "__main__":

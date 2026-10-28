@@ -111,7 +111,7 @@ def main() -> None:
                           env={**os.environ, "PYTHONPATH": str(REPO)}).returncode != 0:
             fail("telegram send failed")
     if a.kinescope:
-        k = [PY, "addons/news/kinescope_upload.py", rel] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
+        k = [PY, "addons/news/kinescope_upload.py", rel, "--notify"] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
         if subprocess.run(k, cwd=REPO).returncode != 0:
             fail("kinescope upload failed")
     print(f"PRODUCE_RESULT: READY {rel}", flush=True)
