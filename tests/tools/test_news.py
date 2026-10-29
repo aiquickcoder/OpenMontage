@@ -8,6 +8,21 @@ import numpy as np
 from addons.news import anchor, build
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _ai_allowed(request, monkeypatch):
+    """The pick tests check topic, city and age filters on events with no media; the AI budget (0 by default since
+    2026-10-29) would drop those for lack of footage, so it is lifted here unless a test is about it."""
+    if "ai_budget" in request.node.name:
+        return
+    from addons.news import pick
+
+    for c in pick.CITIES.values():
+        monkeypatch.setitem(c, "ai_max_share", 1)
+
+
 def test_script_words_keep_script_spelling_and_fill_gaps():
     heard = [{"word": w, "start": i * 0.5, "end": i * 0.5 + 0.4}
              for i, w in enumerate(["в", "москве", "горит", "санаторий", "узкая"])]
@@ -222,10 +237,13 @@ def test_pick_fill_lists_uncovered_older_incidents(tmp_path):
 
     now = datetime.now(timezone.utc)
     at = lambda h: (now - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M")  # noqa: E731
+    vid = tmp_path / "v.mp4"  # a story needs footage of its own: the AI budget is 0 (2026-10-29)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=64x64:d=9", str(vid)], check=True)
+    own = {"media_got": ["mp4"], "media": [{"type": "mp4", "local": str(vid)}]}
     events = [
-        {"key": "fresh1", "dt": at(3), "channels": ["tatarstansos"], "links": [], "text": "Пожар на складе в Казани"},
+        {"key": "fresh1", "dt": at(3), "channels": ["tatarstansos"], "links": [], "text": "Пожар на складе в Казани", **own},
         {"key": "old_det", "dt": at(80), "channels": ["tatarstansos"], "links": [],
-         "text": "В Казани задержали мужчину, угрожавшего ножом продавцу"},
+         "text": "В Казани задержали мужчину, угрожавшего ножом продавцу", **own},
         {"key": "old_calm", "dt": at(80), "channels": ["tatarstansos"], "links": [], "text": "В Казани открыли новый сквер"},
         {"key": "too_old", "dt": at(24 * 9), "channels": ["tatarstansos"], "links": [], "text": "В Казани задержали вора"},
     ]
@@ -413,3 +431,33 @@ def test_a_checked_post_picture_left_out_is_flagged(tmp_path: Path):
                                                                      "src_orig": "media/fire.mp4"}]}]}
     w = build.unused_post_media(tmp_path, story)
     assert len(w) == 1 and w[0].startswith("baumana.jpg")
+
+
+def test_ai_budget_zero_drops_stories_without_footage_and_favours_rich_ones(tmp_path: Path):
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    vid = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=64x64:d=9", str(vid)], check=True)
+    now = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
+    base = {"dt": "2026-10-29T10:00", "channels": ["moscowach"], "links": []}
+    bare = pick.judge({**base, "key": "a", "text": "Пожар на складе в Москве"}, now, 36, set(), set())
+    rich = pick.judge({**base, "key": "b", "text": "Пожар на складе в Москве", "media_got": ["mp4"],
+                       "media": [{"type": "mp4", "local": str(vid)}]}, now, 36, set(), set())
+    assert "нет своих кадров (ИИ выключен)" in bare["skip"]
+    assert rich["skip"] == [] and rich["visual"] == "rich" and rich["video_s"] >= 8
+    assert pick.describe(rich) == "видео 9 с"
+
+
+def test_ai_budget_counts_illustrations_against_the_city_limit():
+    s = {"city": "kazan", "stories": [{"shots": [{"src": "media/clean/a_0.clean.mp4"},
+                                                  {"src": "illustrations/k1.png", "label": "ИИ-иллюстрация"}]}]}
+    assert build.ai_budget(s) == (1, 2, 0.0)               # Kazan: no AI pictures (cities.json, 2026-10-29)
+    assert build.ai_budget({**s, "ai_max_share": 0.5})[2] == 0.5
+
+
+def test_crops_of_one_photo_are_different_shots():
+    s = {"stories": [{"shots": [{"src": "media/p.jpg"}, {"src": "media/p.jpg", "crop": [0, 0, 400, 300]},
+                                {"src": "media/p.jpg", "crop": [200, 100, 400, 300]}]}]}
+    assert build.picture_warnings(s) == []                  # a wide view and two details, not one photo three times

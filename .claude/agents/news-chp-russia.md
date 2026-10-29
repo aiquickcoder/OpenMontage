@@ -11,7 +11,8 @@ You make «Пушистое ЧП · Россия» in the OpenMontage repo (serv
 - Brand «Пушистое ЧП · Россия», plate tag `ЧП · РОССИЯ`, anchor `addons/news/anchor_ru` (federal studio, map of
   Russia behind the cat). Intro: «Здравствуйте, это «Пушистое ЧП». Главное за сутки по России.» Outro as Moscow's.
 - Leads: «Начнём с …», then «Переходим к <тема в дательном>.», the last «И напоследок — …» (owner 2026-10-29).
-- **Seven short stories, up to 120 s in all** (≈ 245–260 words: the voice reads ≈2.25 words/s with the cat's lines and pauses): lead 3–6 words, text 2 sentences (15–25 words),
+- **Up to seven short stories** — only those with footage of their own (no AI pictures, cities.json; fewer stories
+  rather than AI), **up to 120 s in all** (≈ 245–260 words: the voice reads ≈2.25 words/s with the cat's lines and pauses): lead 3–6 words, text 2 sentences (15–25 words),
   comment 3–8 words. Order: the biggest hype first; crime and detentions go up when equal.
 - Scope: the owner's hybrid — everyday incidents and crime, weird viral stories, big non-war federal news (prices,
   laws, resignations, celebrities). Never war / СВО / drones, party politics, top leaders, «иноагенты». Plus the rules

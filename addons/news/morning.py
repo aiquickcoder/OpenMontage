@@ -69,10 +69,12 @@ def main() -> None:
         f"Today is {now:%Y-%m-%d}.",
         *([f"The owner's remarks on this digest (fix every one): {a.note}"] if a.note else []),
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
-        "reuse the night pre-clean (clean_footage.py cuts from it), prefer post footage — but every phrase needs a "
-        "picture that shows it: draw illustrations (start Flow as soon as the phrases are known), never fill with "
-        "another story's picture or an unrelated place, check build.py --storyboard before the render, redraw a "
-        "failed picture at most once.",
+        "reuse the night pre-clean (clean_footage.py cuts from it). No AI pictures where the city's cities.json "
+        "ai_max_share is 0 (now everywhere): pick stories with footage of their own and fill every phrase from it — "
+        "other seconds of the video, other channels' media of the same event, crops (\"crop\": [x, y, w, h]), "
+        "Commons photos of the very place; fewer stories rather than AI pictures. Every phrase needs a picture that "
+        "shows it, never another story's picture or an unrelated place; check build.py --storyboard before the "
+        "render.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "
         "OpenRouter need https_proxy=http://127.0.0.1:10809; the Flow browser is on DISPLAY=:99. Do not print secrets.",
         "To wait for a background job, wait on its PID (`while kill -0 $PID`) or on a file it writes — never on "

@@ -76,6 +76,11 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     g._load_state(out)
     only = set(sys.argv[3:])
+    cities = json.loads((Path(__file__).resolve().parent / "cities.json").read_text(encoding="utf-8"))
+    limit = story.get("ai_max_share", cities.get(story.get("city", ""), {}).get("ai_max_share", 1))
+    if limit == 0 and story.get("illustrations"):
+        sys.exit(f"AI illustrations are off for {story.get('city')} (cities.json ai_max_share = 0, owner 2026-10-29): "
+                 "show the post's own footage and photos, Commons photos of the very place")
     for s in story["illustrations"]:
         if only and s["id"] not in only:
             continue

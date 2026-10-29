@@ -27,7 +27,7 @@ BASE = os.path.expanduser(_out or os.environ.get("NEWS_BASE") or "~/memes/rf_top
 MEDIA = os.path.join(BASE, "media")
 os.makedirs(MEDIA, exist_ok=True)
 WINDOW_H = int(float(_args[0])) if _args else 36
-DL_TOP = 30  # качаем медиа только у топ-N по хайпу (остальным ни к чему)
+DL_TOP = 60  # медиа у топ-N по хайпу; больше, чем было (30): без ИИ-картинок сюжет держится на своих кадрах (2026-10-29)
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120 Safari/537.36"
 
 # топ-хайп каналы РФ (проверено пробником 28.10.2026: веб-превью + max views).
@@ -84,13 +84,17 @@ def parse(ch, raw):
         text = clean(m.group(1)) if m else ""
         if len(text) < 15:
             continue
-        ph = re.search(r"tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)", c)
-        vd = re.search(r'<video[^>]+src="([^"]+\.mp4[^"]*)"', c)
+        # every picture of the post, albums included (owner 2026-10-29: real footage instead of AI pictures); a video
+        # too big for the web preview has no src, its preview frame then comes as a photo
+        vids = re.findall(r'<video[^>]+src="([^"]+\.mp4[^"]*)"', c)
+        pics = re.findall(r"tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)", c)
+        if not vids:
+            pics += re.findall(r"tgme_widget_message_video_thumb[^>]*background-image:url\('([^']+)'\)", c)
         dt = re.search(r'<time datetime="([^"]+)"', c)
         ln = re.search(r'tgme_widget_message_date"[^>]*href="([^"]+)"', c)
         vw = VIEWS.search(c)
-        posts.append({"ch": ch, "text": text, "photo": ph.group(1) if ph else "",
-                      "mp4": vd.group(1) if vd else "",
+        posts.append({"ch": ch, "text": text, "photo": pics[0] if pics else "", "photos": pics[:10],
+                      "mp4": vids[0] if vids else "", "mp4s": vids[:6],
                       "dt": dt.group(1) if dt else "", "link": ln.group(1) if ln else "",
                       "views": to_i(vw.group(1)) if vw else 0})
     return posts
@@ -190,9 +194,11 @@ for idx, p in enumerate(posts):
     e["views"][p["ch"]] = max(e["views"].get(p["ch"], 0), p["views"])
     if len(p["text"]) > len(e["text"]): e["text"] = p["text"]
     if p["dt"][:16] < e["dt"]: e["dt"] = p["dt"][:16]  # самый ранний = момент сюжета
-    for kind, url in (("mp4", p["mp4"]), ("photo", p["photo"])):
-        if url and not any(m["url"] == url for m in e["media"]):
-            e["media"].append({"type": kind, "url": url, "ch": p["ch"], "local": ""})
+    for kind, urls in (("mp4", p.get("mp4s") or [p["mp4"]]), ("photo", p.get("photos") or [p["photo"]])):
+        for url in urls:
+            if url and not any(m["url"] == url for m in e["media"]) and \
+                    sum(m["type"] == kind for m in e["media"]) < (6 if kind == "mp4" else 10):
+                e["media"].append({"type": kind, "url": url, "ch": p["ch"], "local": ""})
 
 # --- хайп-скор: top_views × бонус за кросс-канальность ---
 for e in events.values():

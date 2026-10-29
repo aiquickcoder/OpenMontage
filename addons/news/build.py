@@ -418,15 +418,16 @@ def picture_warnings(story: dict) -> list[str]:
     picture four times in a row): a still more than twice in a story or twice in a row, post media in two stories."""
     out, where = [], {}
     for w, st in enumerate(stories(story)):
-        srcs = [s.get("src_orig") or s["src"] for s in st.get("shots", [])]
-        stills = [x for x in srcs if Path(x).suffix.lower() not in VIDEO_EXT]
+        srcs = [(s.get("src_orig") or s["src"]) + (f"@{s['crop']}" if s.get("crop") else "")  # a crop: another view
+                for s in st.get("shots", [])]
+        stills = [x for x in srcs if Path(x.split("@")[0]).suffix.lower() not in VIDEO_EXT]
         out += [f"story {w + 1}: {Path(x).name} is shown {stills.count(x)} times — at most twice"
                 for x in sorted(set(stills)) if stills.count(x) > 2]
         out += [f"story {w + 1}: {Path(x).name} twice in a row" for x, y in zip(srcs, srcs[1:])
                 if x == y and x in stills]
         for x in srcs:
             if x.startswith("media/"):
-                where.setdefault(x, set()).add(w + 1)
+                where.setdefault(x.split("@")[0], set()).add(w + 1)
     out += [f"{Path(x).name} is shown in stories {sorted(ws)} — a picture belongs to its own story"
             for x, ws in where.items() if len(ws) > 1]
     return out
@@ -441,6 +442,18 @@ def unused_post_media(proj: Path, story: dict) -> list[str]:
     used = {Path(s.get("src_orig") or s["src"]).name for st in stories(story) for s in st.get("shots", [])}
     return [f"{name} from the post is not shown in any shot — the post's own picture goes first"
             for name in json.loads(wm.read_text()) if name not in used]
+
+
+CITIES = json.loads((Path(__file__).resolve().parent / "cities.json").read_text(encoding="utf-8"))
+
+
+def ai_budget(story: dict) -> tuple[int, int, float]:
+    """(AI-illustration shots, all shots, the allowed share): cities.json ai_max_share, or the story's own
+    "ai_max_share". 0 since 2026-10-29 — views fell as the AI share grew (15% → 100%: 1388 → 10 views)."""
+    shots = [s for st in stories(story) for s in st.get("shots", [])]
+    ai = sum(1 for s in shots if s.get("label") or s["src"].startswith("illustrations/"))
+    limit = story.get("ai_max_share", CITIES.get(story.get("city", ""), {}).get("ai_max_share", 1))
+    return ai, len(shots), float(limit)
 
 
 def _font(size: int):
@@ -462,8 +475,14 @@ def _thumb(item: dict):
         cap.set(cv2.CAP_PROP_POS_MSEC, (item["in"] + item["dur"] / 2) * 1000)
         ok, f = cap.read()
         cap.release()
-        return f if ok else None
-    return cv2.imread(str(item["path"]))
+    else:
+        f, ok = cv2.imread(str(item["path"])), True
+    if not ok or f is None:
+        return None
+    if item.get("crop"):
+        x, y, w, h = item["crop"]
+        f = f[y:y + h, x:x + w]
+    return f
 
 
 def storyboard(proj: Path, story: dict, items: list[dict], timing: dict) -> list[Path]:
@@ -516,6 +535,9 @@ def box_h(w: int, h: int) -> int:
 def segment(item: dict, dst: Path) -> None:
     src, d = item["path"], item["dur"]
     w, h, _ = probe(src)
+    crop = item.get("crop")  # [x, y, w, h] of the source: another framing of the same picture — a detail, a wide view
+    if crop:
+        w, h = crop[2], crop[3]
     full = h / w > 1.4  # portrait source: fill the whole frame
     bh = H if full else box_h(w, h)
     y = 0 if full else BOX_Y - bh // 2
@@ -538,7 +560,8 @@ def segment(item: dict, dst: Path) -> None:
         fg = (f"[b]scale={W * 3}:{bh * 3}:force_original_aspect_ratio=increase,crop={W * 3}:{bh * 3},"
               f"zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
               f"s={W}x{bh}:fps={FPS}[fg]")
-    flt = (f"[0:v]fps={FPS},split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
+    pre = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
+    flt = (f"[0:v]{pre}fps={FPS},split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
            f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
@@ -1003,6 +1026,11 @@ def main() -> None:
                                                for k, p in enumerate(b)), flush=True)
     if a.voice_only:
         return
+    ai, total, limit = ai_budget(story)
+    over = total and ai / total > limit + 1e-9
+    print(f"AI pictures: {ai} of {total} shots, allowed {limit:.0%} (cities.json ai_max_share)"
+          + (" — OVER: use the post's footage at other in-points, crops of its photos, Commons photos of the very "
+             "place, or drop the story" if over else ""), flush=True)
     for warning in picture_warnings(story) + unused_post_media(proj, story):
         print("warning:", warning, flush=True)
     if a.storyboard:
@@ -1010,6 +1038,8 @@ def main() -> None:
                  for it in slots(s, win, proj, timing["words"], phrases[w], strict=False)]
         print("storyboard:", " ".join(str(p.relative_to(proj)) for p in storyboard(proj, story, items, timing)))
         return
+    if over:
+        sys.exit(f"{ai} of {total} shots are AI pictures, the limit is {limit:.0%} (owner 2026-10-29: as few as possible)")
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
