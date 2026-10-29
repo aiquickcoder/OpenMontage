@@ -39,6 +39,7 @@ def main() -> None:
     ap.add_argument("--city", default="russia", choices=sorted(AGENTS))
     ap.add_argument("--deadline", default="08:45", help="MSK; the agent is stopped at this time")
     ap.add_argument("--project", type=Path, help="finish this started digest (story.json, maybe its voice) instead")
+    ap.add_argument("--slug", help="a new digest under this name (an extra one in a day: the dated name is taken)")
     a = ap.parse_args()
     now = datetime.now(MSK)
     if a.project:
@@ -47,7 +48,10 @@ def main() -> None:
     stop = now.replace(hour=h, minute=m, second=0, microsecond=0)
     if stop <= now:
         stop += timedelta(days=1)
-    slug = a.project.name if a.project else SLUG[a.city].format(d=now.strftime("%d-%m") + ("" if now.hour < 12 else "-vecher"))
+    slug = a.project.name if a.project else a.slug or SLUG[a.city].format(
+        d=now.strftime("%d-%m") + ("" if now.hour < 12 else "-vecher"))
+    if a.slug and (REPO / "projects" / slug / "story.json").is_file():
+        sys.exit(f"projects/{slug} exists: an extra digest needs a new name")
     proj = REPO / "projects" / slug
     proj.mkdir(parents=True, exist_ok=True)
     agent = (REPO / ".claude" / "agents" / f"{AGENTS[a.city]}.md").read_text(encoding="utf-8")
