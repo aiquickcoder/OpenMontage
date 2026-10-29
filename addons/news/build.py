@@ -432,6 +432,17 @@ def picture_warnings(story: dict) -> list[str]:
     return out
 
 
+def unused_post_media(proj: Path, story: dict) -> list[str]:
+    """Post media checked for watermarks (media/wm.json) but shown nowhere: the post's own picture goes first (owner
+    2026-10-29; the Kazan agent cleaned the Baumana photo and drew five illustrations instead)."""
+    wm = proj / "media" / "wm.json"
+    if not wm.is_file():
+        return []
+    used = {Path(s.get("src_orig") or s["src"]).name for st in stories(story) for s in st.get("shots", [])}
+    return [f"{name} from the post is not shown in any shot — the post's own picture goes first"
+            for name in json.loads(wm.read_text()) if name not in used]
+
+
 def _font(size: int):
     from PIL import ImageFont
 
@@ -992,7 +1003,7 @@ def main() -> None:
                                                for k, p in enumerate(b)), flush=True)
     if a.voice_only:
         return
-    for warning in picture_warnings(story):
+    for warning in picture_warnings(story) + unused_post_media(proj, story):
         print("warning:", warning, flush=True)
     if a.storyboard:
         items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))

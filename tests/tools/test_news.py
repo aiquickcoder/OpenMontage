@@ -404,3 +404,12 @@ def test_a_fast_narrator_still_closes_the_mouth_between_syllables(monkeypatch):
     monkeypatch.setattr(anchor, "envelope", lambda audio, fps: env)
     tr = anchor.mouth_track(Path("x"), 30, [(0.0, 40 / 30)], 0.0, True)
     assert sum(1 for _, s in tr[1:-1] if s == "mid") >= 4      # every dip shows, not a mouth hanging open
+
+
+def test_a_checked_post_picture_left_out_is_flagged(tmp_path: Path):
+    (tmp_path / "media").mkdir()
+    (tmp_path / "media" / "wm.json").write_text(json.dumps({"baumana.jpg": [[0, 0, 10, 10]], "fire.mp4": {"add": []}}))
+    story = {"stories": [{"shots": [{"src": "illustrations/b1.png"}, {"src": "media/clean/fire_0.clean.mp4",
+                                                                     "src_orig": "media/fire.mp4"}]}]}
+    w = build.unused_post_media(tmp_path, story)
+    assert len(w) == 1 and w[0].startswith("baumana.jpg")
