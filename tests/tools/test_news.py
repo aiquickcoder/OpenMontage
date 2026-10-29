@@ -433,11 +433,12 @@ def test_a_checked_post_picture_left_out_is_flagged(tmp_path: Path):
     assert len(w) == 1 and w[0].startswith("baumana.jpg")
 
 
-def test_ai_budget_zero_drops_stories_without_footage_and_favours_rich_ones(tmp_path: Path):
+def test_ai_budget_zero_drops_stories_without_footage_and_favours_rich_ones(tmp_path: Path, monkeypatch):
     from datetime import datetime, timezone
 
     from addons.news import pick
 
+    monkeypatch.setitem(pick.CITIES["moscow"], "ai_max_share", 0)
     vid = tmp_path / "v.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=black:s=64x64:d=9", str(vid)], check=True)
     now = datetime(2026, 10, 29, 12, 0, tzinfo=timezone.utc)
@@ -448,12 +449,17 @@ def test_ai_budget_zero_drops_stories_without_footage_and_favours_rich_ones(tmp_
     assert "нет своих кадров (ИИ выключен)" in bare["skip"]
     assert rich["skip"] == [] and rich["visual"] == "rich" and rich["video_s"] >= 8
     assert pick.describe(rich) == "видео 9 с"
+    monkeypatch.setitem(pick.CITIES["moscow"], "ai_max_share", 0.3)   # some AI allowed: kept, but below footage
+    bare = pick.judge({**base, "key": "a", "text": "Пожар на складе в Москве"}, now, 36, set(), set())
+    rich = pick.judge({**base, "key": "b", "text": "Пожар на складе в Москве", "media_got": ["mp4"],
+                       "media": [{"type": "mp4", "local": str(vid)}]}, now, 36, set(), set())
+    assert bare["skip"] == [] and rich["score"] > bare["score"]
 
 
 def test_ai_budget_counts_illustrations_against_the_city_limit():
     s = {"city": "kazan", "stories": [{"shots": [{"src": "media/clean/a_0.clean.mp4"},
                                                   {"src": "illustrations/k1.png", "label": "ИИ-иллюстрация"}]}]}
-    assert build.ai_budget(s) == (1, 2, 0.0)               # Kazan: no AI pictures (cities.json, 2026-10-29)
+    assert build.ai_budget(s) == (1, 2, 0.3)               # Kazan: at most 30% AI pictures (2026-10-29)
     assert build.ai_budget({**s, "ai_max_share": 0.5})[2] == 0.5
 
 
@@ -470,11 +476,21 @@ def test_fact_cards_and_maps_become_shots(tmp_path: Path, monkeypatch):
 
     made_maps = []
     monkeypatch.setattr(visuals, "map_clip", lambda spec, out: made_maps.append(spec) or out.write_bytes(b"x") or out)
-    story = {"stories": [{"shots": [{"card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца", "small": "колонии"}},
+    story = {"stories": [{"shots": [{"src": "media/a.mp4", "card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца",
+                                                                     "small": "колонии"}},
                                     {"map": {"street": "улица Баумана", "city": "Казань"}},
-                                    {"src": "media/a.mp4"}]}]}
+                                    {"src": "media/b.mp4"}]}]}
     assert visuals.resolve(tmp_path, story) == 2
     shots = story["stories"][0]["shots"]
-    assert shots[0]["src"].startswith("assets/visuals/card_") and shots[1]["src"].endswith(".mp4")
-    assert cv2.imread(str(tmp_path / shots[0]["src"])).shape[:2] == (visuals.H, visuals.W)
+    assert shots[0]["src"] == "media/a.mp4" and shots[0]["card_png"].startswith("assets/visuals/card_")
+    assert shots[1]["src"].endswith(".mp4")
+    png = cv2.imread(str(tmp_path / shots[0]["card_png"]), cv2.IMREAD_UNCHANGED)
+    assert png.shape[1] == visuals.CARD_W and png.shape[2] == 4 and png.shape[0] < 400   # a plate, not the screen
     assert visuals.resolve(tmp_path, story) == 2 and len(made_maps) == 1     # made once, then reused
+
+
+def test_a_card_without_its_shot_is_refused(tmp_path: Path):
+    from addons.news import visuals
+
+    with pytest.raises(SystemExit):
+        visuals.resolve(tmp_path, {"stories": [{"shots": [{"card": {"big": "7 млн ₽"}}]}]})

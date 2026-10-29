@@ -56,15 +56,15 @@ next to what is counted («у дома девяносто три мужчину�
    - The real place: `fetch_commons.py`. Open every photo before use; credit = author, licence.
    - Illustrations: `gen_shots.py` on the server (it is the Flow host). Run it in the background via `systemd-run`
      with the factory `EnvironmentFile`, `DISPLAY=:99`, `HOME=/home/factory`, and wait for `DONE`.
-     **No AI pictures** (owner 2026-10-29: views fell as the AI share grew; cities.json `ai_max_share` = 0 — build.py
-     refuses a digest over it, gen_shots.py does not draw). Take stories that have footage of their own (pick.py
-     shows «видео 12 с + 3 фото»; stories with none are dropped) and fill every phrase from them: other seconds of
+     **Few AI pictures** (owner 2026-10-29: views fell as the AI share grew; cities.json `ai_max_share` = 0.3 —
+     build.py refuses a digest over it; «совсем ИИ убирать не нужно»). Prefer stories that have footage of their own
+     (pick.py shows «видео 12 с + 3 фото» and ranks them up) and fill every phrase from them first: other seconds of
      the video (`in`), the other channels' video and photos of the same event, crops of a photo or a frame
      (`"crop": [x, y, w, h]` — a wide view, a detail, the car, the people: different shots), a Commons photo of the
      very place; and pictures made from data (README «Кадры из данных»): a map of the place under the «where»
-     phrase (`"map": {"street", "city", "label"}`, one per story) and fact cards for a number, a term, a sum, an
-     article (`"card": {"label", "big", "small"}`, only what the text says, at most two per story, never in a row).
-     Not enough footage for four stories — make three or two. Only if the owner raised the limit:
+     phrase (`"map": {"street", "city", "label"}`, one per story) and fact cards laid over a real shot (the shot keeps
+     its `src` and gets `"card": {"label", "big", "small"}` — a number, a term, a sum, an article, only what the text
+     says, at most two per story). Illustrations only where nothing real shows the phrase, within the limit:
      **every picture shows its phrase** (README «Кадры без футажа»): post media of this story if it
      shows what is said, a Commons photo only of the very place the phrase names (not a namesake: the metro station
      «Гражданский проспект» is not the avenue), otherwise an illustration drawn for that phrase. Never another

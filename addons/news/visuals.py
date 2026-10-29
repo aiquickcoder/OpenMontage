@@ -2,9 +2,11 @@
 
 A shot in story.json can be, instead of a file:
   {"map": {"street": "улица Баумана", "city": "Казань", "label": "ул. Баумана"}, "beat": "..."}   # or "query": "..."
-  {"card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца", "small": "колонии общего режима"}, "beat": "..."}
-build.py calls resolve() first: the file is made once (assets/visuals/, named by a hash of the spec) and the shot's
-"src" points at it. A card says only what the story text says (a number, a term, a sum) — never a new fact.
+  {"src": "media/clean/x_3.clean.mp4", "card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца", "small": "колонии"}}
+A card is a compact plate laid over a real shot (owner 2026-10-29: «на весь экран не надо»), so a shot with "card"
+keeps its own "src". build.py calls resolve() first: the files are made once (assets/visuals/, named by a hash of
+the spec); a map shot's "src" points at its clip, a card shot gets "card_png". A card says only what the story
+text says (a number, a term, a sum) — never a new fact.
 
 The map: OpenStreetMap — Nominatim finds the place (street and city apart, so a street is not mistaken for the metro
 station of the same name), tiles from tile.openstreetmap.org (cached in ~/.cache/openmontage/osm, a valid
@@ -55,38 +57,32 @@ def fit(draw: ImageDraw.ImageDraw, text: str, width: int, start: int, bold: bool
 
 
 # -- the fact card --------------------------------------------------------------------------------------------------
-def card(spec: dict, out: Path) -> Path:
-    s = 2  # drawn at 2x, then downscaled: clean edges
-    img = Image.new("RGB", (W * s, H * s), DARK)
-    top = np.linspace(26, 11, H * s)[:, None, None] * np.ones((1, W * s, 3))
-    img = Image.fromarray(top.astype(np.uint8))
+CARD_W = 900  # the plate over the picture: about the width of the headline plate, not the whole box
+
+
+def card_overlay(spec: dict, out: Path) -> Path:
+    """A transparent PNG: the dark plate with the red edge (like the headline plate), the label, the big line and
+    the small one. build.py lays it at the bottom of the picture for the shot's length."""
+    s = 2
+    probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    fb = fit(probe, str(spec.get("big", "")), (CARD_W - 90) * s, 96 * s)
+    fs, fl = font(40 * s, bold=False), font(30 * s)
+    h = 34 * s + (56 * s if spec.get("label") else 0) + int(fb.size * 1.12) + (int(fs.size * 1.3) if spec.get("small") else 0) + 26 * s
+    img = Image.new("RGBA", (CARD_W * s, h), (10, 10, 12, 224))
     d = ImageDraw.Draw(img)
-    x0 = 120 * s
-    d.rectangle((x0 - 36 * s, 190 * s, x0 - 24 * s, (H - 190) * s), fill=RED)
-    y = 200 * s
+    d.rectangle((0, 0, 12 * s, h), fill=RED + (255,))
+    x, y = 44 * s, 26 * s
     if spec.get("label"):
-        f = font(40 * s)
-        tw = d.textlength(spec["label"], font=f)
-        d.rectangle((x0, y, x0 + tw + 36 * s, y + 64 * s), fill=RED)
-        d.text((x0 + 18 * s, y + 8 * s), spec["label"], font=f, fill="white")
-        y += 100 * s
-    big = str(spec.get("big", ""))
-    f = fit(d, big, (W - 220) * s, 150 * s)
-    d.text((x0, y), big, font=f, fill="white")
-    y += int(f.size * 1.18)
+        tw = d.textlength(spec["label"], font=fl)
+        d.rectangle((x, y, x + tw + 28 * s, y + 46 * s), fill=RED + (255,))
+        d.text((x + 14 * s, y + 6 * s), spec["label"], font=fl, fill="white")
+        y += 56 * s
+    d.text((x, y), str(spec.get("big", "")), font=fb, fill="white")
+    y += int(fb.size * 1.12)
     if spec.get("small"):
-        lines, line = [], ""
-        fs = font(54 * s, bold=False)
-        for word in str(spec["small"]).split():
-            if d.textlength(f"{line} {word}".strip(), font=fs) > (W - 220) * s:
-                lines.append(line)
-                line = ""
-            line = f"{line} {word}".strip()
-        lines.append(line)
-        for ln in lines[:2]:
-            d.text((x0, y), ln, font=fs, fill=(225, 225, 225))
-            y += int(fs.size * 1.25)
-    img = img.resize((W, H), Image.LANCZOS)
+        d.text((x, y), str(spec["small"]), font=fit(d, str(spec["small"]), (CARD_W - 90) * s, 40 * s, bold=False),
+               fill=(225, 225, 225))
+    img = img.resize((CARD_W, h // s), Image.LANCZOS)
     out.parent.mkdir(parents=True, exist_ok=True)
     img.save(out)
     return out
@@ -209,22 +205,24 @@ def resolve(proj: Path, story: dict) -> int:
     made = 0
     for st in story.get("stories") or [story]:
         for s in st.get("shots", []):
-            kind = "card" if "card" in s else "map" if "map" in s else None
-            if not kind:
-                continue
-            key = hashlib.sha1(json.dumps(s[kind], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
-            rel = Path("assets") / "visuals" / f"{kind}_{key}.{'png' if kind == 'card' else 'mp4'}"
-            if not (proj / rel).is_file():
-                (card if kind == "card" else map_clip)(s[kind], proj / rel)
-            s["src"] = rel.as_posix()
-            made += 1
+            for kind in ("map", "card"):
+                if kind not in s:
+                    continue
+                if kind == "card" and not s.get("src"):
+                    sys.exit(f"a fact card goes over a real shot: give the shot with {s['card']} its \"src\"")
+                key = hashlib.sha1(json.dumps(s[kind], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
+                rel = Path("assets") / "visuals" / f"{kind}_{key}.{'png' if kind == 'card' else 'mp4'}"
+                if not (proj / rel).is_file():
+                    (card_overlay if kind == "card" else map_clip)(s[kind], proj / rel)
+                s["card_png" if kind == "card" else "src"] = rel.as_posix()
+                made += 1
     return made
 
 
 if __name__ == "__main__":
     kind, out, *args = sys.argv[1:]
     if kind == "card":
-        card({"label": args[0], "big": args[1], "small": args[2] if len(args) > 2 else ""}, Path(out))
+        card_overlay({"label": args[0], "big": args[1], "small": args[2] if len(args) > 2 else ""}, Path(out))
     else:
         map_clip({"street": args[0], "city": args[1], "label": args[2] if len(args) > 2 else args[0]}, Path(out))
     print(out)

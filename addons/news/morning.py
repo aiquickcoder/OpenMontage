@@ -69,11 +69,11 @@ def main() -> None:
         f"Today is {now:%Y-%m-%d}.",
         *([f"The owner's remarks on this digest (fix every one): {a.note}"] if a.note else []),
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
-        "reuse the night pre-clean (clean_footage.py cuts from it). No AI pictures where the city's cities.json "
-        "ai_max_share is 0 (now everywhere): pick stories with footage of their own and fill every phrase from it — "
+        "reuse the night pre-clean (clean_footage.py cuts from it). AI pictures at most the city's cities.json "
+        "ai_max_share (0.3 now): prefer stories with footage of their own and fill phrases from it first — "
         "other seconds of the video, other channels' media of the same event, crops (\"crop\": [x, y, w, h]), "
-        "Commons photos of the very place, a map of the place (\"map\") and fact cards (\"card\") — README «Кадры "
-        "из данных»; fewer stories rather than AI pictures. Every phrase needs a picture that "
+        "Commons photos of the very place, a map of the place (\"map\"), fact cards over a real shot (\"card\") — "
+        "README «Кадры из данных»; illustrations only where nothing real shows the phrase. Every phrase needs a picture that "
         "shows it, never another story's picture or an unrelated place; check build.py --storyboard before the "
         "render.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "

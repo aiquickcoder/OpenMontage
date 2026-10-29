@@ -401,6 +401,8 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
             t += d
             continue
         item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT}
+        if s.get("card_png"):  # a fact card laid over this shot (visuals.py)
+            item["card_png"] = str((proj / s["card_png"]).resolve())
         if item["video"]:
             w, h, length = probe(src)
             a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
@@ -561,8 +563,15 @@ def segment(item: dict, dst: Path) -> None:
               f"zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
               f"s={W}x{bh}:fps={FPS}[fg]")
     pre = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
-    flt = (f"[0:v]{pre}fps={FPS},split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
-           f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
+    flt = f"[0:v]{pre}fps={FPS},split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1"
+    if item.get("card_png"):  # a fact card over the picture, low in the box and above the captions, fading in
+        from PIL import Image
+
+        cw, ch = Image.open(item["card_png"]).size
+        cy = min(y + bh - ch - 28, 1420 - ch)
+        inp += ["-loop", "1", "-t", f"{d:.3f}", "-i", item["card_png"]]
+        flt += (f"[m];[1:v]format=rgba,fade=t=in:st=0.15:d=0.3:alpha=1[cd];[m][cd]overlay=60:{cy}:shortest=1")
+    flt += f",trim=duration={d:.3f},setsar=1,format=yuv420p[v]"
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
 

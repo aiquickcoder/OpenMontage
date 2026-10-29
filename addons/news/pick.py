@@ -119,10 +119,11 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     video_s, photos = footage(e)
     visual = ("rich" if video_s >= 8 or photos >= 4 or (video_s >= 3 and photos >= 2) else
               "thin" if video_s or photos else "none")
-    if c.get("ai_max_share", 1) == 0:  # no AI pictures: a story stands on its own footage (owner 2026-10-29)
-        if visual == "none":
-            why_not.append("нет своих кадров (ИИ выключен)")
-        media += 1.0 if visual == "rich" else -1.5
+    budget = c.get("ai_max_share", 1)  # AI pictures limited (owner 2026-10-29): stories with footage of their own first
+    if budget == 0 and visual == "none":
+        why_not.append("нет своих кадров (ИИ выключен)")
+    if budget < 1:
+        media += {"rich": 1.0, "thin": 0.0, "none": -1.5}[visual]
     strong = len(set(m.lower() for m in re.findall(STRONG, text, re.I)))
     react = reactions(text)
     crime = "crime" in tags
