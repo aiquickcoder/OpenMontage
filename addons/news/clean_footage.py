@@ -87,19 +87,54 @@ def camera_shift(fr: list[np.ndarray]) -> float:
     return float(np.median(shifts)) if shifts else 0.0
 
 
-def auto_mask(fr: list[np.ndarray]) -> tuple[np.ndarray, float]:
-    """Steady-edge mask of a clip and its median camera shift (px)."""
+def auto_mask(fr: list[np.ndarray]) -> tuple[np.ndarray, float, float]:
+    """Steady-edge mask of a clip, its median camera shift (px) and its blind share: the frame share of steady patches
+    too big to be a logo. A slow camera keeps the buildings steady too, a logo merges with them and the patch is
+    dropped whole — «фонтанка.ру» across theatre.mp4 (SPb 28.10). Blind > 0: somebody has to look (needs_look)."""
     strength = steady_edges(fr)
     moving = camera_shift(fr)
     cand = cv2.morphologyEx((strength > EDGE_THR).astype(np.uint8), cv2.MORPH_CLOSE, np.ones((13, 13), np.uint8))
     h, w = cand.shape
     n, lab, st, _ = cv2.connectedComponentsWithStats(cand)
-    mask = np.zeros((h, w), np.uint8)
+    mask, blind = np.zeros((h, w), np.uint8), 0.0
     for i in range(1, n):
         x, y, bw, bh, a = st[i]
         if a > 150 and bw * bh < 0.12 * w * h:
             mask[lab == i] = 255
-    return cv2.dilate(mask, np.ones((9, 9), np.uint8)), moving
+        elif a > 150:
+            blind = max(blind, bw * bh / (w * h))
+    return cv2.dilate(mask, np.ones((9, 9), np.uint8)), moving, round(float(blind), 3)
+
+
+def needs_look(moving: float, blind: float) -> bool:
+    """The auto mask cannot be trusted: a still camera, or a steady background it cannot tell logos from."""
+    return moving < STILL_SHIFT or blind > 0
+
+
+def hand_mask(shape: tuple[int, int], entry, auto: np.ndarray) -> np.ndarray:
+    """A media/wm.json entry: a list of boxes replaces the auto mask (a still camera), {"add": [...]} adds boxes to it
+    ({"add": []} = looked, nothing else to remove)."""
+    if isinstance(entry, dict):
+        return np.maximum(auto, boxes_mask(shape, entry.get("add", [])))
+    return boxes_mask(shape, entry)
+
+
+def preview(fr: list[np.ndarray], mask: np.ndarray) -> np.ndarray:
+    """qa/wm_<file>.jpg: a middle frame and the clip's average side by side, the mask in red. On the average the
+    picture smears and a fixed overlay stays sharp, so a logo the mask misses shows up there."""
+    acc = np.zeros(fr[0].shape, np.float32)
+    step = max(1, len(fr) // 40)
+    for f in fr[::step]:
+        acc += f
+    avg = (acc / len(fr[::step])).astype(np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    avg = cv2.cvtColor(clahe.apply(cv2.cvtColor(avg, cv2.COLOR_BGR2GRAY)), cv2.COLOR_GRAY2BGR)
+    out = []
+    for img in (fr[len(fr) // 2].copy(), avg):
+        img[mask > 0] = (0.35 * img[mask > 0] + 0.65 * np.array([0, 0, 255])).astype(np.uint8)
+        out.append(img)
+    vis = np.hstack(out)
+    return cv2.resize(vis, None, fx=min(1.0, 1600 / vis.shape[1]), fy=min(1.0, 1600 / vis.shape[1]))
 
 
 def template_mask(fr: list[np.ndarray]) -> np.ndarray:
@@ -159,6 +194,10 @@ def cached(path: Path) -> dict | None:
 
 def even(n: int) -> int:
     return n - n % 2
+
+
+def seconds(path: Path) -> float:
+    return float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]) or 0)
 
 
 def prepare(src: Path, start: float, dur: float, dst: Path) -> None:
@@ -236,17 +275,27 @@ class Cleaner:
 
 
 def footage(proj: Path, story: dict) -> dict[str, dict]:
-    """Pieces of post media the story shows: "<file>@<in>" -> {"src", "start", "len"}; a photo is one piece."""
+    """Pieces of post media the story shows: "<file>@<in>" -> {"src", "start", "len"}; a photo is one piece.
+    With a shot per phrase (assets/beats.json from build.py --voice-only) a piece is as long as its phrase, else
+    SHOT_S (the last shot of a story LAST_S)."""
     use: dict[str, dict] = {}
-    for st in story.get("stories", []):
+    beats_file = proj / "assets" / "beats.json"
+    phrases = json.loads(beats_file.read_text(encoding="utf-8")) if beats_file.is_file() else []
+    for si, st in enumerate(story.get("stories", [])):
         shots = st.get("shots", [])
+        bs = phrases[si] if si < len(phrases) and phrases[si] and len(shots) >= len(phrases[si]) else None
         for j, sh_ in enumerate(shots):
+            if bs is not None and j >= len(bs):  # past the last phrase: never shown
+                continue
             src = sh_.get("src_orig") or sh_.get("src", "")
             if not src.startswith("media/") or "Wikimedia" in (sh_.get("credit") or "") or "/clean/" in src:
                 continue
             video = Path(src).suffix.lower() in VIDEO
             t = float(sh_.get("in_orig", sh_.get("in", 0.0))) if video else 0.0
-            length = (LAST_S if j == len(shots) - 1 else SHOT_S) if video else 0.0
+            if bs is not None:
+                length = round(bs[j]["end"] - bs[j]["start"] + 0.3, 2) if video else 0.0
+            else:
+                length = (LAST_S if j == len(shots) - 1 else SHOT_S) if video else 0.0
             u = use.setdefault(f"{src}@{t:g}", {"src": src, "start": t, "len": 0.0})
             u["len"] = max(u["len"], length)
     return use
@@ -304,10 +353,11 @@ def main() -> None:
         length = min(piece["len"], dur - start) if is_video else 0.0
         clip = work / f"{Path(src).stem}_{start:g}.in.mp4"
         name = Path(src).name
-        night = cached(path) if name not in hand else None
+        entry = hand.get(name)
+        night = cached(path) if entry is None or entry == {"add": []} else None
         if night and (not is_video or start + length <= night["len"] + 0.05):
             out = work / f"{Path(src).stem}_{start:g}.clean.mp4"
-            if night["clean"] == "done" and not out.is_file():
+            if night["clean"] == "done" and (not out.is_file() or (is_video and seconds(out) < length - 0.1)):
                 if is_video:
                     sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(CACHE / f"{night['key']}.clean.mp4"),
                         "-t", f"{length:.3f}", "-an", "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", str(out)])
@@ -315,8 +365,11 @@ def main() -> None:
                     shutil.copy2(CACHE / f"{night['key']}.clean.mp4", out)
             if (CACHE / f"{night['key']}.preview.jpg").is_file():
                 shutil.copy2(CACHE / f"{night['key']}.preview.jpg", qa_dir / f"wm_{Path(src).stem}.jpg")
-            plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "how": f"pre-cleaned at night ({night.get('how', '')})",
-                         "unchecked": False, "night": night["clean"]}
+            # a night clean of a clip the auto mask is blind on (or an entry from before that was recorded) is
+            # used only once somebody looked: the night run has no eyes
+            look = entry is None and night.get("blind", True)
+            plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "how": f"pre-cleaned at night ({night.get('how', '')})"
+                         + (" — NEEDS A LOOK" if look else ""), "unchecked": look, "night": night["clean"]}
             if night["clean"] == "done":
                 plan[key]["out_mp4"] = out
             print(f"{key}: {plan[key]['how']}, window {start:.1f}–{start + length:.1f} s", flush=True)
@@ -327,32 +380,38 @@ def main() -> None:
             print(f"{key}: same mask as {src}, window {start:.1f}–{start + length:.1f} s", flush=True)
             continue
         fr = frames(path) if is_video else frames(clip)
-        if name in hand:
-            mask, how = boxes_mask(fr[0].shape[:2], hand[name]), "hand boxes"
-        else:
-            mask, moving = auto_mask(fr) if len(fr) > 2 else (np.zeros(fr[0].shape[:2], np.uint8), 0.0)
-            how = f"auto (camera moves {moving:.1f} px/frame)"
-            if moving < STILL_SHIFT:
-                mask, how = np.zeros_like(mask), f"still camera ({moving:.1f} px): needs hand boxes in media/wm.json"
+        mask, moving, blind = auto_mask(fr) if len(fr) > 2 else (np.zeros(fr[0].shape[:2], np.uint8), 0.0, 0.0)
+        how = f"auto (camera moves {moving:.1f} px/frame)"
+        if moving < STILL_SHIFT:
+            mask, how = np.zeros_like(mask), f"still camera ({moving:.1f} px)"
+        elif blind:
+            how += f", steady background over {blind:.0%} of the frame — the auto mask is blind there"
+        if entry is not None:
+            mask = hand_mask(fr[0].shape[:2], entry, mask)
+            how += " + hand boxes" if isinstance(entry, dict) else " → hand boxes"
+        elif needs_look(moving, blind):
+            how += " — NEEDS A LOOK"
         known = template_mask(fr)
         if np.any(known):
             how += " + known logos"
         mask = np.maximum(mask, known)
         area = float((mask > 0).mean())
-        vis = fr[len(fr) // 2].copy()
-        vis[mask > 0] = (0.35 * vis[mask > 0] + 0.65 * np.array([0, 0, 255])).astype(np.uint8)
-        cv2.imwrite(str(qa_dir / f"wm_{Path(src).stem}.jpg"), vis)
+        cv2.imwrite(str(qa_dir / f"wm_{Path(src).stem}.jpg"), preview(fr, mask))
         cv2.imwrite(str(work / (Path(src).stem + ".mask.png")), mask)
         masks[src] = mask
         plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "mask_area": area, "how": how,
-                     "unchecked": name not in hand and how.startswith("still camera")}
+                     "unchecked": entry is None and needs_look(moving, blind)}
         print(f"{key}: {how}, mask {area:.1%}, window {start:.1f}–{start + length:.1f} s", flush=True)
     if a.plan:
         print("look at qa/wm_*.jpg; fix with media/wm.json, then --run")
         return
     unchecked = sorted({p["src"] for p in plan.values() if p["unchecked"]})
-    if unchecked:  # a still camera hides its watermark from the auto mask: someone has to look first
-        sys.exit("still-camera footage without hand boxes in media/wm.json ([] if it is clean): " + ", ".join(unchecked))
+    if unchecked:  # the auto mask cannot see logos here: someone has to look first (owner 2026-10-29: never miss one)
+        sys.exit("NEEDS A LOOK before cleaning: " + ", ".join(unchecked) + ". Open qa/wm_<file>.jpg (left a frame, right "
+                 "the clip average where a fixed logo stays sharp; red = removed). In media/wm.json give each file "
+                 "{\"add\": []} if nothing is left, {\"add\": [[x, y, w, h]]} for a logo the red misses (--grid <file> "
+                 "for coordinates), a plain list of boxes for a still camera ([] = clean). A channel logo that will "
+                 "come again: also --save-template <channel>_logo|<channel>_text <file> x y w h.")
     cleaner, jobs, sigs = Cleaner(), {}, {}
     for key, p in plan.items():
         src = p["src"]
@@ -368,7 +427,9 @@ def main() -> None:
         # a rerun keeps what is done, but only if it was cleaned with this very mask: pieces cleaned before the
         # mask learned the Region 116 emblem kept it after the mask was fixed (Kazan 28.10, owner's screenshot)
         sig, sigs[p["out_mp4"]] = p["out_mp4"].with_suffix(".mask.sha1"), hashlib.sha1(mask.tobytes()).hexdigest()
-        if not (p["out_mp4"].is_file() and sig.is_file() and sig.read_text() == sigs[p["out_mp4"]]):
+        # …and only if it is as long as the shot now needs (a phrase can be longer than the old 3.4 s piece)
+        if not (p["out_mp4"].is_file() and sig.is_file() and sig.read_text() == sigs[p["out_mp4"]]
+                and (not p["video"] or seconds(p["out_mp4"]) >= seconds(p["clip"]) - 0.1)):
             jobs[cleaner.submit(p["clip"], mask)] = p["out_mp4"]
     print(f"queued {len(jobs)} pieces", flush=True)
     cleaner.wait(jobs)

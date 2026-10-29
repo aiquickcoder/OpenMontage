@@ -100,16 +100,16 @@ def main() -> None:
         fr = cf.frames(path) if video else cf.frames(clip)
         if not fr:
             continue
-        mask, moving = cf.auto_mask(fr) if len(fr) > 2 else (np.zeros(fr[0].shape[:2], np.uint8), 0.0)
+        mask, moving, blind = cf.auto_mask(fr) if len(fr) > 2 else (np.zeros(fr[0].shape[:2], np.uint8), 0.0, 0.0)
         still = moving < cf.STILL_SHIFT
         if still:
             mask = np.zeros_like(mask)
         mask = np.maximum(mask, cf.template_mask(fr))
         how = ("still camera, known logos" if still else f"auto, camera {moving:.1f} px/frame")
-        meta = {"len": round(length, 3), "how": how, "mask_area": round(float((mask > 0).mean()), 4), "src": str(path)}
-        vis = fr[len(fr) // 2].copy()
-        vis[mask > 0] = (0.35 * vis[mask > 0] + 0.65 * np.array([0, 0, 255])).astype(np.uint8)
-        cv2.imwrite(str(cf.CACHE / f"{key}.preview.jpg"), vis)
+        # blind: the day build will not use this clean until someone has looked (clean_footage.py, NEEDS A LOOK)
+        meta = {"len": round(length, 3), "how": how, "mask_area": round(float((mask > 0).mean()), 4), "src": str(path),
+                "blind": cf.needs_look(moving, blind)}
+        cv2.imwrite(str(cf.CACHE / f"{key}.preview.jpg"), cf.preview(fr, mask))
         if not np.any(mask):
             if still:  # nothing known found, and a still camera hides the rest: leave it to the build-time check
                 print(f"  skip {path.name}: still camera, no known logo", flush=True)

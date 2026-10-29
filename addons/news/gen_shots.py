@@ -3,7 +3,9 @@
     .venv/bin/python addons/news/gen_shots.py projects/<slug>/story.json projects/<slug>/illustrations [ids...]
 
 story.json: "illustration_style" (one paragraph, prepended to every prompt) and "illustrations":
-[{"id": "i1", "prompt": "..."}]. One 16:9 picture per id -> <out>/<id>.png. Existing files are skipped, so a redraw
+[{"id": "i1", "prompt": "...", "refs": ["media/place.jpg"]}]. One 16:9 picture per id -> <out>/<id>.png; "refs" (paths
+relative to the project) go to Flow as reference images — a post photo of the place keeps the real place real
+(owner 2026-10-29: credible pictures). Existing files are skipped, so a redraw
 is: delete the file, run again with that id. Exit code 3 = daily quota on both models (see addons/mural/gen_panels.py).
 Run it on the server (the Flow driver lives there) in the background; it prints DONE at the end.
 """
@@ -14,7 +16,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from addons.mural import gen_panels as g  # noqa: E402
 
-NO_TEXT = "No text, no letters, no signs with writing anywhere unless quoted above."
+# owner 2026-10-29: a prompt asking for «a sports hall sign» got «СПОРТИВНЫЙ КОМПЛЕКС» — no lettering but quoted words
+NO_TEXT = ("No text anywhere: no signs, no shop or street names, no writing on buildings, no house numbers; the only "
+           "lettering allowed is a word quoted above on a uniform or a vehicle.")
 
 
 def main() -> None:
@@ -27,7 +31,8 @@ def main() -> None:
     for s in story["illustrations"]:
         if only and s["id"] not in only:
             continue
-        g.draw(out, s["id"], f"{style} {s['prompt']} {NO_TEXT} {g.SINGLE} {g.FRAME['16:9']}", [], "16:9", 1)
+        refs = [str((Path(sys.argv[1]).parent / r).resolve()) for r in s.get("refs", [])]
+        g.draw(out, s["id"], f"{style} {s['prompt']} {NO_TEXT} {g.SINGLE} {g.FRAME['16:9']}", refs, "16:9", 1)
     print("DONE", flush=True)
 
 

@@ -5,9 +5,9 @@ tried on the same opening (2026-10-28; before it «тучный жаб» 806321a
 
 build.py uses it for "narration": {"engine": "fishaudio", "voice": "<fish.audio model id>", "model": "drama-3",
 "direction": "..."}. Drama 3 takes delivery directions inline in square brackets (fish.audio/ru/drama-3): one goes
-in front of the text (a live news anchor, not a flat read). The script carries its own cues too (README «Голос»):
-[тон] before a story or comment, <stress>…</stress> around a key fact, and build.py puts a [pause] between stories
-(owner: «сплошным текстом, монотонно», 2026-10-28). Cues are stripped before the take is compared with the script.
+in front of the text: a calm, confident anchor without exclamations. build.py puts a [pause] between stories and
+drops any other cue from the script: per-story tones and <stress> read out of place (owner, 2026-10-29; the four-take
+A/B on the SPb opening chose drama-3, calm, no word-stress marks). Cues are stripped before a take is compared.
 Abbreviations are read right as written (ЧП, МВД, СИЗО, ОПГ, ГАИ, СМС — checked 2026-10-28; spelled-out «га-и» broke).
 Takes differ (the model is in preview): each take is transcribed and compared with the script, the best of up to
 `tries` is kept, like the cedar voice (openrouter_voice.py). The bar is 85 %: the transcript writes numbers as digits
@@ -31,8 +31,8 @@ from pathlib import Path
 
 URL = "https://api.fish.audio/v1/tts"
 OWNER_VOICE = "6dc11f3f67a543f6ad4537a4a347e224"  # https://fish.audio/ru/app/m/6dc11f3f67a543f6ad4537a4a347e224/
-DIRECTION = ("живой ведущий новостей: интонация меняется по смыслу каждой новости, главное выделено голосом, "
-             "между новостями паузы; уверенно и вовлечённо, без монотонности и без театральной игры")
+# the owner's pick of four A/B takes on the SPb 28.10 opening (2026-10-29, «проба 1/4 — ок»): calm, no word-stress marks
+DIRECTION = "уверенный ведущий новостей, естественная интонация, ровный темп, без восклицаний и театральности"
 CUES = re.compile(r"\[[^\]]*\]|</?[a-z]+>")  # never spoken as words, so never compared
 
 

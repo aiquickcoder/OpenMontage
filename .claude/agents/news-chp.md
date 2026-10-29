@@ -22,13 +22,12 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 - Realistic b-roll (documentary-photo style of the real place); only the anchor is a cartoon.
 - On the server run build.py with `https_proxy=http://127.0.0.1:10809` (OpenRouter blocks the RU IP).
 
-Leads between stories (owner, 2026-10-28): never «Дальше —». Name the topic straight away («Приговор за обман с
-пенсией.») or use «Теперь —», «Ещё одна история», «А в …»; no transition twice in one film.
+Leads (owner, 2026-10-29): the first «Начнём с …», the middle ones «Переходим к <тема в дательном>.» («Переходим к
+драке на футбольном поле.»), the last «И напоследок — …». Never «Дальше —» or «Теперь —».
 
-Delivery cues (owner, 2026-10-28: the read was one flat block): start every story `text` with a Russian tone cue
-`[тревожно, сдержанно]` / `[строго, весомо]` / `[с лёгкой иронией]` … (neighbours differ), every `comment` with one
-(`[от себя, мягко]`, `[с улыбкой]`), and wrap one or two key facts per story in `<stress>…</stress>`. build.py adds
-the pauses between stories; captions never show the cues (README «Голос»).
+Voice text is plain (owner, 2026-10-29): no tone cues `[…]`, no `<stress>`, no stress marks — they read out of place;
+the calm direction in fish_voice.py does the delivery and build.py adds the pauses between stories. No house number
+next to what is counted («у дома девяносто три мужчину» sounds like ninety-three men): drop it or say «дом номер …».
 
 ## Steps
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
@@ -46,7 +45,10 @@ the pauses between stories; captions never show the cues (README «Голос»)
    - Facts only from the post(s); numbers as words; no names of victims or suspects; until a verdict a person is a
      suspect («задержан подозреваемый», «по версии следствия»), never «преступник» or «убийца»; 55–62 words in total
      (≈31–34 s; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
-   - Run `build.py … --voice-only` to learn how many 3-second shots are needed, then list exactly that many.
+   - Run `build.py … --voice-only`. It prints each story's **phrases** (≈2 s each, also `assets/beats.json`): list one
+     shot per phrase, in that order, each showing what its phrase says (owner 2026-10-29: the picture goes with the
+     sentence); `"beat": "<first words>"` on a shot lets the build check the match. Footage goes on the phrases about
+     the scene, illustrations on what the footage does not show (the detention, the court, the hospital).
 3. **Pictures.**
    - Footage or photos from the post: copy them to `media/`, choose strong `in` points, add a `credit` to each.
      Use them even when people are in frame (court, arrest, witnesses): the owner moderates every video by hand
@@ -54,17 +56,27 @@ the pauses between stories; captions never show the cues (README «Голос»)
    - The real place: `fetch_commons.py`. Open every photo before use; credit = author, licence.
    - Illustrations: `gen_shots.py` on the server (it is the Flow host). Run it in the background via `systemd-run`
      with the factory `EnvironmentFile`, `DISPLAY=:99`, `HOME=/home/factory`, and wait for `DONE`.
-   - Open **every** illustration. Check: no generated faces of victims or suspects, no blood, no gibberish text, the
-     asked moment. Redraw a failure once.
+     Credible pictures (owner 2026-10-29, README «Достоверность»): one illustration per phrase, showing exactly that
+     phrase; a `"facts"` card per story (place, district, time of day, season and weather from the post date,
+     agencies) repeated in each of its prompts; agencies as they really look (README table: ППС, Росгвардия, ДПС,
+     МЧС, скорая, СК, ФСБ, суд, ФСИН); no signs, shop or street names — the only lettering is an agency word on a
+     uniform or vehicle, quoted; mood by light, time, distance and aftermath details, never drama or blood; a post
+     photo of the place (no faces) as `"refs"`.
+   - Open **every** illustration. Check: the phrase it is for; the right agency's uniforms and cars; no invented
+     text or signs; season and time of day; no generated faces of victims or suspects; no blood. Redraw a failure once.
    - **Clean the post footage of other channels' watermarks** (owner, 2026-10-28) — as soon as the shots are set, in
      parallel with the illustrations (the cleaner is a CPU service, Flow is the browser):
      `systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/watermark-cleaner/deploy/.env
      --working-directory=/opt/openmontage .venv/bin/python addons/news/clean_footage.py projects/<slug> --plan`.
      It finds watermarks by itself on a moving camera and known logos anywhere (`addons/news/watermarks/`); a still
      camera (CCTV, a traffic camera) or a photo needs boxes: `--grid <file>` → open `qa/grid_<file>.jpg` → write
-     `media/wm.json` `{"<file>": [[x, y, w, h], ...]}` (`[]` = clean). Open every `qa/wm_<file>.jpg` (the mask in red):
-     every logo, channel name, link and caption burnt into the picture covered, nothing else. A logo you boxed that will
-     come back (a channel's, an agency's): `--save-template <name> <file> x y w h`. Then the same command with `--run`
+     `media/wm.json` `{"<file>": [[x, y, w, h], ...]}` (`[]` = clean). Open every `qa/wm_<file>.jpg` (left a frame,
+     right the clip average where a fixed logo stays sharp; the mask in red): every logo, channel name, link and
+     caption burnt into the picture covered, nothing else. **Never let a logo through** (owner 2026-10-29, after
+     «фонтанка.ру» on Nevsky): a slow camera blinds the auto mask, so `--plan` marks such files **NEEDS A LOOK** and
+     `--run` stops until `media/wm.json` has a decision for each — `{"add": []}` (looked, the red covers it all),
+     `{"add": [[x, y, w, h]]}` (boxes on top of the auto mask), or a plain box list for a still camera. A logo you
+     boxed that will come back (a channel's, an agency's): `--save-template <name> <file> x y w h`. Then `--run`
      in the background (about a minute of CPU per second of footage; it cleans only the seconds the shots show). It
      points the shots at `media/clean/`; `build.py` refuses post footage that has not been through it.
 4. **Build.** Run `.venv/bin/python addons/news/build.py projects/<slug>`. Use `--retime` for rebuilds, so the voice

@@ -55,8 +55,10 @@ def main() -> None:
         (f"Finish the started digest projects/{slug}: its story.json (texts, sources) is final — do not rewrite the "
          "texts; if assets/narration.mp3 exists the voice is done (use build.py --voice-only only to read the shot "
          "counts, it reuses nothing: run it only when there is no voice yet). Copy the stories' post media from the "
-         "city base (candidates.json media_local by source.key) where media/ lacks it, set exactly the shots asked, "
-         "write illustrations for what has no footage, check the footage masks, then produce.py."
+         "city base (candidates.json media_local by source.key) where media/ lacks it, set one shot per phrase that "
+         "build.py --voice-only lists (assets/beats.json), write illustrations for what has no footage, run "
+         "clean_footage.py --plan and open every qa/wm_*.jpg, give each NEEDS A LOOK file its media/wm.json "
+         "decision, then produce.py."
          if a.project else f"Make today's digest as the agent below describes. Project: projects/{slug}."),
         f"Today is {now:%Y-%m-%d}.",
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "

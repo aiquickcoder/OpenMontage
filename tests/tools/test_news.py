@@ -271,14 +271,14 @@ def test_word_cues_never_leave_a_lone_dash_or_an_empty_cue():
     assert cues[0][2].endswith("Татарстане —")
 
 
-def test_delivery_cues_reach_the_voice_but_not_the_captions():
+def test_voice_text_drops_cues_but_keeps_pauses_between_stories():
     s = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"engine": "fishaudio"},
          "stories": [{"lead": "Первое.", "text": "[тревожно] Нашли <stress>двенадцать</stress>, пачек.",
                       "comment": "[мягко] Берегите себя."},
                      {"lead": "Второе.", "text": "Ищут девушку."}]}
     assert build.plain(build.full_text(s)) == "Привет. Первое. Нашли двенадцать, пачек. Берегите себя. Второе. Ищут девушку. Пока."
-    assert build.voice_text(s) == ("Привет. Первое. [тревожно] Нашли <stress>двенадцать</stress>, пачек. [мягко] "
-                                   "Берегите себя. [pause] Второе. Ищут девушку. [pause] Пока.")
+    assert build.voice_text(s) == ("Привет. Первое. Нашли двенадцать, пачек. Берегите себя. [pause] Второе. Ищут "
+                                   "девушку. [pause] Пока.")  # owner 2026-10-29: no tone cues, no <stress>
     words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.plain(build.full_text(s)).split())]
     assert build.story_windows(s, words, 14.0)[0] == [1.95, 4.9]  # cues do not shift the word count
 
@@ -288,3 +288,80 @@ def test_a_long_word_moves_the_cut_further_than_the_snap():
     words = [["шести", 1.2, 2.0], ["огнетушителей", 2.0, 3.65], ["с", 3.65, 3.8], ["полок", 3.8, 5.6]]
     cut = build.cut_points([0.0, 6.0], 2, words, 5.95)[0]
     assert cut == 2.0 and not any(a < cut < b for _, a, b in words)  # 1 s early, inside the 1.8–3.35 s shot
+
+
+def _timed(text: str, t0: float = 0.0, word: float = 0.42, gap: float = 0.08, pause: float = 0.35) -> list:
+    out, t = [], t0
+    for w in text.split():
+        out.append([w, round(t, 3), round(t + word, 3)])
+        t += word + gap + (pause if w[-1] in ".," else 0)
+    return out
+
+
+def test_beats_follow_sentences_and_split_long_ones_at_a_comma():
+    ws = _timed("Во Фрунзенском районе игрок ударил соперника и сбежал. Росгвардейцы задержали его у "
+                "спорткомплекса, а пострадавший в больнице с травмой головы. Возбуждено дело.", t0=10.0)
+    win = [9.9, ws[-1][2] + 0.6]
+    bs = build.beats(ws, win)
+    assert bs[0]["start"] == 9.9 and bs[-1]["end"] == win[1]
+    assert bs[0]["text"].startswith("Во Фрунзенском")
+    assert any(b["text"].startswith("Росгвардейцы") for b in bs)          # a sentence opens its own shot
+    assert any(b["text"].startswith("а пострадавший") for b in bs)        # the long one splits at «, а»
+    for b in bs[1:]:                                   # the cut comes just before the first word, never inside a word
+        k = next(i for i, w in enumerate(ws) if w[0] == b["text"].split()[0])
+        assert ws[k - 1][2] <= b["start"] <= ws[k][1] and b["start"] >= ws[k][1] - build.BEAT_LEAD
+    for b in bs[:-1]:
+        assert build.BEAT_MIN <= b["end"] - b["start"] <= build.BEAT_HARD
+    assert [b["end"] for b in bs[:-1]] == [b["start"] for b in bs[1:]]
+
+
+def test_a_short_phrase_is_merged_and_slots_cut_on_phrases(tmp_path: Path, monkeypatch):
+    ws = _timed("Пожар потушили. Причина неизвестна, проверка идёт.", t0=2.0)
+    bs = build.beats(ws, [1.9, ws[-1][2] + 0.5])
+    # «Пожар потушили.» is 1.3 s, but merged with the next sentence it would run 4.2 s: it stays a short shot
+    assert [b["text"] for b in bs] == ["Пожар потушили.", "Причина неизвестна, проверка идёт."]
+    ws2 = _timed("Пожар потушили. Причина неизвестна.", t0=2.0)
+    assert len(build.beats(ws2, [1.9, ws2[-1][2] + 0.3])) == 1     # 2.6 s together: merged into one phrase
+    (tmp_path / "a.png").write_bytes(b"x")
+    story = {"shots": [{"src": "a.png"} for _ in bs]}
+    items = build.slots(story, [1.9, ws[-1][2] + 0.5], tmp_path, ws, bs)
+    assert [i["start"] for i in items] == [b["start"] for b in bs]
+
+
+def test_phrases_keep_names_in_quotes_and_prepositions_whole():
+    ws = _timed("Лидера ОПГ «Хади Такташ», отбывавшего пожизненный срок, тайно доставили в казанский СИЗО.", t0=1.0)
+    texts = [b["text"] for b in build.beats(ws, [0.9, ws[-1][2] + 0.5])]
+    assert not any(t.endswith("«Хади") for t in texts)
+    ws = _timed("Причина пока не установлена, но всё уже локализовали.", t0=1.0, word=0.5)
+    texts = [b["text"] for b in build.beats(ws, [0.9, ws[-1][2] + 0.5])]
+    assert not any(t.endswith(("пока", "но", "в")) for t in texts)
+
+
+def test_cleaning_needs_a_look_where_the_auto_mask_is_blind():
+    from addons.news import clean_footage as cf
+
+    assert cf.needs_look(0.3, 0.0)            # a still camera
+    assert cf.needs_look(2.1, 1.0)            # a slow camera: buildings and «фонтанка.ру» merged into one patch
+    assert not cf.needs_look(3.0, 0.0)
+    auto = np.zeros((20, 20), np.uint8)
+    auto[0:2, 0:2] = 255
+    added = cf.hand_mask((20, 20), {"add": [[10, 10, 3, 3]]}, auto)
+    assert added[0, 0] == 255 and added[11, 11] == 255          # {"add": …} keeps the auto mask
+    replaced = cf.hand_mask((20, 20), [[10, 10, 3, 3]], auto)
+    assert replaced[0, 0] == 0 and replaced[11, 11] == 255      # a plain list replaces it
+    assert not cf.hand_mask((20, 20), {"add": []}, np.zeros((20, 20), np.uint8)).any()
+
+
+def test_cleaned_pieces_are_as_long_as_their_phrases(tmp_path: Path):
+    from addons.news import clean_footage as cf
+
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "beats.json").write_text(json.dumps(
+        [[{"start": 5.0, "end": 7.2, "text": "a"}, {"start": 7.2, "end": 11.0, "text": "b"}]]))
+    story = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 2}, {"src": "media/a.mp4", "in": 9},
+                                    {"src": "media/a.mp4", "in": 20}]}]}
+    use = cf.footage(tmp_path, story)
+    assert use["media/a.mp4@2"]["len"] == 2.5 and use["media/a.mp4@9"]["len"] == 4.1
+    assert "media/a.mp4@20" not in use                          # past the last phrase: not shown, not cleaned
+    (tmp_path / "assets" / "beats.json").unlink()
+    assert cf.footage(tmp_path, story)["media/a.mp4@2"]["len"] == cf.SHOT_S

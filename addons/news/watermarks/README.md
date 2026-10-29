@@ -8,3 +8,4 @@ strictly (lettering resembles any lettering).
 | `gibdd_kazan_badge` | Госавтоинспекция Казани blue badge «Сберегите себя! Сохраните других!» on the left (naz_kc1) |
 | `region116_logo` | Region 116 round logo (Kazan footage via tatarstansos, brawl_tt) |
 | `region116_text` | «Телеграм канал Region116 / t.me/region116_kazan» next to it |
+| `fontanka_text` | «фонтанка.ру» with its round emblem across the middle of the frame (SPb, theatre.mp4 28.10): the slow camera kept the buildings steady too, so this template keeps only edges that point the same way in every frame (made by hand, not with --save-template) |

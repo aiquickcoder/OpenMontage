@@ -114,13 +114,14 @@ def full_text(story: dict) -> str:
 
 
 def voice_text(story: dict) -> str:
-    """What Fish Drama 3 reads: the script with its cues, and a [pause] before every next lead and the outro, so a
-    digest does not run on as one block (owner, 2026-10-28). Captions and alignment use full_text."""
+    """What Fish Drama 3 reads: the plain script and a [pause] before every next lead and the outro, so a digest does
+    not run on as one block (owner, 2026-10-28). Tone cues and <stress> in a text are dropped: the owner heard them
+    as out of place (2026-10-29, «эмоциональные усиления уберём») — the calm direction in fish_voice.py is enough."""
     out = []
     for p in parts(story):
         if out and p["role"] in ("lead", "outro"):
             out.append("[pause]")
-        out.append(p["text"])
+        out.append(plain(p["text"]))
     return " ".join(out)
 
 
@@ -247,6 +248,104 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
 
 
 # -- b-roll ------------------------------------------------------------------------------------------
+BEAT_MIN, BEAT_MAX, BEAT_LEAD = 1.4, 3.0, 0.12  # a phrase shot lasts 1.4–3 s and cuts in just before its first word
+BEAT_HARD = 4.2  # a whole phrase up to here rather than a torn one; clean_footage.py cleans pieces as long as phrases
+JOINS = {"и", "а", "но", "или", "когда", "чтобы", "потому", "поэтому", "где", "куда", "который", "которая", "которое",
+         "которые", "которого", "хотя", "если", "однако", "—"}  # not «пока»: mostly «пока не установлена»
+PREPS = {"в", "во", "на", "у", "с", "со", "по", "к", "ко", "из", "за", "от", "до", "при", "для", "без", "под", "над", "о",
+         "об", "про", "через", "около", "возле", "после", "перед", "между", "из-за", "не", "ни"}
+NUMERAL = re.compile(r"^(одн|один|два$|две$|двух|двум|тр[её]х|три$|трём|четыр|пят[ьиа]|шест[ьиа]|сем[ьи]|восем|девят|"
+                     r"десят|двадцат|тридцат|сорок|девяност|сто$|ста$|двест|двухсот|трист|четырест|пятьсот|тысяч|"
+                     r"миллион|миллиард|полтор|нескольк|\d)")  # «двадцати | шести» must stay one number
+
+
+def story_words(story: dict, words: list) -> list[list]:
+    """The timed words of each story's voice-over (not the anchor's lines)."""
+    out, k = [], 0
+    for p in parts(story):
+        n = len(plain(p["text"]).split())
+        if p["kind"] == "story":
+            out.append(words[k:k + n])
+        k += n
+    return out
+
+
+def beats(ws: list, window: list[float]) -> list[dict]:
+    """One story's voice-over cut into phrases, one shot each, so the picture changes as its phrase begins (owner
+    2026-10-29: the sentence and the picture must go together, and change often). Sentences first; a long one is split
+    at a comma, dash, colon or joining word nearest its middle, so a phrase runs BEAT_MIN..BEAT_MAX s; a short one is
+    merged into a neighbour. A phrase lasts from just before its first word (BEAT_LEAD, in the pause) to the next
+    phrase (the first from the window start, the last to its end), at most BEAT_HARD (the last LAST_PIECE_S):
+    clean_footage.py reads assets/beats.json and cleans each post-clip piece as long as its phrase."""
+    if not ws:
+        return [{"start": window[0], "end": window[1], "text": ""}]
+    # the cut: BEAT_LEAD before the phrase's first word, but never inside the word before it
+    cut = lambda i: min(ws[i][1], max(ws[i - 1][2], ws[i][1] - BEAT_LEAD))  # noqa: E731
+    start = lambda i: window[0] if i == 0 else cut(i)  # noqa: E731
+    end = lambda j: window[1] if j == len(ws) else cut(j)  # noqa: E731
+    dur = lambda r: end(r[1]) - start(r[0])  # noqa: E731
+    cap = lambda r: LAST_PIECE_S if r[1] == len(ws) else BEAT_HARD  # noqa: E731
+    sentences, i = [], 0
+    for j, w in enumerate(ws, 1):
+        if w[0].rstrip("»\")")[-1:] in ".!?…":
+            sentences.append((i, j))
+            i = j
+    if i < len(ws):
+        sentences.append((i, len(ws)))
+
+    def split(r: tuple[int, int]) -> list[tuple[int, int]]:
+        if r[1] - r[0] < 2 or (dur(r) <= BEAT_MAX and dur(r) <= cap(r)):
+            return [r]
+        mid = (start(r[0]) + end(r[1])) / 2
+
+        def cost(k: int) -> float:  # where Russian breaks naturally, then nearness to the middle
+            prev, nxt = ws[k - 1][0].lower().strip("«("), ws[k][0].lower().strip("«(")
+            quoted = sum(w[0].count("«") - w[0].count("»") for w in ws[:k]) > 0  # inside «Хади Такташ»
+            if prev in PREPS or prev in JOINS or quoted or NUMERAL.match(prev):  # never part a preposition,
+                kind = 2.0                                     # «не», a conjunction, a quoted name or a number
+            elif prev[-1:] in ",;:—" or nxt in JOINS:
+                kind = 0.0
+            elif nxt in PREPS:
+                kind = 0.25
+            else:
+                kind = 0.5
+            return kind + abs(start(k) - mid) / dur(r)
+
+        ok = [k for k in range(r[0] + 1, r[1]) if dur((r[0], k)) >= BEAT_MIN and dur((k, r[1])) >= BEAT_MIN]
+        if not ok:
+            if dur(r) <= cap(r):
+                return [r]
+            ok = list(range(r[0] + 1, r[1]))  # over a clip piece: split anyway
+        k = min(ok, key=cost)
+        # a whole phrase beats a torn one: keep it when the only breaks are forbidden ones (and it fits a clip piece),
+        # or when the break is a plain one between words and the phrase is only a little long
+        if (cost(k) >= 2.0 and dur(r) <= cap(r)) or (cost(k) >= 0.5 and dur(r) <= min(BEAT_MAX + 0.3, cap(r))):
+            return [r]
+        return split((r[0], k)) + split((k, r[1]))
+
+    out = [b for r in sentences for b in split(r)]
+    merged = True
+    while merged and len(out) > 1:
+        merged = False
+        for n, r in enumerate(out):
+            if dur(r) >= BEAT_MIN:
+                continue
+            pairs = [m for m in (n - 1, n + 1) if 0 <= m < len(out)]
+            pairs = [m for m in pairs if dur((out[min(n, m)][0], out[max(n, m)][1])) <= min(BEAT_MAX + 0.3, cap((out[min(n, m)][0], out[max(n, m)][1])))]
+            if pairs:
+                m = min(pairs, key=lambda m: dur(out[m]))
+                a, b = min(n, m), max(n, m)
+                out[a:b + 1] = [(out[a][0], out[b][1])]
+                merged = True
+                break
+    return [{"start": round(start(i), 3), "end": round(end(j), 3), "text": " ".join(w[0] for w in ws[i:j])}
+            for i, j in out]
+
+
+def story_beats(story: dict, timing: dict) -> list[list[dict]]:
+    return [beats(ws, win) for ws, win in zip(story_words(story, timing["words"]), windows(timing))]
+
+
 def cut_points(window: list[float], n: int, words: list, last_cap: float) -> list[float]:
     """The n-1 cuts inside one story window: evenly spaced, then each moved to the nearest boundary between two
     spoken words within SNAP_S — a pause or a sentence end preferred — so no cut falls inside a word (owner,
@@ -273,12 +372,22 @@ def cut_points(window: list[float], n: int, words: list, last_cap: float) -> lis
     return cuts
 
 
-def slots(story: dict, window: list[float], proj: Path, words: list = ()) -> list[dict]:
+def slots(story: dict, window: list[float], proj: Path, words: list = (), phrases: list = ()) -> list[dict]:
     t0, duration = window[0], window[1] - window[0]
     shots, n = story["shots"], max(1, math.ceil(duration / SHOT_S - 0.15))
-    if len(shots) < n:
-        print(f"warning: {len(shots)} shots for {n} slots — the last shot is held longer", flush=True)
-    edges = [t0, *cut_points(window, n, list(words), LAST_PIECE_S if len(shots) <= n else PIECE_S), window[1]]
+    if phrases and len(shots) >= len(phrases):  # a shot per phrase: cut as each phrase begins
+        n = len(phrases)
+        edges = [*(b["start"] for b in phrases), window[1]]
+        for i, (s, b) in enumerate(zip(shots, phrases)):
+            if s.get("beat") and not plain(b["text"]).lower().startswith(plain(s["beat"]).lower()[:12]):
+                print(f"warning: shot {i} is for «{s['beat']}», the phrase there is «{b['text'][:40]}»", flush=True)
+    else:
+        if phrases:
+            print(f"warning: {len(shots)} shots for {len(phrases)} phrases — cuts fall in pauses, not on phrases",
+                  flush=True)
+        if len(shots) < n:
+            print(f"warning: {len(shots)} shots for {n} slots — the last shot is held longer", flush=True)
+        edges = [t0, *cut_points(window, n, list(words), LAST_PIECE_S if len(shots) <= n else PIECE_S), window[1]]
     used: dict[str, float] = {}
     out, t = [], 0.0
     for i, s in enumerate(shots[:n]):
@@ -781,16 +890,20 @@ def main() -> None:
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
     timing = voice(proj, story, a.retime)
-    need = [(max(1, math.ceil((b1 - b0) / SHOT_S - 0.15)), len(s.get("shots", [])))
-            for s, (b0, b1) in zip(stories(story), windows(timing))]
+    phrases = story_beats(story, timing)
+    (proj / "assets" / "beats.json").write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
+    need = [(len(b), len(s.get("shots", []))) for s, b in zip(stories(story), phrases)]
     print(f"speech {timing['speech_end']:.1f}s, video {timing['duration']:.1f}s, shots needed "
           + ", ".join(f"{n} (have {h})" for n, h in need), flush=True)
+    for i, b in enumerate(phrases):  # a shot per phrase, in this order: what it shows goes with what is said
+        print(f"story {i + 1} phrases:" + "".join(f"\n  {k + 1}. {p['end'] - p['start']:.1f}s  {p['text']}"
+                                               for k, p in enumerate(b)), flush=True)
     if a.voice_only:
         return
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
-             for it in slots(s, win, proj, timing["words"])]
+             for it in slots(s, win, proj, timing["words"], phrases[w])]
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
     sound_bed(proj, story, timing, items)
