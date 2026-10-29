@@ -38,7 +38,7 @@ def test_full_text_wraps_story_with_anchor():
 
 
 def test_digest_reads_leads_between_stories_and_gets_one_window_each():
-    s = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"voice": "cedar"},
+    s = {"anchor": {"dir": "addons/news/anchor_cat", "intro": "Привет.", "outro": "Пока."}, "narration": {"voice": "cedar"},
          "stories": [{"lead": "Первое.", "text": "Горит театр.", "headline": "A"},
                      {"lead": "Дальше.", "text": "Ищут девушку.", "headline": "B"}]}
     assert build.full_text(s) == "Привет. Первое. Горит театр. Дальше. Ищут девушку. Пока."
@@ -291,7 +291,8 @@ def test_word_cues_never_leave_a_lone_dash_or_an_empty_cue():
 
 
 def test_voice_text_drops_cues_but_keeps_pauses_between_stories():
-    s = {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"engine": "fishaudio"},
+    s = {"anchor": {"dir": "addons/news/anchor_cat", "intro": "Привет.", "outro": "Пока."},
+         "narration": {"engine": "fishaudio"},
          "stories": [{"lead": "Первое.", "text": "[тревожно] Нашли <stress>двенадцать</stress>, пачек.",
                       "comment": "[мягко] Берегите себя."},
                      {"lead": "Второе.", "text": "Ищут девушку."}]}
@@ -478,3 +479,82 @@ def test_maps_become_shots_once(tmp_path: Path, monkeypatch):
     assert visuals.resolve(tmp_path, story) == 1
     assert story["stories"][0]["shots"][0]["src"].startswith("assets/visuals/map_")
     assert visuals.resolve(tmp_path, story) == 1 and len(made_maps) == 1     # made once, then reused
+
+
+def _clip(path: Path, seconds: float = 2.0) -> Path:
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+                    f"testsrc=size=320x180:rate=30:duration={seconds}", "-pix_fmt", "yuv420p", str(path)], check=True)
+    return path
+
+
+def _no_cat_digest() -> dict:
+    return {"anchor": {"intro": "Привет.", "outro": "Пока."}, "narration": {"voice": "cedar"},
+            "stories": [{"lead": "Первое.", "text": "Горит театр.", "comment": "Берегите себя.", "headline": "A"},
+                        {"lead": "Дальше.", "text": "Ищут девушку.", "comment": "Звоните.", "headline": "B"}]}
+
+
+def test_without_the_cat_one_voice_reads_no_comments_and_pictures_run_through_the_leads():
+    s = _no_cat_digest()
+    assert build.narrator(s)
+    assert build.full_text(s) == "Привет. Первое. Горит театр. Дальше. Ищут девушку. Пока."
+    cat = {**s, "anchor": {**s["anchor"], "dir": "addons/news/anchor_cat"}}
+    assert not build.narrator(cat) and "Берегите себя." in build.full_text(cat)
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
+    text = build.story_windows(s, words, 9.0)
+    assert text == [[1.95, 3.9], [4.95, 6.9]]
+    t = build.narrator_windows(s, words, 9.0, text)
+    # story 1 from 0 (the greeting, its lead), story 2 from its lead «Дальше.» to the end (the outro)
+    assert t["windows"] == [[0.0, 3.9], [3.9, 9.0]] and t["text"] == text and t["intro"] == [0.0, 0.9]
+    assert build.text_windows(t) == text and build.text_windows({"windows": [[1, 2]]}) == [[1, 2]]
+
+
+def test_without_the_cat_stills_cover_the_greeting_the_leads_and_the_outro(tmp_path: Path):
+    s = _no_cat_digest()
+    (tmp_path / "a.png").write_bytes(b"x")
+    _clip(tmp_path / "v.mp4")
+    s["stories"][0]["shots"] = [{"src": "a.png"}]
+    s["stories"][1]["shots"] = [{"src": "v.mp4"}]
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
+    timing = {"words": words, "duration": 9.0,
+              **build.narrator_windows(s, words, 9.0, build.story_windows(s, words, 9.0))}
+    items = build.film_items(tmp_path, s, timing, [[], []])
+    # the greeting over a teaser still; a picture is held from its lead; a clip's lead and the outro get its frames
+    assert [it.get("card") for it in items] == ["intro", None, "lead", None, "outro"]
+    for w, (v0, v1) in enumerate(timing["windows"]):
+        mine = [it for it in items if it["w"] == w]
+        assert mine[0]["start"] == v0 and round(sum(it["dur"] for it in mine), 3) == round(v1 - v0, 3)
+    assert items[1]["path"].name == "a.png" and items[1]["start"] == 0.9 and items[1]["dur"] == 3.0
+    lead, clip, outro = items[2:]
+    assert lead["zoom"] == [1.07, 1.0] and lead["path"].suffix == ".jpg" and lead["path"].is_file()
+    assert clip["video"] and outro["path"].is_file() and outro["path"] != lead["path"]
+
+
+def test_a_new_voice_keeps_cuts_on_the_phrases_the_shots_were_planned_for():
+    ws = _timed("Во Фрунзенском районе игрок ударил соперника. Росгвардейцы задержали его, а пострадавший в "
+                "больнице — у него травма.", t0=2.0, word=0.55)
+    win = [1.9, ws[-1][2] + 0.5]
+    shots = [{"src": "a", "beat": "Во Фрунзенском районе"}, {"src": "b", "beat": "Росгвардейцы задержали"},
+             {"src": "c", "beat": "а пострадавший в"}, {"src": "d", "beat": "— у него тра"}]  # cut short
+    bs = build.shot_beats(shots, ws, win)
+    assert [b["text"].split()[0] for b in bs] == ["Во", "Росгвардейцы", "а", "—"]
+    assert bs[0]["start"] == 1.9 and bs[-1]["end"] == win[1]
+    assert bs[1]["start"] == round(max(ws[5][2], ws[6][1] - build.BEAT_LEAD), 3)
+    assert [b["end"] for b in bs[:-1]] == [b["start"] for b in bs[1:]]
+    story = {"narration": {"text": " ".join(w[0] for w in ws)}, "shots": shots}
+    assert build.story_beats(story, {"words": ws, "windows": [win]}) == [bs]
+    assert build.shot_beats(shots[1:], ws, win) is None                       # the first shot opens the story
+    assert build.shot_beats(shots[:1] + [{"src": "x", "beat": "Нет такого"}], ws, win) is None
+    assert build.shot_beats([{"src": "a"}], ws, win) is None                  # no beats: phrases as before
+    assert build.story_beats({**story, "shots": [{"src": "a"}]}, {"words": ws, "windows": [win]}) == [
+        build.beats(ws, win)]
+
+
+def test_a_clip_shorter_than_its_cut_holds_its_last_frame(tmp_path: Path):
+    out = tmp_path / "s.mp4"
+    build.segment({"path": _clip(tmp_path / "v.mp4", 1.0), "dur": 1.6, "video": True, "in": 0.0}, out)
+    assert abs(build.probe(out)[2] - 1.6) < 0.1
+    png = tmp_path / "p.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x180", "-frames:v", "1",
+                    str(png)], check=True)
+    build.segment({"path": png, "dur": 0.5, "video": False, "zoom": [1.07, 1.0]}, tmp_path / "p.mp4")
+    assert abs(build.probe(tmp_path / "p.mp4")[2] - 0.5) < 0.1

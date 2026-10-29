@@ -21,6 +21,7 @@ Digest (several stories in one film): instead of "narration.text" + "shots", giv
                "sound": {"ambience": ...}, "date"?, "source"?}, ...]
 The anchor reads intro + stories[0].lead, then after each story its comment and the next lead, then the outro; each
 story gets its own b-roll window, plate (headline, "1 из 3") and ambience. One voice take covers the whole film.
+Without "anchor.dir" a digest has no cat on screen (narrator mode, see narrator()): the pictures never stop.
 
 "anchor": {"greeting_clip": {"src": "addons/news/anchor_cat/greet_hello.mp4", "speech": [0.78, 4.1], "words": 4}}
 puts a generated (Veo) clip of the anchor saying the first n words over the opening, muted and re-timed to the voice.
@@ -55,6 +56,7 @@ SHOT_S = 3.0
 CUT_MIN, SNAP_S = 1.8, 0.6  # a cut moves up to SNAP_S to land between words; no shot shorter than CUT_MIN
 PIECE_S, LAST_PIECE_S = 3.35, 5.95  # cleaned post clips are 3.4 s, a story's last one 6 s (clean_footage.py)
 TAIL_S = 1.2           # hold after the last word
+CARD_ZOOM = 0.07       # a still's slow push-in (segment); "zoom": [from, to] on a cut overrides it
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
 BOX_Y = 930            # centre line of the picture box (the plate sits above it, captions below)
 BOX_MIN, BOX_MAX = 760, 1000
@@ -92,6 +94,14 @@ def stories(story: dict) -> list[dict]:
     return story["stories"] if story.get("stories") else [story]
 
 
+def narrator(story: dict) -> bool:
+    """A digest without the cat on screen (no "anchor.dir"; owner 2026-10-29, a test without the cat): one voice reads
+    the greeting, the leads, the stories and the outro over pictures that never stop — the greeting over a still of
+    every story (a teaser), each lead over its story's first picture, the outro over the last one. The cat's comments
+    after the stories are not read: they were his reactions."""
+    return bool(story.get("stories")) and not (story.get("anchor") or {}).get("dir")
+
+
 def parts(story: dict) -> list[dict]:
     """What is read, in order: anchor lines and story voice-overs ({"kind": "anchor"|"story", "text", "i"})."""
     a = story.get("anchor") or {}
@@ -103,7 +113,7 @@ def parts(story: dict) -> list[dict]:
         out.append({"kind": "anchor", "role": "lead", "text": lead.strip(), "i": i})
         out.append({"kind": "story", "role": "story", "text": (s.get("text") or story["narration"]["text"]).strip(),
                     "i": i})
-        if story.get("stories"):  # the anchor's own short reaction right after the story, before the next lead
+        if story.get("stories") and not narrator(story):  # the anchor's own short reaction, before the next lead
             out.append({"kind": "anchor", "role": "comment", "text": s.get("comment", "").strip(), "i": i})
     out.append({"kind": "anchor", "role": "outro", "text": a.get("outro", "").strip(), "i": None})
     return [p for p in out if p["text"]]
@@ -128,6 +138,22 @@ def voice_text(story: dict) -> str:
 def windows(timing: dict) -> list[list[float]]:
     """One b-roll window per story (timing.json from before digests has only "broll")."""
     return timing.get("windows") or [timing["broll"]]
+
+
+def text_windows(timing: dict) -> list[list[float]]:
+    """Each story's voice-over, the phrases are cut in it: its b-roll window, except in narrator mode."""
+    return timing.get("text") or windows(timing)
+
+
+def narrator_windows(story: dict, words: list, duration: float, text: list[list[float]]) -> dict:
+    """Narrator mode: story i's pictures run from its lead (the first from 0) to the next lead, the last to the end;
+    "text" keeps the voice-over windows, "intro" the greeting before the first lead."""
+    starts = [0.0] + [t1 for _, t1 in text[:-1]]
+    out = {"text": text, "windows": [[s, e] for s, e in zip(starts, starts[1:] + [duration])]}
+    n = len(plain((story.get("anchor") or {}).get("intro", "")).split())
+    if n and n < len(words):
+        out["intro"] = [0.0, round(min(max(words[n - 1][2], words[n][1] - 0.1), text[0][0]), 3)]
+    return out
 
 
 def story_windows(story: dict, words: list, duration: float) -> list[list[float]]:
@@ -235,14 +261,18 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     audio = A / "narration.mp3"
     text = full_text(story)
     if not (retime and audio.is_file()):
-        fish = story["narration"].get("engine") == "fishaudio"
-        speak({**story["narration"], "text": voice_text(story) if fish else text}, audio)
+        engine = story["narration"].get("engine")
+        # OpenRouter's chat voices would read a [cue] aloud: they get the plain script
+        said = voice_text(story) if engine == "fishaudio" else plain(text) if engine == "openrouter" else text
+        speak({**story["narration"], "text": said}, audio)
     words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, transcribe(audio))]
     speech_end = float(words[-1][2])
     duration = round(speech_end + TAIL_S, 2)
     ws = story_windows(story, words, duration)
     timing = {"words": words, "speech_end": speech_end, "duration": duration, "windows": ws,
               "broll": [ws[0][0], ws[-1][1]]}
+    if narrator(story):
+        timing.update(narrator_windows(story, words, duration, ws))
     (A / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=1), encoding="utf-8")
     return timing
 
@@ -342,8 +372,34 @@ def beats(ws: list, window: list[float]) -> list[dict]:
             for i, j in out]
 
 
+def shot_beats(shots: list, ws: list, window: list[float]) -> Optional[list[dict]]:
+    """The phrases the shots were planned for ("beat": the first words of its phrase), found again in this take's
+    words: a film voiced anew (another voice, another tempo) keeps every cut on its phrase. None when a shot has no
+    beat or the beats are not found in order from the first word."""
+    if not shots or not ws or not all(s.get("beat") for s in shots):
+        return None
+    toks, at = [norm(w[0]) for w in ws], []
+
+    def opens(j: int, want: list[str]) -> bool:  # a beat's last word may be cut short («пострадавш»)
+        got = [t for t in toks[j:j + 6] if t][:len(want)]
+        return len(got) == len(want) and got[:-1] == want[:-1] and got[-1].startswith(want[-1])
+
+    for s in shots:
+        want = [t for t in (norm(x) for x in plain(s["beat"]).split()) if t][:3]
+        k = at[-1] + 1 if at else 0
+        j = next((j for j in range(k, len(toks)) if want and opens(j, want)), None)
+        if j is None or (not at and any(toks[:j])):
+            return None
+        at.append(j)
+    cut = lambda i: window[0] if i == 0 else min(ws[i][1], max(ws[i - 1][2], ws[i][1] - BEAT_LEAD))  # noqa: E731
+    edges = [cut(i) for i in at] + [window[1]]
+    return [{"start": round(a, 3), "end": round(b, 3), "text": " ".join(w[0] for w in ws[i:j])}
+            for a, b, i, j in zip(edges, edges[1:], at, at[1:] + [len(ws)])]
+
+
 def story_beats(story: dict, timing: dict) -> list[list[dict]]:
-    return [beats(ws, win) for ws, win in zip(story_words(story, timing["words"]), windows(timing))]
+    return [shot_beats(s.get("shots", []), ws, win) or beats(ws, win)
+            for s, ws, win in zip(stories(story), story_words(story, timing["words"]), text_windows(timing))]
 
 
 def cut_points(window: list[float], n: int, words: list, last_cap: float) -> list[float]:
@@ -406,11 +462,69 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
             a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
             if a + d > length:  # clip too short for this cut: loop back to its start
                 a = max(0.0, min(0.3, length - d))
+            if d > length + 0.1:  # segment() holds the last frame
+                print(f"warning: shot {i} {src.name} is {length:.1f}s for a {d:.1f}s cut — its last frame is held "
+                      f"{d - length:.1f}s", flush=True)
             item["in"] = round(a, 3)
             used[str(src)] = a + d
         out.append(item)
         t += d
     return out
+
+
+def still_of(proj: Path, it: dict, last: bool = False) -> Optional[dict]:
+    """A cut as a still with the same framing (crop, the Flow sparkle by "label"): a picture is itself, a clip gives
+    the frame it starts on (or ends on)."""
+    if not it.get("path"):
+        return None
+    keep = {k: it[k] for k in ("src", "crop", "label", "credit") if k in it}
+    if not it["video"]:
+        return {**keep, "path": it["path"], "video": False}
+    _, _, length = probe(it["path"])
+    t = max(0.0, min(it["in"] + it["dur"], length) - 0.1) if last else it["in"]
+    dst = proj / "assets" / "cards" / f"{it['path'].stem}_{t:.2f}.jpg"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.3f}", "-i", str(it["path"]), "-frames:v", "1", "-q:v", "2", str(dst)])
+    return {**keep, "path": dst, "video": False}
+
+
+def cards(proj: Path, timing: dict, per: list[list[dict]]) -> list[list[dict]]:
+    """Narrator mode: what is read between the voice-overs gets pictures too. The greeting runs over a still of every
+    story (a teaser of the film); a lead over its story's first picture — a clip's first frame that pulls back to the
+    clip's framing and starts to move, or the picture itself, held longer; the outro over the last picture."""
+    out = []
+    for w, its in enumerate(per):
+        (v0, v1), (t0, t1) = windows(timing)[w], text_windows(timing)[w]
+        its, pre = list(its), []
+        if w == 0 and timing.get("intro"):
+            i1 = timing["intro"][1] if t0 - timing["intro"][1] > 0.4 else t0  # no lead of its own: up to the story
+            teaser = [f for f in (still_of(proj, p[0]) for p in per if p) if f]
+            k = max(1, min(len(teaser), int((i1 - v0) / 0.7)))
+            e = [round(v0 + (i1 - v0) * j / k, 3) for j in range(k + 1)]
+            pre = [{**f, "start": a, "dur": round(b - a, 3), "card": "intro"} for f, a, b in zip(teaser, e, e[1:])]
+            v0 = i1
+        if its and t0 - v0 > 0.05:
+            if its[0]["video"] and (f := still_of(proj, its[0])):
+                pre.append({**f, "start": round(v0, 3), "dur": round(t0 - v0, 3), "card": "lead",
+                            "zoom": [1 + CARD_ZOOM, 1.0]})
+            else:
+                its[0] = {**its[0], "start": round(v0, 3), "dur": round(its[0]["dur"] + t0 - v0, 3)}
+        if its and v1 - t1 > 0.05:
+            if its[-1]["video"] and (f := still_of(proj, its[-1], last=True)):
+                its.append({**f, "start": round(t1, 3), "dur": round(v1 - t1, 3), "card": "outro"})
+            else:
+                its[-1] = {**its[-1], "dur": round(its[-1]["dur"] + v1 - t1, 3)}
+        out.append(pre + its)
+    return out
+
+
+def film_items(proj: Path, story: dict, timing: dict, phrases: list, strict: bool = True) -> list[dict]:
+    """Every cut of the film in order; "w" is its story's window."""
+    per = [slots(s, win, proj, timing["words"], phrases[w], strict)
+           for w, (s, win) in enumerate(zip(stories(story), text_windows(timing)))]
+    if narrator(story):
+        per = cards(proj, timing, per)
+    return [{**it, "w": w} for w, its in enumerate(per) for it in its]
 
 
 def picture_warnings(story: dict) -> list[str]:
@@ -557,11 +671,14 @@ def segment(item: dict, dst: Path) -> None:
             cv2.imwrite(str(clean), remove_sparkle(cv2.imread(str(src))))
             src = clean
         inp = ["-loop", "1", "-t", f"{d:.3f}", "-i", str(src)]
+        z0, z1 = item.get("zoom", (1.0, 1.0 + CARD_ZOOM))
         fg = (f"[b]scale={W * 3}:{bh * 3}:force_original_aspect_ratio=increase,crop={W * 3}:{bh * 3},"
-              f"zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
+              f"zoompan=z='{z0:g}+{z1 - z0:.4f}*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
               f"s={W}x{bh}:fps={FPS}[fg]")
     pre = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
-    flt = (f"[0:v]{pre}fps={FPS},split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
+    # a clip shorter than its cut (a slower voice than the one its pieces were cleaned for) holds its last frame
+    hold = f"tpad=stop_mode=clone:stop_duration={d:.3f}," if item["video"] else ""
+    flt = (f"[0:v]{pre}fps={FPS},{hold}split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
            f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
@@ -630,6 +747,7 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     if snd.get("sting"):
         x = snd["sting"]
         clip(find_sfx(x["src"]), float(x.get("at", 0.0)), float(x.get("dur", 3.5)), x.get("volume", 0.45), fade_out=0.8)
+    swept = set()  # without the cat one story's window ends where the next begins: one whoosh there, not two
     for s, (b0, b1) in zip(stories(story), windows(timing)):
         x = (s.get("sound") or {}).get("ambience") or snd.get("ambience")  # a digest story may bring its own place
         if x and b1 > b0:
@@ -637,7 +755,10 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
         if snd.get("whoosh"):
             w = snd["whoosh"]
             for t in ([b0] if b0 > 0.5 else []) + ([b1] if b1 < total - 0.5 else []):
-                clip(find_sfx(w["src"]), max(0.0, t - 0.3), float(w.get("dur", 1.0)), w.get("volume", 0.35), fade_out=0.4)
+                if round(t, 1) not in swept:
+                    swept.add(round(t, 1))
+                    clip(find_sfx(w["src"]), max(0.0, t - 0.3), float(w.get("dur", 1.0)), w.get("volume", 0.35),
+                         fade_out=0.4)
     for it in items:
         if it["video"] and it.get("audio", SOURCE_AUDIO) and has_audio(it["path"]):
             clip(it["path"], it["start"], it["dur"], it.get("audio", SOURCE_AUDIO), it["in"], 0.12, 0.12)
@@ -869,20 +990,29 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     head = esc(story.get("headline") or stories(story)[0]["headline"])
     S_ = stories(story)
     broll_html, plate_html, plate_js = [], [], []
+    intro = timing.get("intro")  # narrator mode: the greeting runs over the teaser under the film's own plate
+    if intro:
+        plate_html.append(
+            f'    <div id="plateI" class="clip plate" data-start="0" data-duration="{intro[1]:.3f}" data-track-index="3">\n'
+            f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span>'
+            f'<span class="date">{esc(story.get("date", ""))}</span>\n      <div class="head">{head}</div>\n    </div>')
+        plate_js.append('  tl.from("#plateI .tag", { x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }, 0.3);\n'
+                        '  tl.from("#plateI .head", { y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }, 0.45);')
     for w, (s, (w0, w1)) in enumerate(zip(S_, W_)):
         date = esc(s.get("date") or story.get("date", ""))
         if len(S_) > 1:
             date = f"{w + 1} из {len(S_)} · {date}" if date else f"{w + 1} из {len(S_)}"
         broll_html.append(f'    <video id="broll{w}" class="clip broll" src="assets/broll{w}.mp4" data-start="{w0}" '
                           f'data-duration="{w1 - w0:.3f}" data-track-index="0" muted playsinline></video>')
+        p0 = intro[1] if w == 0 and intro else w0  # narrator mode: the first story's plate comes with its lead
         plate_html.append(
-            f'    <div id="plate{w}" class="clip plate" data-start="{w0}" data-duration="{w1 - w0:.3f}" data-track-index="3">\n'
+            f'    <div id="plate{w}" class="clip plate" data-start="{p0}" data-duration="{w1 - p0:.3f}" data-track-index="3">\n'
             f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span><span class="date">{date}</span>\n'
             f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n    </div>')
         plate_js.append(
-            f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {w0 + 0.05:.2f});\n'
-            f'  tl.from("#plate{w} .date", {{ opacity: 0, duration: 0.3 }}, {w0 + 0.25:.2f});\n'
-            f'  tl.from("#plate{w} .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {w0 + 0.15:.2f});')
+            f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {p0 + 0.05:.2f});\n'
+            f'  tl.from("#plate{w} .date", {{ opacity: 0, duration: 0.3 }}, {p0 + 0.25:.2f});\n'
+            f'  tl.from("#plate{w} .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {p0 + 0.15:.2f});')
     lower_html = lower_js = ""
     if b0 > 0.5:  # anchor intro: the headline sits as a lower third over the desk
         lower_html = (f'    <div id="lower" class="clip" data-start="0" data-duration="{b0}" data-track-index="2">'
@@ -1038,16 +1168,14 @@ def main() -> None:
     for warning in picture_warnings(story) + unused_post_media(proj, story):
         print("warning:", warning, flush=True)
     if a.storyboard:
-        items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
-                 for it in slots(s, win, proj, timing["words"], phrases[w], strict=False)]
+        items = film_items(proj, story, timing, phrases, strict=False)
         print("storyboard:", " ".join(str(p.relative_to(proj)) for p in storyboard(proj, story, items, timing)))
         return
     if over:
         sys.exit(f"{ai} of {total} shots are AI pictures, the limit is {limit:.0%} (owner 2026-10-29: as few as possible)")
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
-    items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
-             for it in slots(s, win, proj, timing["words"], phrases[w])]
+    items = film_items(proj, story, timing, phrases)
     storyboard(proj, story, items, timing)
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
