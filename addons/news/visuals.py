@@ -1,19 +1,15 @@
-"""Real pictures made from data, not drawn by AI (owner 2026-10-29: no AI pictures): a map of the place and a fact card.
+"""A real picture made from data, not drawn by AI (owner 2026-10-29: fewer AI pictures): a map of the place.
 
 A shot in story.json can be, instead of a file:
   {"map": {"street": "улица Баумана", "city": "Казань", "label": "ул. Баумана"}, "beat": "..."}   # or "query": "..."
-  {"src": "media/clean/x_3.clean.mp4", "card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца", "small": "колонии"}}
-A card is a compact plate laid over a real shot (owner 2026-10-29: «на весь экран не надо»), so a shot with "card"
-keeps its own "src". build.py calls resolve() first: the files are made once (assets/visuals/, named by a hash of
-the spec); a map shot's "src" points at its clip, a card shot gets "card_png". A card says only what the story
-text says (a number, a term, a sum) — never a new fact.
+build.py calls resolve() first: the clip is made once (assets/visuals/, named by a hash of the spec) and the shot's
+"src" points at it. (Fact cards over the picture were tried and dropped by the owner the same day.)
 
 The map: OpenStreetMap — Nominatim finds the place (street and city apart, so a street is not mistaken for the metro
 station of the same name), tiles from tile.openstreetmap.org (cached in ~/.cache/openmontage/osm, a valid
 User-Agent, a few dozen tiles a map — within the tile usage policy). Dark style, a smooth zoom from the city to the
 street, a red pin and the place's name; «© OpenStreetMap» stays in the corner (ODbL needs it on the picture).
 
-    .venv/bin/python addons/news/visuals.py card out.png "ПРИГОВОР" "1 год 4 месяца" "колонии общего режима"
     .venv/bin/python addons/news/visuals.py map out.mp4 "улица Баумана" "Казань" "ул. Баумана"
 """
 from __future__ import annotations
@@ -29,8 +25,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 
 W, H = 1080, 760          # the picture box of the b-roll (build.py BOX_MAX)
 RED = (227, 0, 27)        # the plates' red (#e3001b)
@@ -54,38 +49,6 @@ def fit(draw: ImageDraw.ImageDraw, text: str, width: int, start: int, bold: bool
     while size > 30 and draw.textlength(text, font=font(size, bold)) > width:
         size -= 4
     return font(size, bold)
-
-
-# -- the fact card --------------------------------------------------------------------------------------------------
-CARD_W = 900  # the plate over the picture: about the width of the headline plate, not the whole box
-
-
-def card_overlay(spec: dict, out: Path) -> Path:
-    """A transparent PNG: the dark plate with the red edge (like the headline plate), the label, the big line and
-    the small one. build.py lays it at the bottom of the picture for the shot's length."""
-    s = 2
-    probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
-    fb = fit(probe, str(spec.get("big", "")), (CARD_W - 90) * s, 96 * s)
-    fs, fl = font(40 * s, bold=False), font(30 * s)
-    h = 34 * s + (56 * s if spec.get("label") else 0) + int(fb.size * 1.12) + (int(fs.size * 1.3) if spec.get("small") else 0) + 26 * s
-    img = Image.new("RGBA", (CARD_W * s, h), (10, 10, 12, 224))
-    d = ImageDraw.Draw(img)
-    d.rectangle((0, 0, 12 * s, h), fill=RED + (255,))
-    x, y = 44 * s, 26 * s
-    if spec.get("label"):
-        tw = d.textlength(spec["label"], font=fl)
-        d.rectangle((x, y, x + tw + 28 * s, y + 46 * s), fill=RED + (255,))
-        d.text((x + 14 * s, y + 6 * s), spec["label"], font=fl, fill="white")
-        y += 56 * s
-    d.text((x, y), str(spec.get("big", "")), font=fb, fill="white")
-    y += int(fb.size * 1.12)
-    if spec.get("small"):
-        d.text((x, y), str(spec["small"]), font=fit(d, str(spec["small"]), (CARD_W - 90) * s, 40 * s, bold=False),
-               fill=(225, 225, 225))
-    img = img.resize((CARD_W, h // s), Image.LANCZOS)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out)
-    return out
 
 
 # -- the map ---------------------------------------------------------------------------------------------------------
@@ -200,29 +163,23 @@ def map_clip(spec: dict, out: Path, seconds: float = 6.0, fps: int = 30) -> Path
 
 # -- story.json shots ------------------------------------------------------------------------------------------------
 def resolve(proj: Path, story: dict) -> int:
-    """Make the files of "card" / "map" shots (once) and point their "src" at them. Returns how many shots are made
-    from data."""
+    """Make the clips of "map" shots (once) and point their "src" at them. Returns how many there are."""
     made = 0
     for st in story.get("stories") or [story]:
         for s in st.get("shots", []):
-            for kind in ("map", "card"):
-                if kind not in s:
-                    continue
-                if kind == "card" and not s.get("src"):
-                    sys.exit(f"a fact card goes over a real shot: give the shot with {s['card']} its \"src\"")
-                key = hashlib.sha1(json.dumps(s[kind], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
-                rel = Path("assets") / "visuals" / f"{kind}_{key}.{'png' if kind == 'card' else 'mp4'}"
-                if not (proj / rel).is_file():
-                    (card_overlay if kind == "card" else map_clip)(s[kind], proj / rel)
-                s["card_png" if kind == "card" else "src"] = rel.as_posix()
-                made += 1
+            if "map" not in s:
+                continue
+            key = hashlib.sha1(json.dumps(s["map"], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
+            rel = Path("assets") / "visuals" / f"map_{key}.mp4"
+            if not (proj / rel).is_file():
+                (proj / rel).parent.mkdir(parents=True, exist_ok=True)
+                map_clip(s["map"], proj / rel)
+            s["src"] = rel.as_posix()
+            made += 1
     return made
 
 
 if __name__ == "__main__":
     kind, out, *args = sys.argv[1:]
-    if kind == "card":
-        card_overlay({"label": args[0], "big": args[1], "small": args[2] if len(args) > 2 else ""}, Path(out))
-    else:
-        map_clip({"street": args[0], "city": args[1], "label": args[2] if len(args) > 2 else args[0]}, Path(out))
+    map_clip({"street": args[0], "city": args[1], "label": args[2] if len(args) > 2 else args[0]}, Path(out))
     print(out)

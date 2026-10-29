@@ -62,9 +62,8 @@ next to what is counted («у дома девяносто три мужчину�
      the video (`in`), the other channels' video and photos of the same event, crops of a photo or a frame
      (`"crop": [x, y, w, h]` — a wide view, a detail, the car, the people: different shots), a Commons photo of the
      very place; and pictures made from data (README «Кадры из данных»): a map of the place under the «where»
-     phrase (`"map": {"street", "city", "label"}`, one per story) and fact cards laid over a real shot (the shot keeps
-     its `src` and gets `"card": {"label", "big", "small"}` — a number, a term, a sum, an article, only what the text
-     says, at most two per story). Illustrations only where nothing real shows the phrase, within the limit:
+     phrase (`"map": {"street", "city", "label"}`, one per story). No fact cards or plates over the picture (owner,
+     2026-10-29). Illustrations only where nothing real shows the phrase, within the limit:
      **every picture shows its phrase** (README «Кадры без футажа»): post media of this story if it
      shows what is said, a Commons photo only of the very place the phrase names (not a namesake: the metro station
      «Гражданский проспект» is not the avenue), otherwise an illustration drawn for that phrase. Never another

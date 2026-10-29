@@ -469,28 +469,12 @@ def test_crops_of_one_photo_are_different_shots():
     assert build.picture_warnings(s) == []                  # a wide view and two details, not one photo three times
 
 
-def test_fact_cards_and_maps_become_shots(tmp_path: Path, monkeypatch):
-    import cv2
-
+def test_maps_become_shots_once(tmp_path: Path, monkeypatch):
     from addons.news import visuals
 
     made_maps = []
     monkeypatch.setattr(visuals, "map_clip", lambda spec, out: made_maps.append(spec) or out.write_bytes(b"x") or out)
-    story = {"stories": [{"shots": [{"src": "media/a.mp4", "card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца",
-                                                                     "small": "колонии"}},
-                                    {"map": {"street": "улица Баумана", "city": "Казань"}},
-                                    {"src": "media/b.mp4"}]}]}
-    assert visuals.resolve(tmp_path, story) == 2
-    shots = story["stories"][0]["shots"]
-    assert shots[0]["src"] == "media/a.mp4" and shots[0]["card_png"].startswith("assets/visuals/card_")
-    assert shots[1]["src"].endswith(".mp4")
-    png = cv2.imread(str(tmp_path / shots[0]["card_png"]), cv2.IMREAD_UNCHANGED)
-    assert png.shape[1] == visuals.CARD_W and png.shape[2] == 4 and png.shape[0] < 400   # a plate, not the screen
-    assert visuals.resolve(tmp_path, story) == 2 and len(made_maps) == 1     # made once, then reused
-
-
-def test_a_card_without_its_shot_is_refused(tmp_path: Path):
-    from addons.news import visuals
-
-    with pytest.raises(SystemExit):
-        visuals.resolve(tmp_path, {"stories": [{"shots": [{"card": {"big": "7 млн ₽"}}]}]})
+    story = {"stories": [{"shots": [{"map": {"street": "улица Баумана", "city": "Казань"}}, {"src": "media/b.mp4"}]}]}
+    assert visuals.resolve(tmp_path, story) == 1
+    assert story["stories"][0]["shots"][0]["src"].startswith("assets/visuals/map_")
+    assert visuals.resolve(tmp_path, story) == 1 and len(made_maps) == 1     # made once, then reused
