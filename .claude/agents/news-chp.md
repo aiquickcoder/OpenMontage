@@ -61,7 +61,10 @@ next to what is counted («у дома девяносто три мужчину�
      shows «видео 12 с + 3 фото»; stories with none are dropped) and fill every phrase from them: other seconds of
      the video (`in`), the other channels' video and photos of the same event, crops of a photo or a frame
      (`"crop": [x, y, w, h]` — a wide view, a detail, the car, the people: different shots), a Commons photo of the
-     very place. Not enough footage for four stories — make three or two. Only if the owner raised the limit:
+     very place; and pictures made from data (README «Кадры из данных»): a map of the place under the «where»
+     phrase (`"map": {"street", "city", "label"}`, one per story) and fact cards for a number, a term, a sum, an
+     article (`"card": {"label", "big", "small"}`, only what the text says, at most two per story, never in a row).
+     Not enough footage for four stories — make three or two. Only if the owner raised the limit:
      **every picture shows its phrase** (README «Кадры без футажа»): post media of this story if it
      shows what is said, a Commons photo only of the very place the phrase names (not a namesake: the metro station
      «Гражданский проспект» is not the avenue), otherwise an illustration drawn for that phrase. Never another

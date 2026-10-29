@@ -1015,6 +1015,10 @@ def main() -> None:
     a = ap.parse_args()
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
+    from addons.news import visuals  # maps and fact cards: real pictures from data, not AI (owner 2026-10-29)
+
+    if made := visuals.resolve(proj, story):
+        print(f"{made} shots made from data (maps, fact cards): assets/visuals/", flush=True)
     timing = voice(proj, story, a.retime or a.storyboard)
     phrases = story_beats(story, timing)
     (proj / "assets" / "beats.json").write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")

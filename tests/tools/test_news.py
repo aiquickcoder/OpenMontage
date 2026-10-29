@@ -461,3 +461,20 @@ def test_crops_of_one_photo_are_different_shots():
     s = {"stories": [{"shots": [{"src": "media/p.jpg"}, {"src": "media/p.jpg", "crop": [0, 0, 400, 300]},
                                 {"src": "media/p.jpg", "crop": [200, 100, 400, 300]}]}]}
     assert build.picture_warnings(s) == []                  # a wide view and two details, not one photo three times
+
+
+def test_fact_cards_and_maps_become_shots(tmp_path: Path, monkeypatch):
+    import cv2
+
+    from addons.news import visuals
+
+    made_maps = []
+    monkeypatch.setattr(visuals, "map_clip", lambda spec, out: made_maps.append(spec) or out.write_bytes(b"x") or out)
+    story = {"stories": [{"shots": [{"card": {"label": "ПРИГОВОР", "big": "1 год 4 месяца", "small": "колонии"}},
+                                    {"map": {"street": "улица Баумана", "city": "Казань"}},
+                                    {"src": "media/a.mp4"}]}]}
+    assert visuals.resolve(tmp_path, story) == 2
+    shots = story["stories"][0]["shots"]
+    assert shots[0]["src"].startswith("assets/visuals/card_") and shots[1]["src"].endswith(".mp4")
+    assert cv2.imread(str(tmp_path / shots[0]["src"])).shape[:2] == (visuals.H, visuals.W)
+    assert visuals.resolve(tmp_path, story) == 2 and len(made_maps) == 1     # made once, then reused

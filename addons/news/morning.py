@@ -72,7 +72,8 @@ def main() -> None:
         "reuse the night pre-clean (clean_footage.py cuts from it). No AI pictures where the city's cities.json "
         "ai_max_share is 0 (now everywhere): pick stories with footage of their own and fill every phrase from it — "
         "other seconds of the video, other channels' media of the same event, crops (\"crop\": [x, y, w, h]), "
-        "Commons photos of the very place; fewer stories rather than AI pictures. Every phrase needs a picture that "
+        "Commons photos of the very place, a map of the place (\"map\") and fact cards (\"card\") — README «Кадры "
+        "из данных»; fewer stories rather than AI pictures. Every phrase needs a picture that "
         "shows it, never another story's picture or an unrelated place; check build.py --storyboard before the "
         "render.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "
