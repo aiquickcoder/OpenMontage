@@ -40,6 +40,7 @@ def main() -> None:
     ap.add_argument("--deadline", default="08:45", help="MSK; the agent is stopped at this time")
     ap.add_argument("--project", type=Path, help="finish this started digest (story.json, maybe its voice) instead")
     ap.add_argument("--slug", help="a new digest under this name (an extra one in a day: the dated name is taken)")
+    ap.add_argument("--note", help="the owner's remarks on this digest, passed to the agent as they are")
     a = ap.parse_args()
     now = datetime.now(MSK)
     if a.project:
@@ -66,6 +67,7 @@ def main() -> None:
          "decision, then produce.py."
          if a.project else f"Make today's digest as the agent below describes. Project: projects/{slug}."),
         f"Today is {now:%Y-%m-%d}.",
+        *([f"The owner's remarks on this digest (fix every one): {a.note}"] if a.note else []),
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
         "reuse the night pre-clean (clean_footage.py cuts from it), prefer post footage — but every phrase needs a "
         "picture that shows it: draw illustrations (start Flow as soon as the phrases are known), never fill with "
