@@ -43,8 +43,8 @@ next to what is counted («у дома девяносто три мужчину�
    - Say which event you took, its score and why. Write `source.key` into the story so it is never offered again.
 2. **Story.** Write `projects/news-<slug>/story.json`.
    - Facts only from the post(s); numbers as words; no names of victims or suspects; until a verdict a person is a
-     suspect («задержан подозреваемый», «по версии следствия»), never «преступник» or «убийца»; 55–62 words in total
-     (≈31–34 s; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
+     suspect («задержан подозреваемый», «по версии следствия»), never «преступник» or «убийца»; 70–75 words in total
+     (≈31–34 s at the voice's ≈2.25 words/s; a digest: README «Длина»; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
    - Run `build.py … --voice-only`. It prints each story's **phrases** (≈2 s each, also `assets/beats.json`): list one
      shot per phrase, in that order, each showing what its phrase says (owner 2026-10-29: the picture goes with the
      sentence); `"beat": "<first words>"` on a shot lets the build check the match. Footage goes on the phrases about
