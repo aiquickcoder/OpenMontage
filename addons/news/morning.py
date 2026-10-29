@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -76,6 +77,7 @@ def main() -> None:
                                                  ".googleusercontent.com", ".gstatic.com", ".googleapis.com"]))
     cmd = [env.get("FACTORY_CLAUDE_BIN", "claude"), "-p", prompt, "--permission-mode", "acceptEdits",
            "--allowedTools", "Bash Read Write Edit Glob Grep", "--max-turns", "400", "--output-format", "text"]
+    started = time.time()
     try:
         p = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
                            timeout=max(60, (stop - now).total_seconds()))
@@ -84,6 +86,11 @@ def main() -> None:
         out = f"{e.stdout or ''}\n[stopped at the {a.deadline} deadline]"
     (proj / "morning.log").write_text(f"PROMPT:\n{prompt}\n\nOUTPUT:\n{out}", encoding="utf-8")
     found = RESULT.findall(out)
+    delivered = proj / "kinescope.json"
+    if not found and delivered.is_file() and delivered.stat().st_mtime >= started:
+        # text output keeps only the agent's last message; one that said its result earlier and then «Task complete»
+        # was reported as FAILED although the film was out (Moscow 29.10). The film on Kinescope is the proof.
+        found = [("READY", f"projects/{slug} (delivered; the agent's last message had no result line)")]
     status, detail = found[-1] if found else ("FAILED", "no MORNING_RESULT line: " + out.strip()[-200:])
     print(f"MORNING_RESULT: {status} {detail}", flush=True)
     if status != "READY":
