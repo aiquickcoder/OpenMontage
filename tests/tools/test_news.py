@@ -66,7 +66,8 @@ def test_cuts_land_between_words_and_prefer_sentence_ends():
 
 
 def test_mouth_track_closes_and_holds_on_twos(monkeypatch):
-    env = np.array([0, 0, 1, 1, 1, 0.3, 0.3, 0, 0, 1] * 3, dtype=float)
+    # 0.5 right after a peak is half-open; a drop to 0.3 there now closes the mouth (syllable gaps, 2026-10-29)
+    env = np.array([0, 0, 1, 1, 1, 0.5, 0.5, 0, 0, 1] * 3, dtype=float)
     monkeypatch.setattr(anchor, "envelope", lambda audio, fps: env)
     tr = anchor.mouth_track(Path("x"), 10, [(0.0, 3.0)], 0.0, True)
     assert tr[0] == (0.0, "closed") and tr[-1] == (3.0, "closed")
@@ -395,3 +396,11 @@ def test_storyboard_puts_each_picture_next_to_its_words(tmp_path: Path):
     timing = {"words": [["Красносельский", 0.1, 0.8], ["суд", 0.9, 1.2], ["отправил", 2.1, 2.6]]}
     out = build.storyboard(tmp_path, story, items, timing)
     assert [p.name for p in out] == ["storyboard_1.jpg"] and cv2.imread(str(out[0])).shape[1] == 1200
+
+
+def test_a_fast_narrator_still_closes_the_mouth_between_syllables(monkeypatch):
+    # level stays high (0.6–1.0) through fast speech: whole-take thresholds kept it open; local ones close on dips
+    env = np.array([0.2, 1.0, 1.0, 0.6, 1.0, 1.0, 0.6, 1.0, 1.0, 0.6] * 4, dtype=float)
+    monkeypatch.setattr(anchor, "envelope", lambda audio, fps: env)
+    tr = anchor.mouth_track(Path("x"), 30, [(0.0, 40 / 30)], 0.0, True)
+    assert sum(1 for _, s in tr[1:-1] if s == "mid") >= 4      # every dip shows, not a mouth hanging open

@@ -107,18 +107,24 @@ def envelope(audio: Path, fps: int) -> np.ndarray:
 def mouth_track(audio: Path, fps: int, windows: list[tuple[float, float]], offset: float,
                 has_mid: bool) -> list[tuple[float, str]]:
     """Mouth state changes (time, 'closed'|'mid'|'open') inside the anchor windows. Holds every state at least
-    2 frames (cartoon lip-flap reads better on twos) and closes the mouth at the end of each window."""
+    2 frames (cartoon lip-flap reads better on twos) and closes the mouth at the end of each window.
+    Loudness is judged against the loudest moment within ±0.2 s as well as against the whole take: a quick narrator
+    keeps the level up between syllables, and with whole-take thresholds the mouth hung open (owner 2026-10-29, the
+    faster «Энергичный Рассказчик»: 2.4 closings a second at 5.2 syllables; now 3.1, closed 42% of the time)."""
     env = envelope(audio, fps)
+    k = max(1, int(0.2 * fps))
+    pad = np.pad(env, k, mode="edge")
+    rel = env / np.maximum(np.array([pad[i:i + 2 * k + 1].max() for i in range(len(env))]), 0.15)
     out: list[tuple[float, str]] = []
     for a, b in windows:
         cur, held = "closed", 99
         out.append((round(a, 3), "closed"))
         for f in range(int(a * fps), int(b * fps)):
             k = f - int(offset * fps)  # voice starts `offset` seconds into the composition
-            v = env[k] if 0 <= k < len(env) else 0.0
-            want = "open" if v > 0.55 else ("mid" if v > 0.22 else "closed")
+            v, r = (env[k], rel[k]) if 0 <= k < len(env) else (0.0, 0.0)
+            want = "open" if (v > 0.35 and r > 0.75) else ("mid" if (v > 0.12 and r > 0.38) else "closed")
             if want == "mid" and not has_mid:
-                want = "open" if v > 0.35 else "closed"
+                want = "open" if (v > 0.25 and r > 0.6) else "closed"
             held += 1
             if want != cur and held >= 2:
                 cur, held = want, 0
