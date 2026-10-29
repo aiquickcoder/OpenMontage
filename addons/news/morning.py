@@ -75,6 +75,9 @@ def main() -> None:
         "failed picture at most once.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "
         "OpenRouter need https_proxy=http://127.0.0.1:10809; the Flow browser is on DISPLAY=:99. Do not print secrets.",
+        "To wait for a background job, wait on its PID (`while kill -0 $PID`) or on a file it writes — never on "
+        "`pgrep -f '<command text>'`: it matches your own waiting shell and never ends (two agents hung for hours on "
+        "2026-10-29). Once produce.py has printed PRODUCE_RESULT, finish with the MORNING_RESULT line right away.",
         "End with exactly one line: MORNING_RESULT: READY projects/<slug> — or MORNING_RESULT: FAILED <reason>.",
         "", "AGENT INSTRUCTIONS:", agent])
     env = dict(os.environ)
