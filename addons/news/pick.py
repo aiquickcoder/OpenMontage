@@ -186,7 +186,7 @@ def main() -> None:
                if harvester != "harvest.py" else
                [sys.executable, "-I", str(HERE / "harvest.py"), str(a.posts), "--city", a.city, "--out", str(base)])
         p = subprocess.run(cmd, capture_output=True, text=True)
-        print("\n".join(l for l in p.stdout.splitlines() if re.match(r"  (?:!|\S+: постов)", l)), flush=True)  # per-channel counts
+        print("\n".join(l for l in p.stdout.splitlines() if re.match(r"  (?:!|\S+: постов|событий:)|   ⇄", l)), flush=True)  # per-channel counts, merges
         if p.returncode != 0:
             sys.exit(f"harvest failed: {p.stderr.strip()[-400:]}")
     events = json.loads((base / "base.json").read_text(encoding="utf-8"))

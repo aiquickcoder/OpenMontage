@@ -127,7 +127,9 @@ def hours(a, b):
 
 posts = sorted(all_posts, key=lambda x: x["dt"])
 df = Counter(w for q in posts for w in set(toks(q["text"])))
-rare = [{w for w in set(toks(q["text"])) if df[w] <= max(2, len(posts) * 0.18)} for q in posts]
+# a city's incident feed shares «водитель», «автомобиль», «трасса» everywhere: rare = in at most 3% of the posts
+# (the Russia harvester's 18% merged unrelated crashes into one, 2026-10-29)
+rare = [{w for w in set(toks(q["text"])) if df[w] <= max(2, len(posts) * 0.03)} for q in posts]
 parent = list(range(len(posts)))
 def find(a):
     while parent[a] != a:
@@ -144,8 +146,16 @@ for i, q in enumerate(posts):
 for i in range(len(posts)):
     for j in range(i + 1, len(posts)):
         if hours(posts[i]["dt"], posts[j]["dt"]) > 72: break
-        if len(rare[i] & rare[j]) >= 3: join(i, j)
+        both = len(rare[i] & rare[j])
+        if both >= 3 and both >= 0.34 * min(len(rare[i]), len(rare[j])): join(i, j)
 
+groups = {}
+for i in range(len(posts)):
+    groups.setdefault(find(i), []).append(i)
+joined = [g for g in groups.values() if len({posts[i]["ch"] for i in g}) > 1]
+print(f"  событий: {len(groups)} из {len(posts)} постов; из нескольких каналов: {len(joined)}")
+for g in joined[:5]:
+    print("   ⇄ " + " | ".join(f'{posts[i]["ch"]}: {posts[i]["text"][:50]}' for i in g[:3]))
 events = {}
 for i, p in enumerate(posts):
     r = find(i)
