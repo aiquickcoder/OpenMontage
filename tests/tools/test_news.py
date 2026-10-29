@@ -365,3 +365,9 @@ def test_cleaned_pieces_are_as_long_as_their_phrases(tmp_path: Path):
     assert "media/a.mp4@20" not in use                          # past the last phrase: not shown, not cleaned
     (tmp_path / "assets" / "beats.json").unlink()
     assert cf.footage(tmp_path, story)["media/a.mp4@2"]["len"] == cf.SHOT_S
+
+
+def test_a_photo_and_a_clip_with_one_name_keep_separate_masks():
+    from addons.news import clean_footage as cf
+
+    assert cf.tag("media/door.mp4") == "door" and cf.tag("media/door.jpg") == "door-jpg"

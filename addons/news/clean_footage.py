@@ -196,6 +196,13 @@ def even(n: int) -> int:
     return n - n % 2
 
 
+def tag(src) -> str:
+    """The name a source's mask, preview and pieces go by. A photo keeps its extension: door.mp4 and door.jpg shared
+    door.mask.png, and the photo's mask overwrote the clip's (SPb 28.10, «фонтанка.ру» left on door.mp4)."""
+    p = Path(src)
+    return p.stem if p.suffix.lower() in VIDEO else f"{p.stem}-{p.suffix.lstrip('.').lower()}"
+
+
 def seconds(path: Path) -> float:
     return float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]) or 0)
 
@@ -324,8 +331,8 @@ def main() -> None:
             cv2.line(f, (0, y), (w, y), (0, 255, 255), 1)
             cv2.putText(f, str(y), (2, y - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
         (proj / "qa").mkdir(exist_ok=True)
-        cv2.imwrite(str(proj / "qa" / f"grid_{src.stem}.jpg"), f)
-        print(f"{proj / 'qa' / ('grid_' + src.stem + '.jpg')} ({w}x{h})")
+        cv2.imwrite(str(proj / "qa" / f"grid_{tag(src)}.jpg"), f)
+        print(f"{proj / 'qa' / ('grid_' + tag(src) + '.jpg')} ({w}x{h})")
         return
     if a.save_template:
         name, file, *box = a.save_template
@@ -351,12 +358,12 @@ def main() -> None:
             dur = float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]) or 0)
         start = min(piece["start"], max(0.0, dur - 0.5)) if is_video else 0.0
         length = min(piece["len"], dur - start) if is_video else 0.0
-        clip = work / f"{Path(src).stem}_{start:g}.in.mp4"
+        clip = work / f"{tag(src)}_{start:g}.in.mp4"
         name = Path(src).name
         entry = hand.get(name)
         night = cached(path) if entry is None or entry == {"add": []} else None
         if night and (not is_video or start + length <= night["len"] + 0.05):
-            out = work / f"{Path(src).stem}_{start:g}.clean.mp4"
+            out = work / f"{tag(src)}_{start:g}.clean.mp4"
             if night["clean"] == "done" and (not out.is_file() or (is_video and seconds(out) < length - 0.1)):
                 if is_video:
                     sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(CACHE / f"{night['key']}.clean.mp4"),
@@ -364,7 +371,7 @@ def main() -> None:
                 else:
                     shutil.copy2(CACHE / f"{night['key']}.clean.mp4", out)
             if (CACHE / f"{night['key']}.preview.jpg").is_file():
-                shutil.copy2(CACHE / f"{night['key']}.preview.jpg", qa_dir / f"wm_{Path(src).stem}.jpg")
+                shutil.copy2(CACHE / f"{night['key']}.preview.jpg", qa_dir / f"wm_{tag(src)}.jpg")
             # a night clean of a clip the auto mask is blind on (or an entry from before that was recorded) is
             # used only once somebody looked: the night run has no eyes
             look = entry is None and night.get("blind", True)
@@ -396,8 +403,8 @@ def main() -> None:
             how += " + known logos"
         mask = np.maximum(mask, known)
         area = float((mask > 0).mean())
-        cv2.imwrite(str(qa_dir / f"wm_{Path(src).stem}.jpg"), preview(fr, mask))
-        cv2.imwrite(str(work / (Path(src).stem + ".mask.png")), mask)
+        cv2.imwrite(str(qa_dir / f"wm_{tag(src)}.jpg"), preview(fr, mask))
+        cv2.imwrite(str(work / (tag(src) + ".mask.png")), mask)
         masks[src] = mask
         plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "mask_area": area, "how": how,
                      "unchecked": entry is None and needs_look(moving, blind)}
@@ -419,11 +426,11 @@ def main() -> None:
             if p["night"] == "none":
                 print(f"  {key}: no watermark (night check) — kept as is", flush=True)
             continue
-        mask = cv2.imread(str(work / (Path(src).stem + ".mask.png")), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(str(work / (tag(src) + ".mask.png")), cv2.IMREAD_GRAYSCALE)
         if not np.any(mask):
             print(f"  {key}: no watermark to remove — kept as is", flush=True)
             continue
-        p["out_mp4"] = work / f"{Path(src).stem}_{p['start']:g}.clean.mp4"
+        p["out_mp4"] = work / f"{tag(src)}_{p['start']:g}.clean.mp4"
         # a rerun keeps what is done, but only if it was cleaned with this very mask: pieces cleaned before the
         # mask learned the Region 116 emblem kept it after the mask was fixed (Kazan 28.10, owner's screenshot)
         sig, sigs[p["out_mp4"]] = p["out_mp4"].with_suffix(".mask.sha1"), hashlib.sha1(mask.tobytes()).hexdigest()
@@ -441,7 +448,7 @@ def main() -> None:
             continue
         src, out = p["src"], p["out_mp4"]
         if not p["video"]:
-            still = work / (Path(src).stem + ".clean.jpg")
+            still = work / (tag(src) + ".clean.jpg")
             sh(["ffmpeg", "-v", "error", "-y", "-i", str(out), "-frames:v", "1", "-q:v", "2", str(still)])
             out = still
         p["out"] = out.relative_to(proj).as_posix()
