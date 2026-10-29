@@ -37,6 +37,9 @@ CHANNELS = [
     ("bbbreaking", "viral"), ("bazabazon", "viral"), ("ostorozhno_novosti", "viral"),
     ("shot_shot", "viral"), ("topor", "viral"),
     ("rbc_news", "quality"), ("tass_agency", "quality"),
+    # official agencies (verified 2026-10-29): first-hand video of detentions, fires, courts — no foreign watermarks
+    ("mediamvd", "official"), ("IrinaVolk_MVD", "official"), ("mchs_official", "official"),
+    ("sledcom_press", "official"), ("genprocrf", "official"), ("fssp_gov", "official"),
 ]
 
 # ВОН: война + партийно-электоральная политика + геополитика топ-лидеров + юр-риск РФ.

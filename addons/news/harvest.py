@@ -12,6 +12,8 @@ crime.json — срез с тегом crime (задержания, убийст�
 HTML каналов = НЕДОВЕРЕННЫЕ данные: только регекс-извлечение, ничего не исполняем.
 """
 import os, re, sys, json, html, time, hashlib, subprocess, urllib.request, urllib.error
+from collections import Counter
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import topics  # noqa: E402
@@ -106,13 +108,51 @@ for ch, is_msk in CHANNELS:
     span = f'{min(p["dt"] for p in posts)}…{max(p["dt"] for p in posts)}' if posts else "-"
     print(f"  {ch}: постов {len(posts)} ({span}), ЧП-постов отобрано {kept}")
 
-# --- дедуп по подписи события, слияние каналов ---
+# --- один случай из всех каналов: та же подпись или ≥3 общих редких слова в пределах 3 суток (2026-10-29: пост
+# ведомства и перепосты местных каналов об одном случае — один сюжет, со всеми их кадрами) ---
+STOP = set(("который которая которое которые после перед сообщил сообщили сообщает рассказал рассказала заявил "
+             "заявила человек человека людей город города россии россия сегодня вчера также более менее около "
+             "примерно однако этого этом может могут будет будут были своих одной одного через сейчас время "
+             "теперь когда стало стала почти рублей миллион тысяч казани казань москве москва петербурге "
+             "татарстане полиция полиции задержали").split())
+
+def toks(text):
+    return [w for w in re.findall(r"[а-яёa-z0-9]{5,}", text.lower()) if w not in STOP]
+
+def hours(a, b):
+    try:
+        return abs((datetime.fromisoformat(a[:16]) - datetime.fromisoformat(b[:16])).total_seconds()) / 3600
+    except ValueError:
+        return 0.0
+
+posts = sorted(all_posts, key=lambda x: x["dt"])
+df = Counter(w for q in posts for w in set(toks(q["text"])))
+rare = [{w for w in set(toks(q["text"])) if df[w] <= max(2, len(posts) * 0.18)} for q in posts]
+parent = list(range(len(posts)))
+def find(a):
+    while parent[a] != a:
+        parent[a] = parent[parent[a]]; a = parent[a]
+    return a
+def join(a, b):
+    ra, rb = find(a), find(b)
+    if ra != rb: parent[max(ra, rb)] = min(ra, rb)  # the earliest post names the event (its key stays the same)
+first = {}
+for i, q in enumerate(posts):
+    k = sig(q["text"])
+    if k in first: join(first[k], i)
+    else: first[k] = i
+for i in range(len(posts)):
+    for j in range(i + 1, len(posts)):
+        if hours(posts[i]["dt"], posts[j]["dt"]) > 72: break
+        if len(rare[i] & rare[j]) >= 3: join(i, j)
+
 events = {}
-for p in sorted(all_posts, key=lambda x: x["dt"]):
-    k = sig(p["text"])
-    e = events.get(k)
+for i, p in enumerate(posts):
+    r = find(i)
+    e = events.get(r)
     if not e:
-        events[k] = e = {"key": hashlib.md5(k.encode()).hexdigest()[:10], "dt": p["dt"],
+        k = sig(posts[r]["text"])
+        events[r] = e = {"key": hashlib.md5(k.encode()).hexdigest()[:10], "dt": posts[r]["dt"],
                          "text": p["text"], "channels": [], "links": [], "media": []}
     if p["ch"] not in e["channels"]:
         e["channels"].append(p["ch"]); e["links"].append(p["link"])

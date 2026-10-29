@@ -17,7 +17,13 @@
    ["bazabazon", false],
    ["ostorozhno_novosti", false],
    ["infomoscow24", false],
-   ["breakingmash", false]
+   ["breakingmash", false],
+   ["skmoscowgsu", true],
+   ["moscowproc", true],
+   ["utcfo", false],
+   ["mediamvd", false],
+   ["IrinaVolk_MVD", false],
+   ["sledcom_press", false]
   ],
   "harvest_geo": "москв|москов|подмоск|мкад|\\bметро\\b|коммунарк|зеленоград|новой москв|новая москва|садов\\w+ кольц",
   "geo": "москв|москов|\\bметро\\b|мкад|зеленоград|коммунарк|новая москва|новой москв|садов\\w+ кольц",
@@ -42,7 +48,14 @@
    ["shot_shot", false],
    ["mash", false],
    ["bazabazon", false],
-   ["ostorozhno_novosti", false]
+   ["ostorozhno_novosti", false],
+   ["su_skr16", true],
+   ["prokrt", true],
+   ["pristav_tatarstan", true],
+   ["gibddtatarstan", true],
+   ["mediamvd", false],
+   ["IrinaVolk_MVD", false],
+   ["sledcom_press", false]
   ],
   "harvest_geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
   "geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
@@ -68,7 +81,16 @@
    ["shot_shot", false],
    ["mash", false],
    ["bazabazon", false],
-   ["ostorozhno_novosti", false]
+   ["ostorozhno_novosti", false],
+   ["mchspetersburg", true],
+   ["gsuskrf_spb", true],
+   ["procspb", true],
+   ["SPbGS", true],
+   ["spb_police78", false],
+   ["ugibdd78", false],
+   ["mediamvd", false],
+   ["IrinaVolk_MVD", false],
+   ["sledcom_press", false]
   ],
   "harvest_geo": "петербур|\\bспб\\b|\\bпитер|ленинградск\\w* облас|ленобласт|петроград|кронштадт|колпино|петергоф|пулково|купчино|девяткино|гатчин|всеволожск|\\bвыборг",
   "geo": "петербур|\\bспб\\b|\\bпитер|петроград|кронштадт|колпино|петергоф|пулково|купчино|сестрорецк|зеленогорск|невск\\w* проспект",
@@ -98,7 +120,13 @@
    ["shot_shot", true],
    ["topor", true],
    ["rbc_news", true],
-   ["tass_agency", true]
+   ["tass_agency", true],
+   ["mediamvd", true],
+   ["IrinaVolk_MVD", true],
+   ["mchs_official", true],
+   ["sledcom_press", true],
+   ["genprocrf", true],
+   ["fssp_gov", true]
   ],
   "harvest_geo": ".",
   "geo": ".",
