@@ -558,3 +558,20 @@ def test_a_clip_shorter_than_its_cut_holds_its_last_frame(tmp_path: Path):
                     str(png)], check=True)
     build.segment({"path": png, "dur": 0.5, "video": False, "zoom": [1.07, 1.0]}, tmp_path / "p.mp4")
     assert abs(build.probe(tmp_path / "p.mp4")[2] - 0.5) < 0.1
+
+
+def test_without_the_cat_a_map_can_go_under_a_lead(tmp_path: Path):
+    s = _no_cat_digest()
+    (tmp_path / "a.png").write_bytes(b"x")
+    _clip(tmp_path / "v.mp4")
+    _clip(tmp_path / "map.mp4", 6.0)
+    s["stories"][0]["shots"] = [{"src": "a.png"}]
+    s["stories"][1]["shots"] = [{"src": "v.mp4"}]
+    s["stories"][1]["lead_shot"] = {"map": {"street": "улица Нурсултана Назарбаева", "city": "Казань"},
+                                    "src": "map.mp4"}
+    words = [[w, i * 1.0, i * 1.0 + 0.8] for i, w in enumerate(build.full_text(s).split())]
+    timing = {"words": words, "duration": 9.0,
+              **build.narrator_windows(s, words, 9.0, build.story_windows(s, words, 9.0))}
+    lead = next(it for it in build.film_items(tmp_path, s, timing, [[], []]) if it["w"] == 1)
+    assert lead["card"] == "lead" and lead["path"].name == "map.mp4" and lead["video"] and lead["in"] == 0.0
+    assert (lead["start"], lead["dur"]) == (3.9, 1.05)                 # «Дальше.» over the map, then the story's clip

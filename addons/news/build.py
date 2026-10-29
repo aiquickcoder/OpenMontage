@@ -97,7 +97,8 @@ def stories(story: dict) -> list[dict]:
 def narrator(story: dict) -> bool:
     """A digest without the cat on screen (no "anchor.dir"; owner 2026-10-29, a test without the cat): one voice reads
     the greeting, the leads, the stories and the outro over pictures that never stop — the greeting over a still of
-    every story (a teaser), each lead over its story's first picture, the outro over the last one. The cat's comments
+    every story (a teaser), each lead over its story's first picture, the outro over the last one. A story's
+    "lead_shot" (a map of the place: {"map": {...}}, or any "src") goes under its lead instead. The cat's comments
     after the stories are not read: they were his reactions."""
     return bool(story.get("stories")) and not (story.get("anchor") or {}).get("dir")
 
@@ -488,10 +489,11 @@ def still_of(proj: Path, it: dict, last: bool = False) -> Optional[dict]:
     return {**keep, "path": dst, "video": False}
 
 
-def cards(proj: Path, timing: dict, per: list[list[dict]]) -> list[list[dict]]:
+def cards(proj: Path, story: dict, timing: dict, per: list[list[dict]]) -> list[list[dict]]:
     """Narrator mode: what is read between the voice-overs gets pictures too. The greeting runs over a still of every
     story (a teaser of the film); a lead over its story's first picture — a clip's first frame that pulls back to the
-    clip's framing and starts to move, or the picture itself, held longer; the outro over the last picture."""
+    clip's framing and starts to move, or the picture itself, held longer (or the story's "lead_shot"); the outro over
+    the last picture."""
     out = []
     for w, its in enumerate(per):
         (v0, v1), (t0, t1) = windows(timing)[w], text_windows(timing)[w]
@@ -503,7 +505,13 @@ def cards(proj: Path, timing: dict, per: list[list[dict]]) -> list[list[dict]]:
             e = [round(v0 + (i1 - v0) * j / k, 3) for j in range(k + 1)]
             pre = [{**f, "start": a, "dur": round(b - a, 3), "card": "intro"} for f, a, b in zip(teaser, e, e[1:])]
             v0 = i1
-        if its and t0 - v0 > 0.05:
+        lead = stories(story)[w].get("lead_shot") or {}
+        src = (proj / lead["src"]).resolve() if lead.get("src") else None
+        if src and src.is_file() and t0 - v0 > 0.05:
+            video = src.suffix.lower() in VIDEO_EXT
+            pre.append({**lead, "path": src, "video": video, "in": float(lead.get("in", 0.0)), "start": round(v0, 3),
+                        "dur": round(t0 - v0, 3), "card": "lead"})
+        elif its and t0 - v0 > 0.05:
             if its[0]["video"] and (f := still_of(proj, its[0])):
                 pre.append({**f, "start": round(v0, 3), "dur": round(t0 - v0, 3), "card": "lead",
                             "zoom": [1 + CARD_ZOOM, 1.0]})
@@ -523,7 +531,7 @@ def film_items(proj: Path, story: dict, timing: dict, phrases: list, strict: boo
     per = [slots(s, win, proj, timing["words"], phrases[w], strict)
            for w, (s, win) in enumerate(zip(stories(story), text_windows(timing)))]
     if narrator(story):
-        per = cards(proj, timing, per)
+        per = cards(proj, story, timing, per)
     return [{**it, "w": w} for w, its in enumerate(per) for it in its]
 
 

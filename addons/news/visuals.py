@@ -3,7 +3,8 @@
 A shot in story.json can be, instead of a file:
   {"map": {"street": "улица Баумана", "city": "Казань", "label": "ул. Баумана"}, "beat": "..."}   # or "query": "..."
 build.py calls resolve() first: the clip is made once (assets/visuals/, named by a hash of the spec) and the shot's
-"src" points at it. (Fact cards over the picture were tried and dropped by the owner the same day.)
+"src" points at it. A digest without the cat may put a map under a story's lead: "lead_shot": {"map": {...}}.
+(Fact cards over the picture were tried and dropped by the owner the same day.)
 
 The map: OpenStreetMap — Nominatim finds the place (street and city apart, so a street is not mistaken for the metro
 station of the same name), tiles from tile.openstreetmap.org (cached in ~/.cache/openmontage/osm, a valid
@@ -166,7 +167,7 @@ def resolve(proj: Path, story: dict) -> int:
     """Make the clips of "map" shots (once) and point their "src" at them. Returns how many there are."""
     made = 0
     for st in story.get("stories") or [story]:
-        for s in st.get("shots", []):
+        for s in [*st.get("shots", []), *([st["lead_shot"]] if st.get("lead_shot") else [])]:
             if "map" not in s:
                 continue
             key = hashlib.sha1(json.dumps(s["map"], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
