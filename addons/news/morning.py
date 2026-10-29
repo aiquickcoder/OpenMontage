@@ -63,7 +63,9 @@ def main() -> None:
          if a.project else f"Make today's digest as the agent below describes. Project: projects/{slug}."),
         f"Today is {now:%Y-%m-%d}.",
         f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
-        "reuse the night pre-clean (clean_footage.py cuts from it), prefer post footage to illustrations, redraw a "
+        "reuse the night pre-clean (clean_footage.py cuts from it), prefer post footage — but every phrase needs a "
+        "picture that shows it: draw illustrations (start Flow as soon as the phrases are known), never fill with "
+        "another story's picture or an unrelated place, check build.py --storyboard before the render, redraw a "
         "failed picture at most once.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "
         "OpenRouter need https_proxy=http://127.0.0.1:10809; the Flow browser is on DISPLAY=:99. Do not print secrets.",

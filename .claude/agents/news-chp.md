@@ -56,14 +56,19 @@ next to what is counted («у дома девяносто три мужчину�
    - The real place: `fetch_commons.py`. Open every photo before use; credit = author, licence.
    - Illustrations: `gen_shots.py` on the server (it is the Flow host). Run it in the background via `systemd-run`
      with the factory `EnvironmentFile`, `DISPLAY=:99`, `HOME=/home/factory`, and wait for `DONE`.
-     Credible pictures (owner 2026-10-29, README «Достоверность»): one illustration per phrase, showing exactly that
-     phrase; a `"facts"` card per story (place, district, time of day, season and weather from the post date,
-     agencies) repeated in each of its prompts; agencies as they really look (README table: ППС, Росгвардия, ДПС,
-     МЧС, скорая, СК, ФСБ, суд, ФСИН); no signs, shop or street names — the only lettering is an agency word on a
-     uniform or vehicle, quoted; mood by light, time, distance and aftermath details, never drama or blood; a post
-     photo of the place (no faces) as `"refs"`.
-   - Open **every** illustration. Check: the phrase it is for; the right agency's uniforms and cars; no invented
-     text or signs; season and time of day; no generated faces of victims or suspects; no blood. Redraw a failure once.
+     **Every picture shows its phrase** (owner 2026-10-29, README «Кадры без футажа»): post media of this story if it
+     shows what is said, a Commons photo only of the very place the phrase names (not a namesake: the metro station
+     «Гражданский проспект» is not the avenue), otherwise an illustration drawn for that phrase. Never another
+     story's picture, never an unrelated place, a picture at most twice per story and never twice in a row — short
+     on time is no excuse: start Flow as soon as the phrases are known (2–3 min a picture). Write illustrations as
+     fields, not prose: `"facts"` once per story (place, time, season), then per picture `"story"`, `"beat"`,
+     `"show"` (English, one concrete moment of that phrase), `"frame"` (wide|medium|detail), `"agencies"` (only those
+     in the picture: their real look is added by gen_shots.py), `"mood"`; README has the table of what to show for
+     abstract phrases (court, investigation, phone fraud, money, law, hospital…).
+   - Before the render run `build.py projects/<slug> --storyboard` and open every `qa/storyboard_<n>.jpg`: each
+     picture next to the words said over it, plus warnings about repeats and borrowed pictures. Replace every
+     picture that does not show its words. Then look at each illustration itself: the right agency, no invented
+     text, the right season and time of day, no faces of those involved, no blood. Redraw a failure once.
    - **Clean the post footage of other channels' watermarks** (owner, 2026-10-28) — as soon as the shots are set, in
      parallel with the illustrations (the cleaner is a CPU service, Flow is the browser):
      `systemd-run --wait --pipe --uid=factory -p EnvironmentFile=/opt/watermark-cleaner/deploy/.env

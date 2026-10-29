@@ -372,7 +372,8 @@ def cut_points(window: list[float], n: int, words: list, last_cap: float) -> lis
     return cuts
 
 
-def slots(story: dict, window: list[float], proj: Path, words: list = (), phrases: list = ()) -> list[dict]:
+def slots(story: dict, window: list[float], proj: Path, words: list = (), phrases: list = (),
+          strict: bool = True) -> list[dict]:
     t0, duration = window[0], window[1] - window[0]
     shots, n = story["shots"], max(1, math.ceil(duration / SHOT_S - 0.15))
     if phrases and len(shots) >= len(phrases):  # a shot per phrase: cut as each phrase begins
@@ -394,7 +395,11 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
         d = round((edges[i + 1] if i < min(n, len(shots)) - 1 else window[1]) - edges[i], 3)
         src = (proj / s["src"]).resolve() if not Path(s["src"]).is_absolute() else Path(s["src"])
         if not src.is_file():
-            sys.exit(f"shot {i}: {src} not found")
+            if strict:
+                sys.exit(f"shot {i}: {src} not found")
+            out.append({**s, "path": None, "start": round(t0 + t, 3), "dur": d, "video": False})  # storyboard only
+            t += d
+            continue
         item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT}
         if item["video"]:
             w, h, length = probe(src)
@@ -405,6 +410,91 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
             used[str(src)] = a + d
         out.append(item)
         t += d
+    return out
+
+
+def picture_warnings(story: dict) -> list[str]:
+    """Pictures that break the rules (owner 2026-10-29: a metro station photo of story 1 under the court story 4, one
+    picture four times in a row): a still more than twice in a story or twice in a row, post media in two stories."""
+    out, where = [], {}
+    for w, st in enumerate(stories(story)):
+        srcs = [s.get("src_orig") or s["src"] for s in st.get("shots", [])]
+        stills = [x for x in srcs if Path(x).suffix.lower() not in VIDEO_EXT]
+        out += [f"story {w + 1}: {Path(x).name} is shown {stills.count(x)} times — at most twice"
+                for x in sorted(set(stills)) if stills.count(x) > 2]
+        out += [f"story {w + 1}: {Path(x).name} twice in a row" for x, y in zip(srcs, srcs[1:])
+                if x == y and x in stills]
+        for x in srcs:
+            if x.startswith("media/"):
+                where.setdefault(x, set()).add(w + 1)
+    out += [f"{Path(x).name} is shown in stories {sorted(ws)} — a picture belongs to its own story"
+            for x, ws in where.items() if len(ws) > 1]
+    return out
+
+
+def _font(size: int):
+    from PIL import ImageFont
+
+    for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/System/Library/Fonts/Supplemental/Arial.ttf"):
+        if Path(f).is_file():
+            return ImageFont.truetype(f, size)
+    return ImageFont.load_default()
+
+
+def _thumb(item: dict):
+    import cv2
+
+    if not item.get("path"):
+        return None
+    if item["video"]:
+        cap = cv2.VideoCapture(str(item["path"]))
+        cap.set(cv2.CAP_PROP_POS_MSEC, (item["in"] + item["dur"] / 2) * 1000)
+        ok, f = cap.read()
+        cap.release()
+        return f if ok else None
+    return cv2.imread(str(item["path"]))
+
+
+def storyboard(proj: Path, story: dict, items: list[dict], timing: dict) -> list[Path]:
+    """qa/storyboard_<n>.jpg: each shot of story n next to the words said over it. Open them before the render: every
+    picture must show its words (owner 2026-10-29: «предложение и иллюстрация должны быть связаны»)."""
+    import cv2
+    from PIL import Image, ImageDraw
+
+    out, TW, TH, Wd = [], 360, 202, 1200
+    for w, st in enumerate(stories(story)):
+        rows = [it for it in items if it["w"] == w]
+        img = Image.new("RGB", (Wd, 64 + (TH + 8) * len(rows)), (22, 22, 22))
+        d = ImageDraw.Draw(img)
+        d.text((16, 16), f"{w + 1}. {st.get('headline', '')}", font=_font(28), fill=(255, 214, 80))
+        for k, it in enumerate(rows):
+            y = 64 + k * (TH + 8)
+            f = _thumb(it)
+            if f is None:
+                d.rectangle((16, y, 16 + TW, y + TH), outline=(220, 60, 60), width=3)
+                d.text((30, y + TH // 2 - 14), "НЕТ КАРТИНКИ", font=_font(26), fill=(220, 60, 60))
+            else:
+                h, wd = f.shape[:2]
+                sc = min(TW / wd, TH / h)
+                f = cv2.cvtColor(cv2.resize(f, (int(wd * sc), int(h * sc))), cv2.COLOR_BGR2RGB)
+                img.paste(Image.fromarray(f), (16 + (TW - f.shape[1]) // 2, y + (TH - f.shape[0]) // 2))
+            said = " ".join(wd_[0] for wd_ in timing["words"] if it["start"] <= wd_[1] < it["start"] + it["dur"])
+            lines, line = [], ""
+            for word in said.split():
+                if len(line) + len(word) > 40:
+                    lines.append(line)
+                    line = ""
+                line = f"{line} {word}".strip()
+            lines.append(line)
+            d.text((400, y + 6), f"{k + 1}. {it['dur']:.1f} с", font=_font(22), fill=(150, 150, 150))
+            d.multiline_text((400, y + 36), "\n".join(lines[:5]), font=_font(28), fill=(240, 240, 240), spacing=6)
+            name = Path(it["path"]).name if it.get("path") else (it.get("src") or "?")
+            d.text((400, y + TH - 26), name + (f" @{it['in']}" if it.get("video") else ""), font=_font(18),
+                   fill=(120, 120, 120))
+        p = proj / "qa" / f"storyboard_{w + 1}.jpg"
+        p.parent.mkdir(exist_ok=True)
+        img.save(p, quality=85)
+        out.append(p)
     return out
 
 
@@ -886,10 +976,12 @@ def main() -> None:
     ap.add_argument("--voice-only", action="store_true", help="voice + timings, then print how many shots are needed")
     ap.add_argument("--retime", action="store_true", help="reuse assets/narration.mp3")
     ap.add_argument("--no-render", action="store_true")
+    ap.add_argument("--storyboard", action="store_true",
+                    help="only qa/storyboard_<n>.jpg (each picture next to its words) and the picture warnings")
     a = ap.parse_args()
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
-    timing = voice(proj, story, a.retime)
+    timing = voice(proj, story, a.retime or a.storyboard)
     phrases = story_beats(story, timing)
     (proj / "assets" / "beats.json").write_text(json.dumps(phrases, ensure_ascii=False, indent=1), encoding="utf-8")
     need = [(len(b), len(s.get("shots", []))) for s, b in zip(stories(story), phrases)]
@@ -900,10 +992,18 @@ def main() -> None:
                                                for k, p in enumerate(b)), flush=True)
     if a.voice_only:
         return
+    for warning in picture_warnings(story):
+        print("warning:", warning, flush=True)
+    if a.storyboard:
+        items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
+                 for it in slots(s, win, proj, timing["words"], phrases[w], strict=False)]
+        print("storyboard:", " ".join(str(p.relative_to(proj)) for p in storyboard(proj, story, items, timing)))
+        return
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = [{**it, "w": w} for w, (s, win) in enumerate(zip(stories(story), windows(timing)))
              for it in slots(s, win, proj, timing["words"], phrases[w])]
+    storyboard(proj, story, items, timing)
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
     sound_bed(proj, story, timing, items)

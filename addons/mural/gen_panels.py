@@ -73,8 +73,9 @@ def draw(out: Path, name: str, prompt: str, refs: list[str], aspect: str, varian
                                  "number_of_images": variants, "image_paths": refs,
                                  "output_path": str(out / f"{name}.png")})
         ok = r.success and (out / f"{name}.png").is_file()
+        why = "" if ok else " | Flow said: " + " ".join(str((r.data or {}).get("reply", "")).split())[-160:]
         print(f"{name} try{attempt + 1} {model} refs={len(refs)} {'OK' if ok else 'FAIL ' + str(r.error)[:120]} "
-              f"{time.time() - t0:.0f}s", flush=True)
+              f"{time.time() - t0:.0f}s{why}", flush=True)
         if model == "nano-pro":
             _pro_empty = 0 if ok else _pro_empty + ("without producing media" in str(r.error))
             _save_state()

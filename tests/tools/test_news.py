@@ -371,3 +371,27 @@ def test_a_photo_and_a_clip_with_one_name_keep_separate_masks():
     from addons.news import clean_footage as cf
 
     assert cf.tag("media/door.mp4") == "door" and cf.tag("media/door.jpg") == "door-jpg"
+
+
+def test_picture_warnings_catch_repeats_and_borrowed_pictures():
+    s = {"stories": [{"shots": [{"src": "media/metro.jpg"}, {"src": "media/a.mp4", "in": 1}]},
+                     {"shots": [{"src": "media/court.jpg"}, {"src": "media/court.jpg"}, {"src": "media/metro.jpg"},
+                                {"src": "media/court.jpg"}]}]}
+    w = build.picture_warnings(s)
+    assert any("court.jpg is shown 3 times" in x for x in w)
+    assert any("court.jpg twice in a row" in x for x in w)
+    assert any("metro.jpg is shown in stories [1, 2]" in x for x in w)
+    ok = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/a.mp4", "in": 4}]}]}
+    assert build.picture_warnings(ok) == []                 # one clip cut into pieces is not a repeat
+
+
+def test_storyboard_puts_each_picture_next_to_its_words(tmp_path: Path):
+    import cv2
+
+    cv2.imwrite(str(tmp_path / "a.png"), np.full((90, 160, 3), 128, np.uint8))
+    story = {"stories": [{"headline": "Суд", "shots": [{"src": "a.png"}, {"src": "missing.png"}]}]}
+    items = [{"w": 0, "path": tmp_path / "a.png", "video": False, "start": 0.0, "dur": 2.0, "src": "a.png"},
+             {"w": 0, "path": None, "video": False, "start": 2.0, "dur": 2.0, "src": "missing.png"}]
+    timing = {"words": [["Красносельский", 0.1, 0.8], ["суд", 0.9, 1.2], ["отправил", 2.1, 2.6]]}
+    out = build.storyboard(tmp_path, story, items, timing)
+    assert [p.name for p in out] == ["storyboard_1.jpg"] and cv2.imread(str(out[0])).shape[1] == 1200

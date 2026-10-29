@@ -457,6 +457,14 @@ class FlowAgentDriver:
             self.page.wait_for_timeout(8_000)
         except Exception:
             pass
+        if not result.media and not result.refused:
+            # the chat can finish before the new tile is drawn: the loop left on the reply and the picture was lost
+            # («finished without producing media» on 3 of 4 pilot pictures, 2026-10-29); the reloaded grid has it
+            for _ in range(3):
+                result.media = self._new_media(mark, known, expect)
+                if result.media:
+                    break
+                self.page.wait_for_timeout(5_000)
         result.credits_after = self._last_credits()
         return result
 
