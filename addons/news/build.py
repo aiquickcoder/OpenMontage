@@ -284,8 +284,11 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     if bite:  # the agency's own words: their time, and what is said for the captions
         b0, b1 = json.loads((A / "bite.json").read_text())["span"]
         timing["bite"] = [round(b0 + VOICE_AT, 3), round(b1 + VOICE_AT, 3)]
-        timing["bite_words"] = [[w["word"].strip(), round(w["start"] + VOICE_AT, 3), round(w["end"] + VOICE_AT, 3)]
-                                for w in heard if b0 - 0.1 <= w["start"] < b1]
+        said = [w for w in heard if b0 - 0.1 <= w["start"] < b1]
+        # the bite's own words for its captions: "text" as it was really said (whisper mangles some), at heard times
+        timing["bite_words"] = [[w, round(x + VOICE_AT, 3), round(y + VOICE_AT, 3)] for w, x, y in
+                                (script_words(bite["text"], said) if bite.get("text") and said else
+                                 [[w["word"].strip(), w["start"], w["end"]] for w in said])]
         if story.get("loop") or not story.get("stories"):  # one story: the pictures run to the end
             timing["windows"] = [[0.0, duration]]
     if narrator(story):
