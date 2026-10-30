@@ -32,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import sources  # noqa: E402
 import topics  # noqa: E402
 
 # never covered (README «Какое событие брать»). Children: deaths and violence only — a child hurt in a crash or a
@@ -98,7 +99,10 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     note = ""
     # fraud scripts scare victims with «переводы для нужд ВСУ» — that is a scam story, not war news
     checked = re.sub(SCAM_WAR, " ", text, flags=re.I) if re.search(SCAM, text, re.I) else text
-    why_not = [name for name, rx in SKIP.items() if re.search(rx, checked, re.I)]
+    why_not = [name for name, rx in SKIP.items() if re.search(rx, checked, re.I)
+               # an agency's own release (НАК, МВД on Rutube): its sabotage and treason detentions are what the owner
+               # wants (2026-10-30, «тут как раз то, что нужно»); the Telegram channels' war news stays out
+               and not (e.get("official") and name == "война/БПЛА/политика")]
     c = CITIES[city]
     if c.get("skip_extra") and re.search(c["skip_extra"], text, re.I):  # a format's own exclusions (geopolitics, ads)
         why_not.append("не формат")
@@ -107,7 +111,8 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     if crime_only and "crime" not in tags:
         why_not.append("не криминал")
     chans = set(e.get("channels") or [])
-    if not (chans & {h for h, local in c["channels"] if local}) and not re.search(c["geo"], text, re.I):
+    local = {h for h, whole in c["channels"] if whole} | {sources.channel(s) for s in c.get("sources", []) if s[2]}
+    if not (chans & local) and not re.search(c["geo"], text, re.I):
         why_not.append(f'не {c["name"]}')
     age = age_hours(e.get("dt", ""), now)
     if age > max_hours:
@@ -142,7 +147,8 @@ def judge(e: dict, now: datetime, max_hours: float, done_links: set[str], done_k
     return {"key": e.get("key"), "dt": e.get("dt"), "age_h": round(age, 1), "score": round(score, 2), "note": note,
             "skip": why_not, "tags": tags, "reactions": react, "media": got, "channels": sorted(chans), "links": e.get("links"),
             "strong_words": strong, "text": clean(text), "video_s": round(video_s, 1), "photos": photos, "visual": visual,
-            "media_local": [m.get("local") for m in e.get("media", []) if m.get("local")]}
+            "media_local": [m.get("local") for m in e.get("media", []) if m.get("local")],
+            "official": bool(e.get("official"))}
 
 
 def footage(e: dict) -> tuple[float, int]:
@@ -163,7 +169,7 @@ def footage(e: dict) -> tuple[float, int]:
 
 def describe(c: dict) -> str:
     parts = ([f"видео {c['video_s']:.0f} с"] if c.get("video_s") else []) + ([f"{c['photos']} фото"] if c.get("photos") else [])
-    return " + ".join(parts) or "без медиа"
+    return (" + ".join(parts) or "без медиа") + (" ведомства, без очистки" if c.get("official") else "")
 
 
 def main() -> None:

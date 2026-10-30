@@ -7,6 +7,11 @@
   "anchor": "addons/news/anchor_cat",
   "base": "~/memes/msk_chp_base",
   "server_base": "/srv/factory/news_base",
+  "sources": [
+   ["rutube", "23350159", false, true],
+   ["youtube", "@NAK_antiterror", false, true],
+   ["site", "https://sledcom.ru/news", false, false]
+  ],
   "channels": [
    ["moscowach", true],
    ["moscowmap", true],
@@ -37,6 +42,12 @@
   "anchor": "addons/news/anchor_kzn",
   "base": "~/memes/kzn_chp_base",
   "server_base": "/srv/factory/news_base_kzn",
+  "sources": [
+   ["site", "https://tnv.ru/news/the-incident/", false, false],
+   ["rutube", "23350159", false, true],
+   ["youtube", "@NAK_antiterror", false, true],
+   ["site", "https://sledcom.ru/news", false, false]
+  ],
   "channels": [
    ["tatarstansos", true],
    ["incident_kazan", true],
@@ -69,6 +80,11 @@
   "anchor": "addons/news/anchor_spb",
   "base": "~/memes/spb_chp_base",
   "server_base": "/srv/factory/news_base_spb",
+  "sources": [
+   ["rutube", "23350159", false, true],
+   ["youtube", "@NAK_antiterror", false, true],
+   ["site", "https://sledcom.ru/news", false, false]
+  ],
   "channels": [
    ["fontankaspb", true],
    ["dtp_spb78", true],
@@ -110,6 +126,11 @@
   "skip_extra": "Еврокомисс|Евросоюз|\\bЕС\\b|Европ\\w* (?:стран|власт|союз)|НАТО|истребител|\\bСу-\\d|вооружени|военн\\w* (?:техник|поставк|сотрудничеств)|президент\\w* (?:Сьерра|США|Франци|Германи|Эфиоп)|МИД|дипломат|посольств|санкци|подписк\\w* .{0,40}(?:объединил|вместо|сервис)|промокод|Альфа-Мани|\\bPARI\\b|Киберкарт|розыгрыш|в эфире Радио|Британи|МАГАТЭ|\\bИран|\\bМали\\b|Африк|саммит|Беларус|Минобороны|Palantir|ядерн|спотов\\w* цен|рейсы по согласованию|репараци",
   "stories": 7,
   "max_seconds": 120,
+  "sources": [
+   ["rutube", "23350159", false, true],
+   ["youtube", "@NAK_antiterror", false, true],
+   ["site", "https://sledcom.ru/news", false, false]
+  ],
   "channels": [
    ["readovkanews", true],
    ["toporlive", true],

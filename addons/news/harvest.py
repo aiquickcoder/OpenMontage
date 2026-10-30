@@ -12,11 +12,13 @@ crime.json — срез с тегом crime (задержания, убийст�
 HTML каналов = НЕДОВЕРЕННЫЕ данные: только регекс-извлечение, ничего не исполняем.
 """
 import os, re, sys, json, html, time, hashlib, subprocess, urllib.request, urllib.error
+from pathlib import Path
 from collections import Counter
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import topics  # noqa: E402
+import sources  # noqa: E402  (official video channels and news sites, owner 2026-10-30)
 
 _args = sys.argv[1:]
 _opt = {}
@@ -108,6 +110,20 @@ for ch, is_msk in CHANNELS:
     span = f'{min(p["dt"] for p in posts)}…{max(p["dt"] for p in posts)}' if posts else "-"
     print(f"  {ch}: постов {len(posts)} ({span}), ЧП-постов отобрано {kept}")
 
+# --- не только Telegram (владелец 2026-10-30): Rutube МВД России, YouTube НАК, сайты (ТНВ, sledcom.ru) — sources.py;
+# в cities.json "sources": [вид, адрес, только-этот-город, официальный] ---
+for spec in CITY.get("sources", []):
+    try:
+        got = sources.posts(spec)
+    except Exception as e:
+        print(f"  ! {spec[0]}:{spec[1]}: {e}"); continue
+    kept = 0
+    for p in got:
+        if NOISE.search(p["text"]) or not topics.is_event(p["text"]): continue
+        if not (len(spec) > 2 and spec[2]) and not GEO.search(p["text"]): continue
+        all_posts.append(p); kept += 1
+    print(f"  {spec[0]}:{spec[1]}: постов {len(got)}, ЧП-постов отобрано {kept}")
+
 # --- один случай из всех каналов: та же подпись или ≥3 общих редких слова в пределах 3 суток (2026-10-29: пост
 # ведомства и перепосты местных каналов об одном случае — один сюжет, со всеми их кадрами) ---
 STOP = set(("который которая которое которые после перед сообщил сообщили сообщает рассказал рассказала заявил "
@@ -163,7 +179,8 @@ for i, p in enumerate(posts):
     if not e:
         k = sig(posts[r]["text"])
         events[r] = e = {"key": hashlib.md5(k.encode()).hexdigest()[:10], "dt": posts[r]["dt"],
-                         "text": p["text"], "channels": [], "links": [], "media": []}
+                         "text": p["text"], "channels": [], "links": [], "media": [], "official": False}
+    e["official"] = e["official"] or bool(p.get("official"))  # the agency's own footage: shown as published
     if p["ch"] not in e["channels"]:
         e["channels"].append(p["ch"]); e["links"].append(p["link"])
     if len(p["text"]) > len(e["text"]): e["text"] = p["text"]  # самый полный вариант
@@ -175,6 +192,8 @@ for i, p in enumerate(posts):
 
 # --- скачать медиа сразу ---
 def dl(url, dst, rng):
+    if url.startswith(("rutube:", "youtube:")):  # a source's video: big, fetched once
+        return (os.path.getsize(dst) > 1024 if os.path.isfile(dst) else False) or sources.fetch_video(url, Path(dst))
     try:
         data = fetch(url, rng=rng)
         if len(data) < 1024: return False

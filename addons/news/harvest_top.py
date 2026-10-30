@@ -18,6 +18,12 @@ HTML каналов = НЕДОВЕРЕННЫЕ данные: только рег
 import os, re, sys, json, html, hashlib, urllib.request
 from datetime import datetime, timezone
 from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sources  # noqa: E402  (Rutube МВД, YouTube НАК, sledcom.ru — owner 2026-10-30)
+SOURCES = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cities.json"),
+                         encoding="utf-8"))["russia"].get("sources", [])
 
 _args = sys.argv[1:]
 _out = None
@@ -165,6 +171,22 @@ for ch, _ in CHANNELS:
         all_posts.append(p); kept += 1
     print(f"  {ch}: в окне {WINDOW_H}ч отобрано {kept}")
 
+# --- не только Telegram: официальные видео и сайты (sources.py); ведомственные (НАК, МВД) проходят мимо WARPOL —
+# их задержания агентов и диверсантов владелец как раз хочет (2026-10-30) ---
+for spec in SOURCES:
+    try:
+        got = sources.posts(spec)
+    except Exception as e:
+        print(f"  ! {spec[0]}:{spec[1]}: {e}"); continue
+    kept = 0
+    for p in got:
+        if NOISE.search(p["text"]) or not recent(p["dt"]): continue
+        if WARPOL.search(p["text"]) and not p.get("official"):
+            dropped.append((p["ch"], p["text"])); continue
+        tier.setdefault(p["ch"], "official" if p.get("official") else "quality")
+        all_posts.append(p); kept += 1
+    print(f"  {spec[0]}:{spec[1]}: в окне {WINDOW_H}ч отобрано {kept}")
+
 # --- кластеризация «один сюжет» по общим РЕДКИМ словам (кросс-канальный мерж) ---
 df = Counter()
 for p in all_posts:
@@ -191,7 +213,8 @@ for idx, p in enumerate(posts):
     e = events.get(r)
     if not e:
         events[r] = e = {"dt": p["dt"][:16], "text": p["text"],
-                         "channels": [], "views": {}, "links": [], "media": []}
+                         "channels": [], "views": {}, "links": [], "media": [], "official": False}
+    e["official"] = e["official"] or bool(p.get("official"))
     if p["ch"] not in e["channels"]:
         e["channels"].append(p["ch"]); e["links"].append(p["link"])
     e["views"][p["ch"]] = max(e["views"].get(p["ch"], 0), p["views"])
@@ -217,6 +240,8 @@ out = sorted(events.values(), key=lambda x: (-x["hype"], x["dt"]))
 
 # --- качаем медиа только у топ-DL_TOP по хайпу ---
 def dl(url, dst, rng):
+    if url.startswith(("rutube:", "youtube:")):  # a source's video: big, fetched once
+        return (os.path.getsize(dst) > 1024 if os.path.isfile(dst) else False) or sources.fetch_video(url, Path(dst))
     try:
         data = fetch(url, rng=rng)
         if len(data) < 1024: return False

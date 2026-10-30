@@ -616,3 +616,37 @@ def test_an_article_gives_its_text_date_and_own_video_not_the_live_channels():
     assert a["title"] == "Задержали пятерых" and a["date"] == "29 октября 2026 14:38"
     assert a["text"] == "В Ульяновской области задержали пятерых. Ущерб — 25 млн."
     assert av.video_source(page) == ("mp4", "https://cdn.example.ru/news/584371.mp4")
+
+
+def test_a_site_section_becomes_posts_with_their_own_video(tmp_path: Path, monkeypatch):
+    from addons.news import sources
+
+    pages = {
+        "https://tnv.ru/news/the-incident/": '<a href="/news/the-incident/584371-zaderzhali/">a</a>'
+                                             '<a href="/news/the-incident/2/">page 2</a><a href="/about/">x</a>',
+        "https://tnv.ru/news/the-incident/584371-zaderzhali/":
+            '<meta property="og:title" content="Задержали пятерых" /><h1>Задержали пятерых</h1>'
+            '<p>29 октября 2026, 14:38</p><div class="js-image-description">В Ульяновской области задержали пятерых.'
+            '<iframe src="https://rutube.ru/play/embed/6a0225b667142b1d7e131717ddede18d"></iframe></div>'
+            '<div class="novelty__actions">Поделиться</div>'}
+    monkeypatch.setattr(sources.av, "get", lambda u: pages[u])     # sources imports article_video by its own path
+    got = sources.site("https://tnv.ru/news/the-incident/", cache=tmp_path)
+    assert len(got) == 1                                                  # not the page list, not another section
+    p = got[0]
+    assert p["ch"] == "tnv.ru" and p["dt"] == "2026-10-29T11:38"          # Moscow 14:38 kept as UTC, like t.me
+    assert p["text"] == "Задержали пятерых. В Ульяновской области задержали пятерых."
+    assert p["mp4"] == "rutube:6a0225b667142b1d7e131717ddede18d" and p["official"] is False
+    assert sources.channel(["rutube", "23350159"]) == "МВД России (Rutube)"
+
+
+def test_an_agency_release_passes_the_war_filter_that_telegram_posts_do_not():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 30, 6, 0, tzinfo=timezone.utc)
+    nak = {"key": "n", "dt": "2026-10-29T20:00", "channels": ["НАК (YouTube)"], "links": [], "media_got": ["mp4"],
+           "text": "В Казани ФСБ задержала агента СБУ, готовившего теракт на объекте транспорта"}
+    assert pick.judge({**nak, "official": True}, now, 36, set(), set(), "kazan")["skip"] == []
+    assert "война/БПЛА/политика" in pick.judge(nak, now, 36, set(), set(), "kazan")["skip"]
+    assert pick.judge({**nak, "official": True}, now, 36, set(), set(), "kazan")["official"] is True
