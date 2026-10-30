@@ -609,7 +609,8 @@ def film_items(proj: Path, story: dict, timing: dict, phrases: list, strict: boo
            for w, (s, win) in enumerate(zip(stories(story), text_windows(timing)))]
     if narrator(story):
         per = cards(proj, story, timing, per)
-    return [{**it, "w": w} for w, its in enumerate(per) for it in its]
+    fit = bool(story.get("hook"))  # a one-story film shows every picture whole
+    return [{**it, "w": w, **({"fit": True} if fit else {})} for w, its in enumerate(per) for it in its]
 
 
 def picture_warnings(story: dict) -> list[str]:
@@ -743,6 +744,32 @@ def box_h(w: int, h: int) -> int:
     return int(min(BOX_MAX, max(BOX_MIN, W * h / w)))
 
 
+FIT_TOP, FIT_BOTTOM, FIT_FLOOR = 440, 1480, 1900  # a one-story film: under the hook card; a tall picture runs on
+                                                   # past the captions' line to the floor (captions over its bottom)
+
+
+def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
+    """Where a cut's picture goes: (width, height, x, y, cover). A one-story film ("fit") shows it whole, never cropped
+    (owner 2026-10-30: «если фото вертикальное, то не нужно его обрезать»): a wide one across the frame, centred
+    between the hook card and the captions; a tall one from under the card down to the floor at most; blurred copy
+    around. Otherwise the old box: covered and cropped to 1080 x 760…1000, a portrait source over the whole frame."""
+    w, h, _ = probe(item["path"])
+    if item.get("crop"):
+        w, h = item["crop"][2], item["crop"][3]
+    if item.get("fit"):
+        if h <= w:
+            bh = min(round(W * h / w), FIT_BOTTOM - FIT_TOP)
+            bw, y = min(W, round(bh * w / h)), FIT_TOP + (FIT_BOTTOM - FIT_TOP - bh) // 2
+        else:
+            bh = min(FIT_FLOOR - FIT_TOP, round(W * h / w))
+            bw, y = min(W, round(bh * w / h)), FIT_TOP
+        bw, bh = bw - bw % 2, bh - bh % 2
+        return bw, bh, (W - bw) // 2, y, False
+    full = h / w > 1.4  # portrait source: fill the whole frame
+    bh = H if full else box_h(w, h)
+    return W, bh, 0, 0 if full else BOX_Y - bh // 2, True
+
+
 def still_move(item: dict) -> str:
     """How a still moves: a card's own "zoom" or the shot's "move", else stills take turns — pan, push-in, pan…"""
     if item.get("zoom"):
@@ -752,19 +779,17 @@ def still_move(item: dict) -> str:
 
 def segment(item: dict, dst: Path) -> None:
     src, d = item["path"], item["dur"]
-    w, h, _ = probe(src)
     crop = item.get("crop")  # [x, y, w, h] of the source: another framing of the same picture — a detail, a wide view
-    if crop:
-        w, h = crop[2], crop[3]
-    full = h / w > 1.4  # portrait source: fill the whole frame
-    bh = H if full else box_h(w, h)
-    y = 0 if full else BOX_Y - bh // 2
+    bw, bh, x0, y, cover = frame_box(item)
+    # the old box covers and crops; a whole picture is scaled straight to its box (same aspect, to the pixel)
+    fill = (lambda a, b: f"scale={a}:{b}:force_original_aspect_ratio=increase,crop={a}:{b}") if cover else \
+        (lambda a, b: f"scale={a}:{b}")
     frames = max(1, round(d * FPS))
     bg = (f"[a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=28:2,"
           f"eq=brightness=-0.12:saturation=0.8[bg]")
     if item["video"]:
         inp = ["-ss", str(item["in"]), "-t", f"{d:.3f}", "-i", str(src)]
-        fg = f"[b]scale={W}:{bh}:force_original_aspect_ratio=increase,crop={W}:{bh}[fg]"
+        fg = f"[b]{fill(bw, bh)}[fg]"
     else:  # still: slow push-in (rendered at 3x to keep zoompan from jittering)
         if item.get("label"):  # a Flow picture: paint out its corner sparkle first
             import cv2
@@ -782,12 +807,12 @@ def segment(item: dict, dst: Path) -> None:
         else:  # across the picture at a fixed closeness, left to right (or back)
             k = f"on/{max(1, frames - 1)}" if move == "pan" else f"(1-on/{max(1, frames - 1)})"
             z, x = f"{PAN_Z:g}", f"(iw-iw/zoom)*{k}"
-        fg = (f"[b]scale={W * 3}:{bh * 3}:force_original_aspect_ratio=increase,crop={W * 3}:{bh * 3},"
-              f"zoompan=z='{z}':x='{x}':y='ih/2-(ih/zoom/2)':d={frames}:s={W}x{bh}:fps={FPS}[fg]")
+        fg = (f"[b]{fill(bw * 3, bh * 3)},"
+              f"zoompan=z='{z}':x='{x}':y='ih/2-(ih/zoom/2)':d={frames}:s={bw}x{bh}:fps={FPS}[fg]")
     pre = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
     # a clip shorter than its cut (a slower voice than the one its pieces were cleaned for) holds its last frame
     hold = f"tpad=stop_mode=clone:stop_duration={d:.3f}," if item["video"] else ""
-    flt = (f"[0:v]{pre}fps={FPS},{hold}split[a][b];{bg};{fg};[bg][fg]overlay=0:{y}:shortest=1,"
+    flt = (f"[0:v]{pre}fps={FPS},{hold}split[a][b];{bg};{fg};[bg][fg]overlay={x0}:{y}:shortest=1,"
            f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
@@ -1038,10 +1063,8 @@ def thesis_markup(text: str) -> str:
 
 def thesis_bottom(it: dict) -> int:
     """Where the picture of a cut ends on screen (segment's layout): the thesis sits on that edge."""
-    w, h, _ = probe(it["path"])
-    if it.get("crop"):
-        w, h = it["crop"][2], it["crop"][3]
-    return 1480 if h / w > 1.4 else BOX_Y + box_h(w, h) // 2  # full frame: just above the captions (top 1500)
+    _, bh, _, y, _ = frame_box(it)
+    return min(1480, y + bh)  # full frame: just above the captions (top 1500)
 
 
 def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[str], list[tuple[float, float]]]:

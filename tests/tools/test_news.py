@@ -896,3 +896,22 @@ def test_a_piece_never_opens_on_the_last_frames_of_the_scene_before(tmp_path: Pa
     story = {"shots": [{"src": "v.mp4", "in": 6.0}]}
     item = build.slots(story, [0.0, 4.0], tmp_path)[0]
     assert item["in"] == 6.52                                   # past the cut at 6.48, not the anchor's last frames
+
+
+def test_a_one_story_film_never_crops_a_picture(tmp_path: Path):
+    def clip(name, size):
+        f = tmp_path / f"{name}.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size={size}:rate=30:duration=1",
+                        "-pix_fmt", "yuv420p", str(f)], check=True)
+        return f
+    wide, square, tall, phone = clip("wide", "1280x720"), clip("square", "640x640"), clip("tall", "976x1266"), clip("phone", "720x1280")
+    assert build.frame_box({"path": wide, "fit": True}) == (1080, 608, 0, 656, False)    # 16:9 keeps its sides
+    assert build.frame_box({"path": square, "fit": True}) == (1040, 1040, 20, 440, False)  # top and bottom kept
+    bw, bh, x, y, _ = build.frame_box({"path": tall, "fit": True})
+    assert y == 440 and abs(bw / bh - 976 / 1266) < 0.01 and bw <= 1080
+    bw, bh, x, y, _ = build.frame_box({"path": phone, "fit": True})
+    assert (bh, y) == (1460, 440) and abs(bw / bh - 720 / 1280) < 0.01                   # a vertical photo whole
+    assert build.frame_box({"path": wide})[4] is True                                    # digests: the old box
+    out = tmp_path / "s.mp4"
+    build.segment({"path": phone, "dur": 0.5, "video": True, "in": 0.0, "fit": True}, out)
+    assert abs(build.probe(out)[2] - 0.5) < 0.1
