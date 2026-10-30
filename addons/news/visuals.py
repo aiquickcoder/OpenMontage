@@ -9,7 +9,8 @@ build.py calls resolve() first: the clip is made once (assets/visuals/, named by
 The map: OpenStreetMap — Nominatim finds the place (street and city apart, so a street is not mistaken for the metro
 station of the same name), tiles from tile.openstreetmap.org (cached in ~/.cache/openmontage/osm, a valid
 User-Agent, a few dozen tiles a map — within the tile usage policy). Dark style, a smooth zoom from the city to the
-street, a red pin and the place's name; «© OpenStreetMap» stays in the corner (ODbL needs it on the picture).
+street, a red pin and the place's name; «© OpenStreetMap» stays in the top corner (ODbL needs it on the picture;
+the bottom is where a thesis goes).
 
     .venv/bin/python addons/news/visuals.py map out.mp4 "улица Баумана" "Казань" "ул. Баумана"
 """
@@ -31,6 +32,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 W, H = 1080, 760          # the picture box of the b-roll (build.py BOX_MAX)
 RED = (227, 0, 27)        # the plates' red (#e3001b)
 DARK = (11, 11, 13)       # the page background (#0b0b0d)
+MAP_VERSION = 2          # bumped when the drawing changes, so cached clips are made again (2: credit moved to the top)
 UA = "openmontage-chp-news/1.0 (local news shorts; contact: owner)"
 CACHE = Path.home() / ".cache" / "openmontage"
 BOLD = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/System/Library/Fonts/Supplemental/Arial Black.ttf",
@@ -154,7 +156,7 @@ def map_clip(spec: dict, out: Path, seconds: float = 6.0, fps: int = 30) -> Path
             d.rectangle((bx, by, bx + tw + 36, by + 62), fill=(10, 10, 12))
             d.rectangle((bx, by, bx + 8, by + 62), fill=RED)
             d.text((bx + 22, by + 8), label, font=f, fill="white")
-        d.text((W - 210, H - 34), "© OpenStreetMap", font=font(22, bold=False), fill=(170, 170, 175))
+        d.text((W - 210, 12), "© OpenStreetMap", font=font(22, bold=False), fill=(170, 170, 175))  # top: theses sit at the bottom
         ff.stdin.write(frame.tobytes())
     ff.stdin.close()
     if ff.wait() != 0:
@@ -170,7 +172,8 @@ def resolve(proj: Path, story: dict) -> int:
         for s in [*st.get("shots", []), *([st["lead_shot"]] if st.get("lead_shot") else [])]:
             if "map" not in s:
                 continue
-            key = hashlib.sha1(json.dumps(s["map"], ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:10]
+            key = hashlib.sha1(json.dumps({**s["map"], "v": MAP_VERSION}, ensure_ascii=False,
+                                          sort_keys=True).encode()).hexdigest()[:10]
             rel = Path("assets") / "visuals" / f"map_{key}.mp4"
             if not (proj / rel).is_file():
                 (proj / rel).parent.mkdir(parents=True, exist_ok=True)

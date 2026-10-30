@@ -891,6 +891,7 @@ def esc(s: str) -> str:
 # -- theses: the fact of a phrase in large capitals over the bottom of its picture (owner 2026-10-30) ---------------
 THESIS_FONT = HERE / "fonts" / "PTSansNarrow-Bold.ttf"  # ParaType Free Font License (in the font's own name table)
 THESIS_MAX = 44  # characters: a headline over the picture, not a sentence
+THESIS_SPAN = 2  # cuts a thesis stays on (owner 2026-10-30: «хотя бы на 2-х кадрах»); "span" on the shot changes it
 THESIS_CSS = """
     @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
     .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 56px 44px;
@@ -917,11 +918,14 @@ def thesis_bottom(it: dict) -> int:
 
 
 def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, float]]]:
-    """HTML, timeline and the spans they hold the screen for: the running captions give way to a thesis (it says the
-    same phrase shorter) and come back with the next cut."""
+    """HTML, timeline and the spans they hold the screen for. A thesis starts on its cut and stays over the next ones
+    of its story ("span", 2 by default) in one place — on the edge of its first picture, so it does not jump at the
+    cut; the running captions give way to it (it says the same phrases shorter) and come back after it."""
     html, js, spans = [], [], []
-    for k, it in enumerate(i for i in items if i.get("thesis") and i.get("path")):
-        a, d = it["start"], it["dur"]
+    marked = [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]
+    for k, (n, it) in enumerate(marked):
+        run = [x for x in items[n:n + int(it.get("span", THESIS_SPAN))] if x.get("w") == it.get("w")]
+        a, d = it["start"], round(run[-1]["start"] + run[-1]["dur"] - it["start"], 3)
         html.append(f'    <div id="th{k}" class="clip thesis" data-start="{a}" data-duration="{d}" data-track-index="4" '
                     f'style="bottom:{H - thesis_bottom(it)}px"><div class="t">{thesis_markup(it["thesis"])}</div></div>')
         js.append(f'  tl.from("#th{k}", {{opacity: 0, duration: 0.25, ease: "none"}}, {a:.2f});\n'
@@ -947,7 +951,13 @@ def around(caps: list[tuple[float, float, str]], spans: list[tuple[float, float]
 def thesis_warnings(story: dict) -> list[str]:
     out = []
     for w, st in enumerate(stories(story)):
-        ts = [s["thesis"] for s in st.get("shots", []) if s.get("thesis")]
+        shots = st.get("shots", [])
+        ts = [s["thesis"] for s in shots if s.get("thesis")]
+        if shots and not shots[0].get("thesis"):
+            out.append(f"story {w + 1}: no thesis on its first shot — every story opens with one (owner 2026-10-30)")
+        on = [j for j, s in enumerate(shots) if s.get("thesis")]
+        out += [f"story {w + 1}: the thesis of shot {j + 1} starts under the one of shot {i + 1}"
+                for i, j in zip(on, on[1:]) if j < i + int(shots[i].get("span", THESIS_SPAN))]
         out += [f"story {w + 1}: thesis «{t}» is {len(t.replace('*', '').replace('|', ''))} characters — at most "
                 f"{THESIS_MAX}" for t in ts if len(t.replace("*", "").replace("|", "")) > THESIS_MAX]
         if len(ts) > 2:

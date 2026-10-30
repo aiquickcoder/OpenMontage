@@ -581,20 +581,27 @@ def test_a_thesis_sits_on_its_picture_and_the_captions_give_way(tmp_path: Path):
     assert build.thesis_markup("Задержаны *трое*|под стражей") == "Задержаны <em>трое</em><br>под стражей"
     assert "<em>&lt;b&gt;</em>" in build.thesis_markup("*<b>*")     # the text is escaped, only the stars mark
     v = _clip(tmp_path / "v.mp4")                                    # 320x180: a box 760 high around BOX_Y
-    items = [{"path": v, "video": True, "start": 2.0, "dur": 2.0, "thesis": "*20 флаконов* в багаже"},
-             {"path": v, "video": True, "start": 4.0, "dur": 2.0}]
+    items = [{"path": v, "video": True, "start": 2.0, "dur": 2.0, "w": 0, "thesis": "*20 флаконов* в багаже"},
+             {"path": v, "video": True, "start": 4.0, "dur": 2.0, "w": 0},
+             {"path": v, "video": True, "start": 6.0, "dur": 2.0, "w": 0},
+             {"path": v, "video": True, "start": 8.0, "dur": 1.5, "w": 0, "thesis": "Конец", "span": 3},
+             {"path": v, "video": True, "start": 12.0, "dur": 2.0, "w": 1}]
     html, js, spans = build.theses(items)
-    assert len(html) == 1 and spans == [(2.0, 4.0)] and 'data-start="2.0"' in html[0]
+    assert spans == [(2.0, 6.0), (8.0, 9.5)]            # two cuts by default; never into the next story
+    assert 'data-start="2.0" data-duration="4.0"' in html[0]
     assert f"bottom:{build.H - (build.BOX_Y + 380)}px" in html[0] and "<em>20 флаконов</em>" in html[0]
-    caps = [(1.0, 2.4, "до"), (2.5, 3.0, "под тезисом"), (4.0, 4.5, "после")]
-    assert build.around(caps, spans) == [(1.0, 2.0, "до"), (4.0, 4.5, "после")]
+    caps = [(1.0, 2.4, "до"), (2.5, 3.0, "под тезисом"), (4.5, 5.0, "всё ещё под ним"), (6.0, 6.5, "после")]
+    assert build.around(caps, spans) == [(1.0, 2.0, "до"), (6.0, 6.5, "после")]
 
 
 def test_thesis_warnings_keep_them_short_and_few():
     story = {"stories": [{"shots": [{"thesis": "*Трое* под стражей"}, {"thesis": "x" * 50},
-                                    {"thesis": "a"}, {"thesis": "b"}]}]}
+                                    {"thesis": "a"}, {"thesis": "b"}]},
+                         {"shots": [{}, {"thesis": "c"}]}]}
     w = build.thesis_warnings(story)
     assert any("50 characters" in x for x in w) and any("4 theses" in x for x in w)
+    assert any("shot 2 starts under the one of shot 1" in x for x in w)          # the default span is two cuts
+    assert any(x.startswith("story 2: no thesis on its first shot") for x in w)
 
 
 def test_official_footage_marked_clean_is_not_sent_to_the_cleaner(tmp_path: Path):
