@@ -557,8 +557,9 @@ def picture_warnings(story: dict) -> list[str]:
     for w, st in enumerate(stories(story)):  # footage stays whole (owner 2026-10-30: «футажи … остаются цельными»)
         seq = [(s.get("src_orig") or s.get("src", ""), float(s.get("in_orig", s.get("in", 0)))) for s in st.get("shots", [])]
         clips = [(a, t) for a, t in seq if Path(a).suffix.lower() in VIDEO_EXT and "visuals/" not in a]
+        # two long pieces of a clip in order (skipping a dark or dull part) are an edit; three in a row are chopping
         out += [f"story {w + 1}: {Path(a).name} is cut into pieces — let the clip run as one shot over its phrases"
-                for (a, _), (b, _) in zip(seq, seq[1:]) if a == b and (a, _) in clips]
+                for (a, _), (b, _), (c, _) in zip(seq, seq[1:], seq[2:]) if a == b == c and (a, _) in clips]
         out += [f"story {w + 1}: {Path(a).name} jumps back in time ({ta:g} s after {tb:g} s) — keep its order"
                 for i, (a, ta) in enumerate(clips) for b, tb in clips[:i] if a == b and ta < tb]
     return out
@@ -945,6 +946,9 @@ def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, f
             d = round(min(end - a, THESIS_MAX_S), 3)
         html.append(f'    <div id="th{k}" class="clip thesis" data-start="{a}" data-duration="{d}" data-track-index="4" '
                     f'style="bottom:{H - thesis_bottom(it)}px"><div class="t">{thesis_markup(it["thesis"])}</div></div>')
+        if a < 0.05:  # on the very first frame (a short's cover, its hook): there at once, no entrance
+            spans.append((a, round(a + d, 3)))
+            continue
         js.append(f'  tl.from("#th{k}", {{opacity: 0, duration: 0.25, ease: "none"}}, {a:.2f});\n'
                   f'  tl.from("#th{k} .t", {{y: 46, opacity: 0, duration: 0.4, ease: "power3.out"}}, {a + 0.1:.2f});\n'
                   f'  tl.from("#th{k} em", {{backgroundSize: "0% 100%", duration: 0.35, ease: "power2.out", '
@@ -1118,10 +1122,11 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             f'    <div id="plate{w}" class="clip plate" data-start="{p0}" data-duration="{w1 - p0:.3f}" data-track-index="3">\n'
             f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span><span class="date">{date}</span>\n'
             f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n    </div>')
-        plate_js.append(
-            f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {p0 + 0.05:.2f});\n'
-            f'  tl.from("#plate{w} .date", {{ opacity: 0, duration: 0.3 }}, {p0 + 0.25:.2f});\n'
-            f'  tl.from("#plate{w} .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {p0 + 0.15:.2f});')
+        if p0 >= 0.05:  # a plate on the first frame (a cold open, a short) is the cover: there at once
+            plate_js.append(
+                f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {p0 + 0.05:.2f});\n'
+                f'  tl.from("#plate{w} .date", {{ opacity: 0, duration: 0.3 }}, {p0 + 0.25:.2f});\n'
+                f'  tl.from("#plate{w} .head", {{ y: -24, opacity: 0, duration: 0.4, ease: "power3.out" }}, {p0 + 0.15:.2f});')
     lower_html = lower_js = ""
     if b0 > 0.5:  # anchor intro: the headline sits as a lower third over the desk
         lower_html = (f'    <div id="lower" class="clip" data-start="0" data-duration="{b0}" data-track-index="2">'

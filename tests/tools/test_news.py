@@ -401,9 +401,12 @@ def test_picture_warnings_catch_repeats_and_borrowed_pictures():
     assert any("court.jpg is shown 3 times" in x for x in w)
     assert any("court.jpg twice in a row" in x for x in w)
     assert any("metro.jpg is shown in stories [1, 2]" in x for x in w)
-    chopped = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/a.mp4", "in": 4}]}]}
+    chopped = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/a.mp4", "in": 4},
+                                      {"src": "media/a.mp4", "in": 7}]}]}
     assert build.picture_warnings(chopped) == [             # owner 2026-10-30: footage stays whole
         "story 1: a.mp4 is cut into pieces — let the clip run as one shot over its phrases"]
+    skip_dark = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 0}, {"src": "media/a.mp4", "in": 19.5}]}]}
+    assert build.picture_warnings(skip_dark) == []          # two long pieces in order: an edit, not chopping
     back = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 9}, {"src": "media/b.jpg"}, {"src": "media/a.mp4", "in": 2}]}]}
     assert any("jumps back in time" in x for x in build.picture_warnings(back))
     ok = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/b.jpg"}, {"src": "media/a.mp4", "in": 9}]}]}
