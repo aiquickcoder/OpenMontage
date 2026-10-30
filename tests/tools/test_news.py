@@ -650,3 +650,14 @@ def test_an_agency_release_passes_the_war_filter_that_telegram_posts_do_not():
     assert pick.judge({**nak, "official": True}, now, 36, set(), set(), "kazan")["skip"] == []
     assert "война/БПЛА/политика" in pick.judge(nak, now, 36, set(), set(), "kazan")["skip"]
     assert pick.judge({**nak, "official": True}, now, 36, set(), set(), "kazan")["official"] is True
+
+
+def test_prostitution_with_a_minor_is_never_offered():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 30, 6, 0, tzinfo=timezone.utc)
+    e = {"key": "x", "dt": "2026-10-29T13:00", "channels": ["tnv.ru"], "links": [], "media_got": [],
+         "text": "В Татарстане раскрыли организацию и покровительство проституции с несовершеннолетними"}
+    assert "сексуальное насилие" in pick.judge(e, now, 36, set(), set(), "kazan")["skip"]
