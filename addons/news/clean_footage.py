@@ -285,11 +285,17 @@ class Cleaner:
 
 def footage(proj: Path, story: dict) -> dict[str, dict]:
     """Pieces of post media the story shows: "<file>@<in>" -> {"src", "start", "len"}; a photo is one piece.
-    With a shot per phrase (assets/beats.json from build.py --voice-only) a piece is as long as its phrase, else
-    SHOT_S (the last shot of a story LAST_S)."""
+    A shot lasts from its phrase to the next shot's — a clip left to run over several phrases is one long piece
+    (owner 2026-10-30: footage stays whole) — as build.py cuts it from the voice's timings (assets/timing.json);
+    without them, assets/beats.json, else SHOT_S (the last shot of a story LAST_S)."""
     use: dict[str, dict] = {}
-    beats_file = proj / "assets" / "beats.json"
-    phrases = json.loads(beats_file.read_text(encoding="utf-8")) if beats_file.is_file() else []
+    timing_file, beats_file = proj / "assets" / "timing.json", proj / "assets" / "beats.json"
+    if timing_file.is_file():
+        from addons.news import build as nb
+
+        phrases = nb.story_beats(story, json.loads(timing_file.read_text(encoding="utf-8")))
+    else:
+        phrases = json.loads(beats_file.read_text(encoding="utf-8")) if beats_file.is_file() else []
     for si, st in enumerate(story.get("stories", [])):
         shots = st.get("shots", [])
         bs = phrases[si] if si < len(phrases) and phrases[si] and len(shots) >= len(phrases[si]) else None

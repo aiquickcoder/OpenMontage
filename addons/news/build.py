@@ -552,6 +552,13 @@ def picture_warnings(story: dict) -> list[str]:
                 where.setdefault(x.split("@")[0], set()).add(w + 1)
     out += [f"{Path(x).name} is shown in stories {sorted(ws)} — a picture belongs to its own story"
             for x, ws in where.items() if len(ws) > 1]
+    for w, st in enumerate(stories(story)):  # footage stays whole (owner 2026-10-30: «футажи … остаются цельными»)
+        seq = [(s.get("src_orig") or s.get("src", ""), float(s.get("in_orig", s.get("in", 0)))) for s in st.get("shots", [])]
+        clips = [(a, t) for a, t in seq if Path(a).suffix.lower() in VIDEO_EXT and "visuals/" not in a]
+        out += [f"story {w + 1}: {Path(a).name} is cut into pieces — let the clip run as one shot over its phrases"
+                for (a, _), (b, _) in zip(seq, seq[1:]) if a == b and (a, _) in clips]
+        out += [f"story {w + 1}: {Path(a).name} jumps back in time ({ta:g} s after {tb:g} s) — keep its order"
+                for i, (a, ta) in enumerate(clips) for b, tb in clips[:i] if a == b and ta < tb]
     return out
 
 
@@ -891,7 +898,8 @@ def esc(s: str) -> str:
 # -- theses: the fact of a phrase in large capitals over the bottom of its picture (owner 2026-10-30) ---------------
 THESIS_FONT = HERE / "fonts" / "PTSansNarrow-Bold.ttf"  # ParaType Free Font License (in the font's own name table)
 THESIS_MAX = 44  # characters: a headline over the picture, not a sentence
-THESIS_SPAN = 2  # cuts a thesis stays on (owner 2026-10-30: «хотя бы на 2-х кадрах»); "span" on the shot changes it
+THESIS_MIN_S, THESIS_MAX_S = 4.0, 7.0  # a thesis stays at least two phrase-long cuts (owner 2026-10-30: «хотя бы на
+# 2-х кадрах»), over the next cuts of its story if its own is short, and leaves a long clip after 7 s; "span": N cuts
 THESIS_CSS = """
     @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
     .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 56px 44px;
@@ -924,8 +932,15 @@ def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, f
     html, js, spans = [], [], []
     marked = [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]
     for k, (n, it) in enumerate(marked):
-        run = [x for x in items[n:n + int(it.get("span", THESIS_SPAN))] if x.get("w") == it.get("w")]
-        a, d = it["start"], round(run[-1]["start"] + run[-1]["dur"] - it["start"], 3)
+        story = [x for x in items[n:] if x.get("w") == it.get("w")]
+        a = it["start"]
+        if it.get("span"):
+            run = story[:int(it["span"])]
+            d = round(run[-1]["start"] + run[-1]["dur"] - a, 3)
+        else:  # by time: whole cuts up to 4 s at least, never past 7 s
+            end = next((x["start"] + x["dur"] for x in story if x["start"] + x["dur"] - a >= THESIS_MIN_S),
+                       story[-1]["start"] + story[-1]["dur"])
+            d = round(min(end - a, THESIS_MAX_S), 3)
         html.append(f'    <div id="th{k}" class="clip thesis" data-start="{a}" data-duration="{d}" data-track-index="4" '
                     f'style="bottom:{H - thesis_bottom(it)}px"><div class="t">{thesis_markup(it["thesis"])}</div></div>')
         js.append(f'  tl.from("#th{k}", {{opacity: 0, duration: 0.25, ease: "none"}}, {a:.2f});\n'
@@ -956,8 +971,8 @@ def thesis_warnings(story: dict) -> list[str]:
         if shots and not shots[0].get("thesis"):
             out.append(f"story {w + 1}: no thesis on its first shot — every story opens with one (owner 2026-10-30)")
         on = [j for j, s in enumerate(shots) if s.get("thesis")]
-        out += [f"story {w + 1}: the thesis of shot {j + 1} starts under the one of shot {i + 1}"
-                for i, j in zip(on, on[1:]) if j < i + int(shots[i].get("span", THESIS_SPAN))]
+        out += [f"story {w + 1}: the thesis of shot {j + 1} comes right after the one of shot {i + 1} — let the "
+                f"first one stay" for i, j in zip(on, on[1:]) if j == i + 1]
         out += [f"story {w + 1}: thesis «{t}» is {len(t.replace('*', '').replace('|', ''))} characters — at most "
                 f"{THESIS_MAX}" for t in ts if len(t.replace("*", "").replace("|", "")) > THESIS_MAX]
         if len(ts) > 2:

@@ -53,10 +53,12 @@ hospital per TNV).
    - Facts only from the post(s); numbers as words; no names of victims or suspects; until a verdict a person is a
      suspect («задержан подозреваемый», «по версии следствия»), never «преступник» or «убийца»; 70–75 words in total
      (≈31–34 s at the voice's ≈2.25 words/s; a digest: README «Длина»; if `--voice-only` reports a video longer than ~34 s, cut the text and voice it again).
-   - Run `build.py … --voice-only`. It prints each story's **phrases** (≈2 s each, also `assets/beats.json`): list one
-     shot per phrase, in that order, each showing what its phrase says (owner 2026-10-29: the picture goes with the
-     sentence); `"beat": "<first words>"` on a shot lets the build check the match. Footage goes on the phrases about
-     the scene, illustrations on what the footage does not show (the detention, the court, the hospital).
+   - Run `build.py … --voice-only`. It prints each story's **phrases** (≈2 s each, also `assets/beats.json`): a still,
+     a map or an illustration goes one per phrase, showing what its phrase says (owner 2026-10-29); **video runs
+     whole** (owner 2026-10-30: «футажи по видео пусть остаются цельными»): one shot per continuous piece, its
+     `"beat"` the phrase it starts on, running to the next shot's beat (2–5 phrases), `in` at the strongest moment;
+     never the same clip in pieces back to back or jumping back in time. Every shot carries `"beat": "<first words>"`
+     — the cuts follow it. Footage goes on the phrases about the scene, illustrations on what it does not show.
 3. **Pictures.**
    - Footage or photos from the post: copy them to `media/`, choose strong `in` points, add a `credit` to each.
      Use them even when people are in frame (court, arrest, witnesses): the owner moderates every video by hand

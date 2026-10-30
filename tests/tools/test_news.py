@@ -401,8 +401,13 @@ def test_picture_warnings_catch_repeats_and_borrowed_pictures():
     assert any("court.jpg is shown 3 times" in x for x in w)
     assert any("court.jpg twice in a row" in x for x in w)
     assert any("metro.jpg is shown in stories [1, 2]" in x for x in w)
-    ok = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/a.mp4", "in": 4}]}]}
-    assert build.picture_warnings(ok) == []                 # one clip cut into pieces is not a repeat
+    chopped = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/a.mp4", "in": 4}]}]}
+    assert build.picture_warnings(chopped) == [             # owner 2026-10-30: footage stays whole
+        "story 1: a.mp4 is cut into pieces — let the clip run as one shot over its phrases"]
+    back = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 9}, {"src": "media/b.jpg"}, {"src": "media/a.mp4", "in": 2}]}]}
+    assert any("jumps back in time" in x for x in build.picture_warnings(back))
+    ok = {"stories": [{"shots": [{"src": "media/a.mp4", "in": 1}, {"src": "media/b.jpg"}, {"src": "media/a.mp4", "in": 9}]}]}
+    assert build.picture_warnings(ok) == []                 # a clip, a photo, the clip again later on
 
 
 def test_storyboard_puts_each_picture_next_to_its_words(tmp_path: Path):
@@ -600,7 +605,7 @@ def test_thesis_warnings_keep_them_short_and_few():
                          {"shots": [{}, {"thesis": "c"}]}]}
     w = build.thesis_warnings(story)
     assert any("50 characters" in x for x in w) and any("4 theses" in x for x in w)
-    assert any("shot 2 starts under the one of shot 1" in x for x in w)          # the default span is two cuts
+    assert any("shot 2 comes right after the one of shot 1" in x for x in w)
     assert any(x.startswith("story 2: no thesis on its first shot") for x in w)
 
 
@@ -668,3 +673,13 @@ def test_prostitution_with_a_minor_is_never_offered():
     e = {"key": "x", "dt": "2026-10-29T13:00", "channels": ["tnv.ru"], "links": [], "media_got": [],
          "text": "В Татарстане раскрыли организацию и покровительство проституции с несовершеннолетними"}
     assert "сексуальное насилие" in pick.judge(e, now, 36, set(), set(), "kazan")["skip"]
+
+
+def test_a_thesis_lasts_four_to_seven_seconds_whatever_the_cuts(tmp_path: Path):
+    v = _clip(tmp_path / "v.mp4")
+    long_clip = [{"path": v, "video": True, "start": 1.0, "dur": 12.0, "w": 0, "thesis": "*Трое* под стражей"}]
+    assert build.theses(long_clip)[2] == [(1.0, 8.0)]       # a whole clip runs on, the thesis leaves after 7 s
+    short = [{"path": v, "video": True, "start": 0.0, "dur": 1.8, "w": 0, "thesis": "Тезис"},
+             {"path": v, "video": True, "start": 1.8, "dur": 1.6, "w": 0},
+             {"path": v, "video": True, "start": 3.4, "dur": 2.0, "w": 0}]
+    assert build.theses(short)[2] == [(0.0, 5.4)]           # whole cuts until 4 s have passed
