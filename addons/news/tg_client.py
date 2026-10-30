@@ -48,14 +48,17 @@ async def login() -> None:
     if await c.is_user_authorized():
         print("already logged in as", (await c.get_me()).username or "(no username)")
         return
+    from datetime import datetime, timezone
+
     qr = await c.qr_login()
-    while True:
+    for _ in range(20):  # a code lives about 30 s: a fresh one each time, for about ten minutes
         q = qrcode.QRCode(border=1)
         q.add_data(qr.url)
         q.print_ascii(invert=True)
-        print("Telegram → Настройки → Устройства → Подключить устройство, отсканируйте код (2 минуты)", flush=True)
+        left = max(5.0, (qr.expires - datetime.now(timezone.utc)).total_seconds())
+        print(f"Telegram → Настройки → Устройства → Подключить устройство, отсканируйте код ({left:.0f} с)", flush=True)
         try:
-            await qr.wait(120)
+            await qr.wait(left)
             break
         except asyncio.TimeoutError:
             await qr.recreate()
