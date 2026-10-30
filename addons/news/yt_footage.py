@@ -1,35 +1,49 @@
 """Footage from YouTube when a story's own pictures are short (owner 2026-10-30: «построй движок поиска футажей на
 базе YouTube … ищешь нужное видео, смотришь расшифровку, которую даёт сам YouTube, далее скачиваешь правильный
-момент, вырезаешь и вставляешь футаж, очищаешь при необходимости»).
+момент, вырезаешь и вставляешь футаж, очищаешь при необходимости»). Everything up to the cut is decided before any
+video is downloaded: the words from YouTube's own transcript, the picture from its storyboard.
 
-    .venv/bin/python addons/news/yt_footage.py search "ДТП Лево-Булачная Казань" [--n 8] [--fresh]
-        candidates: id, length, channel, title (--fresh: the newest first)
-    .venv/bin/python addons/news/yt_footage.py find <id|url> "перекрёсток красный" [--n 5]
-        YouTube's own transcript of the video (captions, Russian; none — its sound transcribed here), the moments
-        where those words are said
+    .venv/bin/python addons/news/yt_footage.py scout "ДТП Лево-Булачная Казань" "перекрёсток красный" [--n 8] [--fresh]
+        search + every candidate's transcript (no video downloaded): ranked by where the words are said
+    .venv/bin/python addons/news/yt_footage.py search "<query>" [--n 8] [--fresh]
+        candidates only: id, length, channel, title (--fresh: the newest first)
+    .venv/bin/python addons/news/yt_footage.py find <id|url> "перекрёсток красный" [--n 5] [--listen]
+        one video's transcript, the moments where those words are said (--listen: no captions — its sound, transcribed)
+    .venv/bin/python addons/news/yt_footage.py peek <id|url> <from> <to> <sheet.jpg>
+        what is on screen then: YouTube's storyboard (the scrubbing previews, ≈1 a second) as a contact sheet
     .venv/bin/python addons/news/yt_footage.py cut <id|url> <from> <to> projects/<slug>/media/<name>.mp4 [--tags …]
-        only that part (≤720p, cut on the second); <name>.json keeps the source, the channel, the times and what is
-        said; the piece goes to the base of pictures (library.py) with the tags
+        only that part (≤720p, H.264); <name>.json keeps the source, the channel, the times and what is said; the
+        piece goes to the base of pictures (library.py) with the tags
+
+The transcript is YouTube's own captions (the «Расшифровка видео» panel: a channel's or the automatic ones), fetched as
+a small json3 file. Short news clips often have none — find --listen then downloads the clip (a few MB) and
+transcribes its sound. The cut downloads the video with yt-dlp's own downloader into a cache and cuts locally: ffmpeg
+streaming from googlevideo stalls through the egress (2026-10-30), yt-dlp's chunked download runs at ~9 MB/s.
 
 Then a shot of it — credit «Видео: <канал> / YouTube» — and clean_footage.py as for any post's footage (other
 channels' logos come off; an agency's own channel — "clean": "none"). Prefer agencies, local TV (Татарстан 24, ТНВ,
-Москва 24) and the event itself; a clip about another event is never this story's picture. YouTube goes through the
-factory egress (https_proxy); yt-dlp is in the server's .venv.
+Москва 24) and the event itself; a clip about another event is never this story's picture.
 """
 from __future__ import annotations
 
 import argparse
+import io
 import json
-import os
 import re
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.request
+from functools import lru_cache
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 _VENV = HERE.parents[1] / ".venv" / "bin" / "yt-dlp"
 YTDLP = [str(_VENV) if _VENV.is_file() else "yt-dlp", "--quiet", "--no-warnings"]
+CACHE = Path.home() / ".cache" / "openmontage" / "youtube"
+CACHE_DAYS = 3
+FORMAT = "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]"
 
 
 def url_of(ref: str) -> str:
@@ -41,6 +55,12 @@ def search(query: str, n: int = 8, fresh: bool = False) -> list[dict]:
                          capture_output=True, text=True, timeout=120, check=True).stdout
     return [{"id": e["id"], "duration": e.get("duration"), "channel": e.get("channel") or e.get("uploader") or "",
              "title": e.get("title") or ""} for e in json.loads(out).get("entries") or []]
+
+
+@lru_cache(maxsize=32)
+def info(ref: str) -> dict:
+    return json.loads(subprocess.run([*YTDLP, "--skip-download", "-J", url_of(ref)], capture_output=True, text=True,
+                                     timeout=120, check=True).stdout)
 
 
 def words_of(json3: dict) -> list[tuple[str, float]]:
@@ -77,57 +97,118 @@ def moments(words: list[tuple[str, float]], query: str, window: float = 8.0, n: 
     return best[:n]
 
 
-def _proxy_args() -> list[str]:
-    """yt-dlp hands a section download to ffmpeg, which would go to googlevideo directly (blocked from the server):
-    the factory egress for it too."""
-    p = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
-    return ["--downloader-args", f"ffmpeg_i:-http_proxy {p}"] if p else []
-
-
-def transcript(ref: str) -> list[tuple[str, float]]:
-    """YouTube's own captions; a short news clip often has none — then its sound, transcribed here (whisper)."""
+def captions(ref: str) -> list[tuple[str, float]]:
+    """YouTube's own transcript, nothing else downloaded: the channel's Russian captions, else the automatic ones."""
     with tempfile.TemporaryDirectory() as d:
         subprocess.run([*YTDLP, "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", "ru.*,ru",
                         "--sub-format", "json3", "-o", f"{d}/v", url_of(ref)], capture_output=True, timeout=180)
         subs = sorted(Path(d).glob("v*.json3"), key=lambda f: ("orig" not in f.name, f.name))
-        if subs:
-            return words_of(json.loads(subs[0].read_text(encoding="utf-8")))
-        subprocess.run([*YTDLP, "-f", "ba/b", "-x", "--audio-format", "wav", "-o", f"{d}/a.%(ext)s", url_of(ref)],
-                       capture_output=True, timeout=600)
-        audio = next(Path(d).glob("a.*"), None)
-        if not audio:
-            return []
-        sys.path.insert(0, str(HERE.parents[1]))
-        from addons.news.build import transcribe
+        return words_of(json.loads(subs[0].read_text(encoding="utf-8"))) if subs else []
 
-        return [(w["word"].strip(), round(w["start"], 2)) for w in transcribe(audio)]
+
+def video(ref: str) -> Path:
+    """The whole video (≤720p) in the cache — yt-dlp's chunked download through the egress; older ones are dropped."""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    for old in CACHE.glob("*.mp4"):
+        if time.time() - old.stat().st_mtime > CACHE_DAYS * 86400:
+            old.unlink(missing_ok=True)
+    vid = info(ref)["id"]
+    dst = CACHE / f"{vid}.mp4"
+    if not dst.is_file():
+        subprocess.run([*YTDLP, "-f", FORMAT, "--merge-output-format", "mp4", "-o", str(dst), url_of(ref)],
+                       check=True, timeout=1800)
+    return dst
+
+
+def listen(ref: str) -> list[tuple[str, float]]:
+    """No captions: the clip's sound, transcribed here (whisper)."""
+    sys.path.insert(0, str(HERE.parents[1]))
+    from addons.news.build import transcribe
+
+    with tempfile.TemporaryDirectory() as d:
+        wav = Path(d) / "a.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video(ref)), "-vn", "-ac", "1", "-ar", "16000", str(wav)],
+                       check=True)
+        return [(w["word"].strip(), round(w["start"], 2)) for w in transcribe(wav)]
+
+
+def peek(ref: str, t0: float, t1: float, dst: Path, cols: int = 4, most: int = 16) -> Path:
+    """What is on screen from t0 to t1, nothing downloaded but YouTube's storyboard: its largest previews cut into
+    tiles, at most `most` of them evenly over the moment, each with its time."""
+    from PIL import Image, ImageDraw
+
+    boards = [f for f in info(ref)["formats"] if f.get("format_note") == "storyboard" and f.get("fragments")]
+    if not boards:
+        sys.exit("no storyboard for this video")
+    sb = max(boards, key=lambda f: f.get("width") or 0)
+    per = sb["rows"] * sb["columns"]
+    tiles, t = [], 0.0
+    for frag in sb["fragments"]:
+        d = frag.get("duration") or per / (sb.get("fps") or 1)
+        if t < t1 and t + d > t0:
+            with urllib.request.urlopen(frag["url"], timeout=60) as r:  # https_proxy from the env: the egress
+                img = Image.open(io.BytesIO(r.read())).convert("RGB")
+            for k in range(per):
+                ts = t + k * d / per
+                x, y = (k % sb["columns"]) * sb["width"], (k // sb["columns"]) * sb["height"]
+                if t0 <= ts < t1 and y + sb["height"] <= img.height:
+                    tiles.append((ts, img.crop((x, y, x + sb["width"], y + sb["height"]))))
+        t += d
+    if not tiles:
+        sys.exit(f"nothing in {t0}–{t1} s (the video is {t:.0f} s)")
+    tiles = tiles[::max(1, -(-len(tiles) // most))]
+    rows = -(-len(tiles) // cols)
+    sheet = Image.new("RGB", (cols * sb["width"], rows * sb["height"]), "black")
+    for i, (ts, tile) in enumerate(tiles):
+        x, y = (i % cols) * sb["width"], (i // cols) * sb["height"]
+        sheet.paste(tile, (x, y))
+        ImageDraw.Draw(sheet).text((x + 4, y + 2), f"{ts:.0f}s", fill="yellow")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(dst, quality=90)
+    return dst
 
 
 def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None) -> Path:
+    meta = info(ref)
+    src = video(ref)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    meta = json.loads(subprocess.run([*YTDLP, "--skip-download", "-J", url_of(ref)], capture_output=True, text=True,
-                                     timeout=120, check=True).stdout)
-    subprocess.run([*YTDLP, "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]/b", "--download-sections",
-                    f"*{t0}-{t1}", "--force-keyframes-at-cuts", "--merge-output-format", "mp4", *_proxy_args(),
-                    "-o", str(dst), url_of(ref)], check=True, timeout=900)
-    said = " ".join(w for w, t in transcript(ref) if t0 <= t < t1)
-    info = {"source": meta.get("webpage_url"), "channel": meta.get("channel") or meta.get("uploader"),
-            "title": meta.get("title"), "uploaded": meta.get("upload_date"), "from": t0, "to": t1, "said": said,
-            "credit": f"Видео: {meta.get('channel') or meta.get('uploader')} / YouTube"}
-    dst.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                    "-b:a", "160k", "-movflags", "+faststart", str(dst)], check=True)
+    said = " ".join(w for w, t in captions(ref) if t0 <= t < t1)
+    channel = meta.get("channel") or meta.get("uploader") or ""
+    out = {"source": meta.get("webpage_url"), "channel": channel, "title": meta.get("title"),
+           "uploaded": meta.get("upload_date"), "from": t0, "to": t1, "said": said,
+           "credit": f"Видео: {channel} / YouTube"}
+    dst.with_suffix(".json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         sys.path.insert(0, str(HERE))
         import library
 
-        library.add(dst, (tags or []) + ["youtube", info["channel"] or ""], info["credit"], "YouTube", info["source"] or "")
+        library.add(dst, (tags or []) + ["youtube", channel], out["credit"], "YouTube", out["source"] or "")
     except OSError as e:
         print("library:", e, file=sys.stderr)
     return dst
 
 
+def scout(query: str, words: str, n: int = 8, fresh: bool = False) -> list[dict]:
+    """Candidates ranked by their transcripts — which video says those words, where — before downloading any."""
+    out = []
+    for v in search(query, n, fresh):
+        heard = captions(v["id"])
+        best = moments(heard, words, n=1) if heard else []
+        out.append({**v, "captions": bool(heard), "moment": best[0] if best else None})
+    return sorted(out, key=lambda v: -(v["moment"]["score"] if v["moment"] else -1 if not v["captions"] else 0))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    o_ = sub.add_parser("scout")
+    o_.add_argument("query")
+    o_.add_argument("words")
+    o_.add_argument("--n", type=int, default=8)
+    o_.add_argument("--fresh", action="store_true")
     s_ = sub.add_parser("search")
     s_.add_argument("query")
     s_.add_argument("--n", type=int, default=8)
@@ -136,6 +217,12 @@ def main() -> None:
     f_.add_argument("ref")
     f_.add_argument("query")
     f_.add_argument("--n", type=int, default=5)
+    f_.add_argument("--listen", action="store_true")
+    p_ = sub.add_parser("peek")
+    p_.add_argument("ref")
+    p_.add_argument("t0", type=float)
+    p_.add_argument("t1", type=float)
+    p_.add_argument("dst", type=Path)
     c_ = sub.add_parser("cut")
     c_.add_argument("ref")
     c_.add_argument("t0", type=float)
@@ -143,15 +230,23 @@ def main() -> None:
     c_.add_argument("dst", type=Path)
     c_.add_argument("--tags", default="")
     a = ap.parse_args()
-    if a.cmd == "search":
+    if a.cmd == "scout":
+        for v in scout(a.query, a.words, a.n, a.fresh):
+            m = v["moment"]
+            where = (f'{m["from"]:.0f}–{m["to"]:.0f}s [{m["score"]}] {m["text"][:110]}' if m else
+                     "слова не звучат" if v["captions"] else "нет субтитров (find --listen)")
+            print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"][:70]}\n    {where}')
+    elif a.cmd == "search":
         for v in search(a.query, a.n, a.fresh):
             print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"]}')
     elif a.cmd == "find":
-        words = transcript(a.ref)
+        words = captions(a.ref) or (listen(a.ref) if a.listen else [])
         if not words:
-            sys.exit("no transcript for this video")
+            sys.exit("no captions for this video (--listen transcribes its sound)")
         for m in moments(words, a.query, n=a.n):
             print(f'{m["from"]:7.1f}–{m["to"]:7.1f}  [{m["score"]}]  {m["text"][:160]}')
+    elif a.cmd == "peek":
+        print(peek(a.ref, a.t0, a.t1, a.dst))
     else:
         print(cut(a.ref, a.t0, a.t1, a.dst, [t for t in a.tags.split(",") if t]))
 

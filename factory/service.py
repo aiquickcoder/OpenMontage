@@ -169,6 +169,9 @@ def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: d
 
     msg = update.get("message") or {}
     if str(msg.get("chat", {}).get("id")) != tg.chat:
+        chat = msg.get("chat") or {}
+        if chat:  # logged only: a group the owner adds for deliveries (NEWS_TG_CHATS) is found by its id here
+            log.info("message in another chat %s (%s, %s) — ignored", chat.get("id"), chat.get("type"), chat.get("title"))
         return  # only the owner's chat may drive the factory
     text = (msg.get("text") or "").strip()
     if text.startswith("/brief"):

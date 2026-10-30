@@ -905,12 +905,10 @@ def test_a_one_story_film_never_crops_a_picture(tmp_path: Path):
                         "-pix_fmt", "yuv420p", str(f)], check=True)
         return f
     wide, square, tall, phone = clip("wide", "1280x720"), clip("square", "640x640"), clip("tall", "976x1266"), clip("phone", "720x1280")
-    assert build.frame_box({"path": wide, "fit": True}) == (1080, 608, 0, 656, False)    # 16:9 keeps its sides
+    assert build.frame_box({"path": wide, "fit": True}) == (1080, 760, 0, 550, True)      # 16:9: the box, sides trimmed
     assert build.frame_box({"path": square, "fit": True}) == (1080, 1080, 0, 440, False)  # whole, no side margins
-    bw, bh, x, y, _ = build.frame_box({"path": tall, "fit": True})
-    assert y == 440 and abs(bw / bh - 976 / 1266) < 0.01 and bw <= 1080
-    bw, bh, x, y, _ = build.frame_box({"path": phone, "fit": True})
-    assert (bh, y) == (1460, 440) and abs(bw / bh - 720 / 1280) < 0.01                   # a vertical photo whole
+    assert build.frame_box({"path": tall, "fit": True}) == (1080, 1400, 0, 440, False)    # whole, the full width
+    assert build.frame_box({"path": phone, "fit": True}) == (832, 1480, 124, 440, False)  # whole, down to the bottom
     assert build.frame_box({"path": wide})[4] is True                                    # digests: the old box
     out = tmp_path / "s.mp4"
     build.segment({"path": phone, "dur": 0.5, "video": True, "in": 0.0, "fit": True}, out)

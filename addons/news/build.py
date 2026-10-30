@@ -744,30 +744,25 @@ def box_h(w: int, h: int) -> int:
     return int(min(BOX_MAX, max(BOX_MIN, W * h / w)))
 
 
-FIT_TOP, FIT_BOTTOM, FIT_FLOOR = 440, 1480, 1900  # a one-story film: under the hook card; a tall picture runs on
-                                                   # past the captions' line to the floor (captions over its bottom)
+FIT_TOP = 440  # a one-story film: a vertical picture starts under the hook card
 
 
 def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
-    """Where a cut's picture goes: (width, height, x, y, cover). A one-story film ("fit") shows it whole, never cropped
-    (owner 2026-10-30: «если фото вертикальное, то не нужно его обрезать»): a wide or square one across the whole
-    width, centred between the hook card and the captions; a tall one from under the card down to the floor at most,
-    the full width when that is nearly so anyway (no thin side margins — «границы слева и справа убери»); a blurred
-    copy around. Otherwise the old box: covered and cropped to 1080 x 760…1000, a portrait source over the whole frame."""
+    """Where a cut's picture goes: (width, height, x, y, cover). A wide picture: the box — covered, 1080 x 760…1000,
+    its sides trimmed (owner 2026-10-30: a 16:9 shown whole looked «сплюснуто»). In a one-story film ("fit") a vertical
+    or square one is shown whole, never cropped («если фото вертикальное, то не нужно его обрезать»): the full width
+    from under the hook card («границы слева и справа убери»), or — taller than the frame has room for — the whole
+    height down to the bottom, narrower; a blurred copy around. Outside one-story films a portrait source covers the
+    whole frame."""
     w, h, _ = probe(item["path"])
     if item.get("crop"):
         w, h = item["crop"][2], item["crop"][3]
-    if item.get("fit"):
-        if h <= w:  # wide or square: always the full width, never side margins («границы слева и справа убери»)
-            bw, bh = W, round(W * h / w)
-            y = FIT_TOP + max(0, (FIT_BOTTOM - FIT_TOP - bh) // 2)
-        else:
-            bh = min(FIT_FLOOR - FIT_TOP, round(W * h / w))
-            bw, y = min(W, round(bh * w / h)), FIT_TOP
-            if bw >= 0.85 * W:  # nearly full width anyway: the full width (a little lower), no thin margins
-                bw, bh = W, round(W * h / w)
+    if item.get("fit") and h >= w:
+        bw, bh = W, round(W * h / w)
+        if bh > H - FIT_TOP:
+            bw, bh = round((H - FIT_TOP) * w / h), H - FIT_TOP
         bw, bh = bw - bw % 2, bh - bh % 2
-        return bw, bh, (W - bw) // 2, y, False
+        return bw, bh, (W - bw) // 2, FIT_TOP, False
     full = h / w > 1.4  # portrait source: fill the whole frame
     bh = H if full else box_h(w, h)
     return W, bh, 0, 0 if full else BOX_Y - bh // 2, True

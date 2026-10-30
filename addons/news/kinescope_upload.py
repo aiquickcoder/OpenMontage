@@ -49,7 +49,9 @@ def notify(proj: Path, out: dict, token: str) -> None:
     text = (f"🎬 {out['title']}\nСмотреть: {out['play_link']}\n"
             + (f"Скачать (1080p): {link}" if link else f"Скачать: ещё обрабатывается ({status}), ссылка будет в Kinescope"))
     repo = HERE.parents[1]
-    subprocess.run([sys.executable, str(repo / "addons" / "mural" / "send_telegram.py"), text], cwd=repo,
+    chats = os.environ.get("NEWS_TG_CHATS", "").strip()  # the news group gets the links too
+    subprocess.run([sys.executable, str(repo / "addons" / "mural" / "send_telegram.py"), text,
+                    *(["--also", chats] if chats else [])], cwd=repo,
                    env={**os.environ, "PYTHONPATH": str(repo)}, check=False)
     print(f"links sent: {link or status}", flush=True)
 

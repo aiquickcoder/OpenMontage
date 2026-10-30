@@ -54,6 +54,13 @@ def flow_proxy() -> str:
     return pick
 
 
+def deliver_args(name: str) -> list[str]:
+    """A film goes to the owner as a file (not recompressed) and to the news group(s) too — NEWS_TG_CHATS in the .env
+    (owner 2026-10-30: «пусть бот в эту группу тоже отправляет … видео пусть отправляет файлом»)."""
+    chats = os.environ.get("NEWS_TG_CHATS", "").strip()
+    return ["--file", "--name", name] + (["--also", chats] if chats else [])
+
+
 def run(cmd: list[str], env: dict | None = None, log: Path | None = None) -> subprocess.Popen:
     out = log.open("w") if log else None
     return subprocess.Popen(cmd, cwd=REPO, env={**os.environ, **(env or {}), "PYTHONUNBUFFERED": "1"},
@@ -119,13 +126,14 @@ def main() -> None:
     print((logs / "build.log").read_text()[-400:], flush=True)
     if a.send:
         caption = a.caption.read_text(encoding="utf-8") if a.caption else story.get("headline", "")
-        if subprocess.run([PY, "addons/mural/send_telegram.py", caption, str(render)], cwd=REPO,
+        if subprocess.run([PY, "addons/mural/send_telegram.py", caption, str(render), *deliver_args(f"{proj.name}.mp4")], cwd=REPO,
                           env={**os.environ, "PYTHONPATH": str(REPO)}).returncode != 0:
             fail("telegram send failed")
         for f in shorts:
             n = int(f.stem.split("_")[1])
             head = story["stories"][n - 1].get("headline", "")
-            subprocess.run([PY, "addons/mural/send_telegram.py", f"TikTok {n}/{len(story['stories'])}: {head}", str(f)],
+            subprocess.run([PY, "addons/mural/send_telegram.py", f"TikTok {n}/{len(story['stories'])}: {head}", str(f),
+                            *deliver_args(f"{proj.name}-tiktok-{n}.mp4")],
                            cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)})
     if a.kinescope:
         k = [PY, "addons/news/kinescope_upload.py", rel, "--notify"] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
