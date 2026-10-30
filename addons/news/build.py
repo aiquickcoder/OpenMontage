@@ -59,7 +59,6 @@ TAIL_S = 1.2           # hold after the last word
 CARD_ZOOM = 0.07       # a still's slow push-in (segment); "zoom": [from, to] on a cut overrides it
 PAN_Z = 1.12           # a still's sideways move (owner 2026-10-30: «движение камеры слева направо»): this much closer,
                        # travelling across; stills take turns: pan, push-in, pan… ("move": pan|pan-left|zoom on a shot)
-HOOK_S = 3.5           # the hook box of a one-story film stays this long from the first frame
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
 BOX_Y = 930            # centre line of the picture box (the plate sits above it, captions below)
 BOX_MIN, BOX_MAX = 760, 1000
@@ -930,31 +929,32 @@ THESIS_CSS = """
                  -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
 
 
+HOOK_FONT = HERE / "fonts" / "PTMono-Bold.ttf"  # ParaType Free Font License
 HOOK_CSS = """
-    #hook { position: absolute; left: 50px; right: 50px; top: 1120px; z-index: 8; text-align: center; }
-    #hook .box { display: inline-block; background: #fff; color: #111; border-radius: 24px; padding: 20px 28px 18px;
-                 font-family: "Inter", sans-serif; font-weight: 800; font-size: 62px; line-height: 1.1;
-                 text-transform: uppercase; box-shadow: 0 8px 28px rgba(0,0,0,.4); }
-    #hook .box svg { width: 62px; height: 62px; vertical-align: -8px; margin: 0 8px; }
-    #hook .d { font-size: 44px; font-weight: 700; text-transform: none; margin-top: 8px; }"""
-SIREN = ('<svg viewBox="0 0 64 64"><g stroke="#e3001b" stroke-width="5" stroke-linecap="round"><path d="M6 22l8 4"/>'
-         '<path d="M58 22l-8 4"/><path d="M32 4v8"/><path d="M14 8l5 7"/><path d="M50 8l-5 7"/></g>'
-         '<path d="M18 50V36a14 14 0 0 1 28 0v14z" fill="#e3001b"/><path d="M25 36a7 7 0 0 1 7-7" stroke="#fff" '
-         'stroke-width="4" fill="none" stroke-linecap="round"/><rect x="12" y="50" width="40" height="9" rx="3" '
-         'fill="#222"/></svg>')  # 🚨 drawn, not an emoji font (HyperFrames wants every font declared)
+    @font-face { font-family: "PT Mono"; src: url("assets/PTMono-Bold.ttf"); font-weight: 700; }
+    #hook { position: absolute; left: 0; right: 0; top: 0; z-index: 6; padding: 70px 46px 30px;
+            background: linear-gradient(to bottom, rgba(10,10,12,.96) 82%, rgba(10,10,12,0)); text-align: left; }
+    #hook .brand { text-align: center; margin-bottom: 22px; }
+    #hook .brand span { display: inline-block; background: #e3001b; color: #fff; font: 900 30px "Arial Black",
+                        "DejaVu Sans", sans-serif; letter-spacing: 3px; padding: 6px 16px 5px; border-radius: 6px; }
+    #hook .brand i { font-style: normal; color: #bbb; font: 700 26px "PT Mono", monospace; margin-left: 12px; }
+    #hook .t { font-family: "PT Mono", monospace; font-weight: 700; font-size: 50px; line-height: 1.32;
+               letter-spacing: 1.5px; text-transform: uppercase; color: #fff; }
+    #hook .t em { font-style: normal; background: #e3001b; color: #fff; padding: 0 8px;
+                  -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
 
 
-def hook_html(story: dict) -> tuple[str, str]:
-    """A one-story film's hook (owner 2026-10-30, a TikTok news look: «🚨 СРОЧНЫЕ НОВОСТИ: МИР ГОТОВИТСЯ К... 🚨
-    (28-ое Октября)»): black capitals on a white box with a siren each side and the date under it, there from the
-    first frame (the cover) for HOOK_S seconds."""
+def hook_html(story: dict, duration: float) -> tuple[str, str]:
+    """A one-story film's hook (owner 2026-10-30, «вот пример хуков» — the ПОТОК cards): the whole headline as a
+    title card over the top of the frame for the whole film — the brand and the date above, the headline in mono
+    capitals, its strongest part *starred* on the red marker. There from the first frame (the cover), no entrance."""
     if not story.get("hook"):
         return "", ""
-    date = f'<div class="d">({esc(story["date"])})</div>' if story.get("date") else ""
-    html = (f'    <div id="hook" class="clip" data-start="0" data-duration="{HOOK_S}" data-track-index="7">'
-            f'<div class="box">{SIREN}{esc(story["hook"])}{SIREN}{date}</div></div>')
-    js = f'  tl.to("#hook", {{opacity: 0, y: -24, duration: 0.3, ease: "power2.in"}}, {HOOK_S - 0.3:.2f});'
-    return html, js
+    date = f'<i>{esc(story["date"])}</i>' if story.get("date") else ""
+    html = (f'    <div id="hook" class="clip" data-start="0" data-duration="{duration}" data-track-index="7">'
+            f'<div class="brand"><span>{esc(story.get("tag", "ЧП"))}</span>{date}</div>'
+            f'<div class="t">{thesis_markup(story["hook"])}</div></div>')
+    return html, ""
 
 
 def thesis_markup(text: str) -> str:
@@ -1104,11 +1104,13 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
         anchor_js = "\n".join(js + tv_js)
-    hook_div, hook_js = hook_html(story)
-    thesis_html, thesis_js, spans = theses(items, HOOK_S if hook_div else 0.0)
+    hook_div, hook_js = hook_html(story, duration)
+    if hook_div:
+        shutil.copy2(HOOK_FONT, ws / "assets" / HOOK_FONT.name)
+    thesis_html, thesis_js, spans = theses(items)
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
-    caps = around(word_cues(timing["words"]), spans + ([(0.0, HOOK_S)] if hook_div else []))
+    caps = around(word_cues(timing["words"]), spans)
     caps_html = "\n".join(
         f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
         f'<span>{esc(t)}</span></div>' for i, (a, b, t) in enumerate(caps))
@@ -1170,11 +1172,12 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         broll_html.append(f'    <video id="broll{w}" class="clip broll" src="assets/broll{w}.mp4" data-start="{w0}" '
                           f'data-duration="{w1 - w0:.3f}" data-track-index="0" muted playsinline></video>')
         p0 = intro[1] if w == 0 and intro else w0  # narrator mode: the first story's plate comes with its lead
+        if story.get("hook"):  # the hook card carries the brand, the date and the headline
+            continue
         plate_html.append(
             f'    <div id="plate{w}" class="clip plate" data-start="{p0}" data-duration="{w1 - p0:.3f}" data-track-index="3">\n'
             f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span><span class="date">{date}</span>\n'
-            + ("" if story.get("hook") else  # one story: the hook carries the headline, the plate is the brand
-               f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n') + '    </div>')
+            f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n    </div>')
         if p0 >= 0.05:  # a plate on the first frame (a cold open, a short) is the cover: there at once
             plate_js.append(
                 f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {p0 + 0.05:.2f});\n'

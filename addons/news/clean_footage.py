@@ -297,7 +297,7 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
         phrases = nb.story_beats(story, json.loads(timing_file.read_text(encoding="utf-8")))
     else:
         phrases = json.loads(beats_file.read_text(encoding="utf-8")) if beats_file.is_file() else []
-    for si, st in enumerate(story.get("stories", [])):
+    for si, st in enumerate(story.get("stories") or [story]):  # a digest's stories, or a one-story film
         shots = st.get("shots", [])
         bs = phrases[si] if si < len(phrases) and phrases[si] and len(shots) >= len(phrases[si]) else None
         for j, sh_ in enumerate(shots):
@@ -464,7 +464,7 @@ def main() -> None:
             out = still
         p["out"] = out.relative_to(proj).as_posix()
     shutil.copy2(proj / "story.json", proj / "story.json.pre-clean")
-    for st in story.get("stories", []):
+    for st in story.get("stories") or [story]:
         for s in st.get("shots", []):
             src = s.get("src_orig") or s.get("src")
             if not src:  # a map before build.py has made it: not post media

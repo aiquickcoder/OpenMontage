@@ -15,8 +15,10 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 One story, one film: no digest, no cat, **no AI pictures at all**. A run makes two films from the two best stories
 with real pictures (README «Формат с 2026-10-30»): a one-story `story.json` (no `stories`, no `anchor`;
 `narration.text` 35–60 words, `"hook"`, `"loop": true`), its post's footage running whole, stills that move by
-themselves, a hook box in the first frame — the strongest honest bait («ДО 10 ЛЕТ ЗА СТЕРОИДЫ…», «ЖЁСТКОЕ ЗАДЕРЖАНИЕ
-СОБР», «НОВАЯ СХЕМА ОБМАНА»), then fact theses. Find real frames when the post is thin: `sources.py search`, the
+themselves, a hook title card over the top for the whole film (the ПОТОК style: the whole story in one phrase,
+8–16 words, its strongest part `*starred*` on the red marker — «СОСЕД-АЛКОГОЛИК *«ЗАМУРОВАЛ» КВАРТИРУ* ПЕРМЯЧКИ
+МОНТАЖНОЙ ПЕНОЙ»; the strongest honest bait: «ДО 10 ЛЕТ ЗА…», «ЖЁСТКОЕ ЗАДЕРЖАНИЕ СОБР», «НОВАЯ СХЕМА ОБМАНА»), fact
+theses at the bottom. Find real frames when the post is thin: `sources.py search`, the
 article's media (`article_video.py`), `library.py find`, `fetch_commons.py`, a map; put what you used into the base
 (`library.py add`). Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.

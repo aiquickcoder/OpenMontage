@@ -822,15 +822,14 @@ def test_stills_take_turns_panning_left_to_right_and_pushing_in(tmp_path: Path):
 
 def test_a_one_story_film_opens_on_its_hook_and_the_plate_is_the_brand(tmp_path: Path):
     s = {"slug": "x", "tag": "ЧП · КАЗАНЬ", "date": "29 октября", "headline": "Гормон в багаже",
-         "hook": "До 10 лет за стероиды…", "loop": True, "narration": {"text": "Иностранец вёз флаконы гормона."}}
+         "hook": "Иностранец вёз в багаже *20 флаконов гормона роста*", "loop": True,
+         "narration": {"text": "Иностранец вёз флаконы гормона."}}
     words = [[w, round(0.3 + i * 0.4, 3), round(0.6 + i * 0.4, 3)] for i, w in enumerate(build.full_text(s).split())]
     assert build.story_windows(s, words, 3.0) == [[0.0, 3.0]]           # pictures from the first frame, no cat
-    html, js = build.hook_html(s)
-    assert 'data-start="0"' in html and "До 10 лет за стероиды…" in html and "(29 октября)" in html and "<svg" in html
-    v = _clip(tmp_path / "v.mp4")
-    items = [{"path": v, "video": True, "start": 0.0, "dur": 6.0, "w": 0, "thesis": "*Трое* под стражей"}]
-    _, _, spans = build.theses(items, build.HOOK_S)
-    assert spans[0][0] == build.HOOK_S                                 # the fact comes after the hook
+    html, js = build.hook_html(s, 3.0)
+    assert 'data-start="0" data-duration="3.0"' in html and js == ""     # the title card for the whole film, static
+    assert "<em>20 флаконов гормона роста</em>" in html and "ЧП · КАЗАНЬ" in html and "29 октября" in html
+    assert build.hook_html({**s, "hook": ""}, 3.0) == ("", "")
 
 
 def test_the_library_keeps_real_pictures_by_tags(tmp_path: Path):
@@ -856,3 +855,10 @@ def test_no_ai_pictures_anywhere():
     story = {"city": "kazan", "shots": [{"src": "illustrations/k1.png", "label": "ИИ-иллюстрация"}, {"src": "media/a.jpg"}]}
     ai, total, limit = build.ai_budget(story)
     assert (ai, total, limit) == (1, 2, 0)
+
+
+def test_a_one_story_film_has_its_footage_cleaned(tmp_path: Path):
+    from addons.news import clean_footage as cf
+
+    story = {"narration": {"text": "x"}, "shots": [{"src": "media/sk.mp4", "in": 6}, {"src": "media/nak.mp4", "clean": "none"}]}
+    assert list(cf.footage(tmp_path, story)) == ["media/sk.mp4@6"]
