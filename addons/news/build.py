@@ -265,21 +265,66 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     A.mkdir(parents=True, exist_ok=True)
     audio = A / "narration.mp3"
     text = full_text(story)
+    bite = story.get("bite") if "[bite]" in (story.get("narration") or {}).get("text", "") else None
     if not (retime and audio.is_file()):
-        engine = story["narration"].get("engine")
-        # OpenRouter's chat voices would read a [cue] aloud: they get the plain script
-        said = voice_text(story) if engine == "fishaudio" else plain(text) if engine == "openrouter" else text
-        speak({**story["narration"], "text": said}, audio)
-    words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, transcribe(audio))]
-    speech_end = float(words[-1][2])
+        if bite:
+            sound_bite(proj, story, A)
+        else:
+            engine = story["narration"].get("engine")
+            # OpenRouter's chat voices would read a [cue] aloud: they get the plain script
+            said = voice_text(story) if engine == "fishaudio" else plain(text) if engine == "openrouter" else text
+            speak({**story["narration"], "text": said}, audio)
+    heard = transcribe(audio)
+    words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, heard)]
+    speech_end = float(max(words[-1][2], max((w["end"] for w in heard), default=0) + VOICE_AT))
     duration = round(speech_end + TAIL_S, 2)
     ws = story_windows(story, words, duration)
     timing = {"words": words, "speech_end": speech_end, "duration": duration, "windows": ws,
               "broll": [ws[0][0], ws[-1][1]]}
+    if bite:  # the agency's own words: their time, and what is said for the captions
+        b0, b1 = json.loads((A / "bite.json").read_text())["span"]
+        timing["bite"] = [round(b0 + VOICE_AT, 3), round(b1 + VOICE_AT, 3)]
+        timing["bite_words"] = [[w["word"].strip(), round(w["start"] + VOICE_AT, 3), round(w["end"] + VOICE_AT, 3)]
+                                for w in heard if b0 - 0.1 <= w["start"] < b1]
+        if story.get("loop") or not story.get("stories"):  # one story: the pictures run to the end
+            timing["windows"] = [[0.0, duration]]
     if narrator(story):
         timing.update(narrator_windows(story, words, duration, ws))
     (A / "timing.json").write_text(json.dumps(timing, ensure_ascii=False, indent=1), encoding="utf-8")
     return timing
+
+
+BITE_GAP = 0.25  # silence around a sound bite
+
+
+def sound_bite(proj: Path, story: dict, A: Path) -> None:
+    """The narration with the agency's own words in it (owner 2026-10-30: «включить звук на ведомственных видео, где
+    СК комментирует»): the text is read in two takes around "[bite]", and the clip's sound from "in" to "out" plays
+    between them — the picture of that moment goes on the "bite" shot, muted, so it is in sync. assets/bite.json keeps
+    where it sits in the narration."""
+    bite = story["bite"]
+    before, after = (t.strip() for t in story["narration"]["text"].split("[bite]", 1))
+    parts_ = []
+    for k, t in enumerate((before, after)):
+        if t:
+            f = A / f"voice_{k}.mp3"
+            speak({**story["narration"], "text": plain(t)}, f)
+            parts_.append(f)
+    src = (proj / bite["src"]).resolve()
+    clip = A / "bite.wav"
+    sh(["ffmpeg", "-v", "error", "-y", "-ss", str(bite["in"]), "-to", str(bite["out"]), "-i", str(src), "-vn",
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(clip)])
+    gap = A / "gap.wav"
+    sh(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", str(BITE_GAP), str(gap)])
+    seq = ([parts_[0], gap] if before else []) + [clip] + ([gap, parts_[-1]] if after else [])
+    b0 = (float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(parts_[0])]))
+          + BITE_GAP) if before else 0.0
+    ins = [x for f in seq for x in ("-i", str(f))]
+    flt = "".join(f"[{i}:a]aresample=44100,aformat=channel_layouts=mono[a{i}];" for i in range(len(seq)))
+    flt += "".join(f"[a{i}]" for i in range(len(seq))) + f"concat=n={len(seq)}:v=0:a=1[out]"
+    sh(["ffmpeg", "-v", "error", "-y", *ins, "-filter_complex", flt, "-map", "[out]", "-c:a", "libmp3lame", "-q:a", "2",
+        str(A / "narration.mp3")])
+    (A / "bite.json").write_text(json.dumps({"span": [round(b0, 3), round(b0 + bite["out"] - bite["in"], 3)]}))
 
 
 # -- b-roll ------------------------------------------------------------------------------------------
@@ -403,8 +448,16 @@ def shot_beats(shots: list, ws: list, window: list[float]) -> Optional[list[dict
 
 
 def story_beats(story: dict, timing: dict) -> list[list[dict]]:
-    return [shot_beats(s.get("shots", []), ws, win) or beats(ws, win)
-            for s, ws, win in zip(stories(story), story_words(story, timing["words"]), text_windows(timing))]
+    out = []
+    for s, ws, win in zip(stories(story), story_words(story, timing["words"]), text_windows(timing)):
+        shots = s.get("shots", [])
+        said = [x for x in shots if not x.get("bite")]
+        ph = shot_beats(said, ws, win) or beats(ws, win)
+        k = next((i for i, x in enumerate(shots) if x.get("bite")), None)
+        if k is not None and timing.get("bite") and len(ph) == len(said):  # the agency's words: a slot of their own
+            ph.insert(k, {"start": timing["bite"][0], "end": timing["bite"][1], "text": "[прямая речь]"})
+        out.append(ph)
+    return out
 
 
 def cut_points(window: list[float], n: int, words: list, last_cap: float) -> list[float]:
@@ -465,6 +518,8 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
         if item["video"]:
             w, h, length = probe(src)
             a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
+            if not s.get("bite"):  # the last frames of the scene before would flash (Moscow 30.10: a TV anchor)
+                a = next((c + 0.04 for c in scene_cuts(src) if a < c < a + SNAP_S), a)
             if a + d > length:  # clip too short for this cut: loop back to its start
                 a = max(0.0, min(0.3, length - d))
             if d > length + 0.1:  # segment() holds the last frame
@@ -475,6 +530,19 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
         out.append(item)
         t += d
     return out
+
+
+SNAP_S = 0.8
+_CUTS: dict[str, list[float]] = {}
+
+
+def scene_cuts(src: Path) -> list[float]:
+    """Where the clip's own scenes change (ffmpeg scene score > 0.3), once per file."""
+    if str(src) not in _CUTS:
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(src), "-vf", "select=gt(scene\\,0.3),showinfo", "-an",
+                            "-f", "null", "-"], capture_output=True, text=True)
+        _CUTS[str(src)] = [float(x) for x in re.findall(r"pts_time:([0-9.]+)", r.stderr)]
+    return _CUTS[str(src)]
 
 
 def still_of(proj: Path, it: dict, last: bool = False) -> Optional[dict]:
@@ -557,7 +625,8 @@ def picture_warnings(story: dict) -> list[str]:
     out += [f"{Path(x).name} is shown in stories {sorted(ws)} — a picture belongs to its own story"
             for x, ws in where.items() if len(ws) > 1]
     for w, st in enumerate(stories(story)):  # footage stays whole (owner 2026-10-30: «футажи … остаются цельными»)
-        seq = [(s.get("src_orig") or s.get("src", ""), float(s.get("in_orig", s.get("in", 0)))) for s in st.get("shots", [])]
+        seq = [(s.get("src_orig") or s.get("src", ""), float(s.get("in_orig", s.get("in", 0)))) for s in st.get("shots", [])
+               if not s.get("bite")]
         clips = [(a, t) for a, t in seq if Path(a).suffix.lower() in VIDEO_EXT and "visuals/" not in a]
         # two long pieces of a clip in order (skipping a dark or dull part) are an edit; three in a row are chopping
         out += [f"story {w + 1}: {Path(a).name} is cut into pieces — let the clip run as one shot over its phrases"
@@ -1110,7 +1179,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     thesis_html, thesis_js, spans = theses(items)
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
-    caps = around(word_cues(timing["words"]), spans)
+    caps = around(word_cues(sorted(timing["words"] + timing.get("bite_words", []), key=lambda w: w[1])), spans)
     caps_html = "\n".join(
         f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
         f'<span>{esc(t)}</span></div>' for i, (a, b, t) in enumerate(caps))

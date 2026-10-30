@@ -862,3 +862,37 @@ def test_a_one_story_film_has_its_footage_cleaned(tmp_path: Path):
 
     story = {"narration": {"text": "x"}, "shots": [{"src": "media/sk.mp4", "in": 6}, {"src": "media/nak.mp4", "clean": "none"}]}
     assert list(cf.footage(tmp_path, story)) == ["media/sk.mp4@6"]
+
+
+def test_a_sound_bite_sits_between_two_takes_and_gets_its_own_slot(tmp_path: Path, monkeypatch):
+    story = {"narration": {"engine": "fishaudio", "text": "Его задержали. [bite] Ему грозит до пятнадцати лет."},
+             "bite": {"src": "media/sk.mp4", "in": 1.0, "out": 3.0},
+             "shots": [{"src": "media/a.mp4", "beat": "Его задержали"}, {"src": "media/sk.mp4", "in": 1.0, "bite": True},
+                       {"src": "media/b.mp4", "beat": "Ему грозит до"}]}
+    (tmp_path / "media").mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=5", "-f", "lavfi", "-i",
+                    "testsrc=size=160x90:d=5", "-shortest", str(tmp_path / "media" / "sk.mp4")], check=True)
+
+    def fake_speak(n, out):  # a take as long as its words, 0.4 s a word
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t",
+                        str(0.4 * len(n["text"].split())), str(out)], check=True)
+    monkeypatch.setattr(build, "speak", fake_speak)
+    A = tmp_path / "assets"
+    A.mkdir()
+    build.sound_bite(tmp_path, story, A)
+    span = json.loads((A / "bite.json").read_text())["span"]
+    assert abs(span[0] - (0.8 + build.BITE_GAP)) < 0.06 and abs(span[1] - span[0] - 2.0) < 0.01
+    words = [["Его", 0.3, 0.6], ["задержали.", 0.6, 1.1], ["Ему", 3.6, 3.9], ["грозит", 3.9, 4.2], ["до", 4.2, 4.3],
+             ["пятнадцати", 4.3, 4.8], ["лет.", 4.8, 5.1]]
+    timing = {"words": words, "duration": 6.0, "windows": [[0.0, 6.0]], "bite": [1.35, 3.35]}
+    ph = build.story_beats(story, timing)[0]
+    assert [p["text"] for p in ph] == ["Его задержали.", "[прямая речь]", "Ему грозит до пятнадцати лет."]
+    assert ph[1]["start"] == 1.35 and ph[2]["start"] >= 3.35
+
+
+def test_a_piece_never_opens_on_the_last_frames_of_the_scene_before(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(build, "scene_cuts", lambda src: [6.48, 11.76])
+    v = _clip(tmp_path / "v.mp4", 20.0)
+    story = {"shots": [{"src": "v.mp4", "in": 6.0}]}
+    item = build.slots(story, [0.0, 4.0], tmp_path)[0]
+    assert item["in"] == 6.52                                   # past the cut at 6.48, not the anchor's last frames
