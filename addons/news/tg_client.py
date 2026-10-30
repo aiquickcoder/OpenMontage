@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 SESSION = Path.home() / ".config" / "openmontage" / "telegram"
-PROXY = os.environ.get("TG_PROXY", "http://127.0.0.1:10809")
+PROXY = os.environ.get("TG_CLIENT_PROXY", "http://127.0.0.1:10809")  # not TG_PROXY: the factory bot's
 
 
 def client():
