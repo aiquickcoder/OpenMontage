@@ -954,6 +954,12 @@ def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, f
                   f'  tl.from("#th{k} em", {{backgroundSize: "0% 100%", duration: 0.35, ease: "power2.out", '
                   f'stagger: 0.1}}, {a + 0.35:.2f});')
         spans.append((a, round(a + d, 3)))
+    # a thesis gives way to the next one of its story: never two on screen
+    for k in range(len(marked) - 1):
+        (n, it), (_, nxt) = marked[k], marked[k + 1]
+        if it.get("w") == nxt.get("w") and spans[k][1] > nxt["start"]:
+            spans[k] = (spans[k][0], nxt["start"])
+            html[k] = re.sub(r'data-duration="[0-9.]+"', f'data-duration="{round(nxt["start"] - it["start"], 3)}"', html[k], 1)
     return html, js, spans
 
 
@@ -976,9 +982,6 @@ def thesis_warnings(story: dict) -> list[str]:
         ts = [s["thesis"] for s in shots if s.get("thesis")]
         if shots and not shots[0].get("thesis"):
             out.append(f"story {w + 1}: no thesis on its first shot — every story opens with one (owner 2026-10-30)")
-        on = [j for j, s in enumerate(shots) if s.get("thesis")]
-        out += [f"story {w + 1}: the thesis of shot {j + 1} comes right after the one of shot {i + 1} — let the "
-                f"first one stay" for i, j in zip(on, on[1:]) if j == i + 1]
         out += [f"story {w + 1}: thesis «{t}» is {len(t.replace('*', '').replace('|', ''))} characters — at most "
                 f"{THESIS_MAX}" for t in ts if len(t.replace("*", "").replace("|", "")) > THESIS_MAX]
         if len(ts) > 2:

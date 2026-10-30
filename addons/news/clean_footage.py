@@ -291,6 +291,7 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
     use: dict[str, dict] = {}
     timing_file, beats_file = proj / "assets" / "timing.json", proj / "assets" / "beats.json"
     if timing_file.is_file():
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # run as a script: the repo is not on the path
         from addons.news import build as nb
 
         phrases = nb.story_beats(story, json.loads(timing_file.read_text(encoding="utf-8")))

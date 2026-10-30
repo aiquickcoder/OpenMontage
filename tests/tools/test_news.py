@@ -608,7 +608,6 @@ def test_thesis_warnings_keep_them_short_and_few():
                          {"shots": [{}, {"thesis": "c"}]}]}
     w = build.thesis_warnings(story)
     assert any("50 characters" in x for x in w) and any("4 theses" in x for x in w)
-    assert any("shot 2 comes right after the one of shot 1" in x for x in w)
     assert any(x.startswith("story 2: no thesis on its first shot") for x in w)
 
 
@@ -789,3 +788,11 @@ def test_moscow_is_not_the_moscow_region_and_sexual_violence_is_caught_in_any_wo
                          "text": "В Москве задержаны подозреваемые: один совершил насильственные действия сексуального характера"},
                         now, 36, set(), set(), "moscow")
     assert "сексуальное насилие" in sexual["skip"]
+
+
+def test_a_thesis_gives_way_to_the_next_one(tmp_path: Path):
+    v = _clip(tmp_path / "v.mp4")
+    its = [{"path": v, "video": True, "start": 0.0, "dur": 2.0, "w": 0, "thesis": "Хук"},
+           {"path": v, "video": True, "start": 2.0, "dur": 6.0, "w": 0, "thesis": "Факт"}]
+    html, _, spans = build.theses(its)
+    assert spans == [(0.0, 2.0), (2.0, 8.0)] and 'data-duration="2.0"' in html[0]
