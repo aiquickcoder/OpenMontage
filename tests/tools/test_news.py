@@ -906,7 +906,7 @@ def test_a_one_story_film_never_crops_a_picture(tmp_path: Path):
         return f
     wide, square, tall, phone = clip("wide", "1280x720"), clip("square", "640x640"), clip("tall", "976x1266"), clip("phone", "720x1280")
     assert build.frame_box({"path": wide, "fit": True}) == (1080, 608, 0, 656, False)    # 16:9 keeps its sides
-    assert build.frame_box({"path": square, "fit": True}) == (1040, 1040, 20, 440, False)  # top and bottom kept
+    assert build.frame_box({"path": square, "fit": True}) == (1080, 1080, 0, 440, False)  # whole, no side margins
     bw, bh, x, y, _ = build.frame_box({"path": tall, "fit": True})
     assert y == 440 and abs(bw / bh - 976 / 1266) < 0.01 and bw <= 1080
     bw, bh, x, y, _ = build.frame_box({"path": phone, "fit": True})

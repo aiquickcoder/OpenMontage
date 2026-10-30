@@ -750,19 +750,22 @@ FIT_TOP, FIT_BOTTOM, FIT_FLOOR = 440, 1480, 1900  # a one-story film: under the 
 
 def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
     """Where a cut's picture goes: (width, height, x, y, cover). A one-story film ("fit") shows it whole, never cropped
-    (owner 2026-10-30: «если фото вертикальное, то не нужно его обрезать»): a wide one across the frame, centred
-    between the hook card and the captions; a tall one from under the card down to the floor at most; blurred copy
-    around. Otherwise the old box: covered and cropped to 1080 x 760…1000, a portrait source over the whole frame."""
+    (owner 2026-10-30: «если фото вертикальное, то не нужно его обрезать»): a wide or square one across the whole
+    width, centred between the hook card and the captions; a tall one from under the card down to the floor at most,
+    the full width when that is nearly so anyway (no thin side margins — «границы слева и справа убери»); a blurred
+    copy around. Otherwise the old box: covered and cropped to 1080 x 760…1000, a portrait source over the whole frame."""
     w, h, _ = probe(item["path"])
     if item.get("crop"):
         w, h = item["crop"][2], item["crop"][3]
     if item.get("fit"):
-        if h <= w:
-            bh = min(round(W * h / w), FIT_BOTTOM - FIT_TOP)
-            bw, y = min(W, round(bh * w / h)), FIT_TOP + (FIT_BOTTOM - FIT_TOP - bh) // 2
+        if h <= w:  # wide or square: always the full width, never side margins («границы слева и справа убери»)
+            bw, bh = W, round(W * h / w)
+            y = FIT_TOP + max(0, (FIT_BOTTOM - FIT_TOP - bh) // 2)
         else:
             bh = min(FIT_FLOOR - FIT_TOP, round(W * h / w))
             bw, y = min(W, round(bh * w / h)), FIT_TOP
+            if bw >= 0.85 * W:  # nearly full width anyway: the full width (a little lower), no thin margins
+                bw, bh = W, round(W * h / w)
         bw, bh = bw - bw % 2, bh - bh % 2
         return bw, bh, (W - bw) // 2, y, False
     full = h / w > 1.4  # portrait source: fill the whole frame
