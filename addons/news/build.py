@@ -458,6 +458,8 @@ def story_beats(story: dict, timing: dict) -> list[list[dict]]:
         ph = shot_beats(said, ws, win) or beats(ws, win)
         k = next((i for i, x in enumerate(shots) if x.get("bite")), None)
         if k is not None and timing.get("bite") and len(ph) == len(said):  # the agency's words: a slot of their own
+            if k:
+                ph[k - 1] = {**ph[k - 1], "end": timing["bite"][0]}
             ph.insert(k, {"start": timing["bite"][0], "end": timing["bite"][1], "text": "[прямая речь]"})
         out.append(ph)
     return out

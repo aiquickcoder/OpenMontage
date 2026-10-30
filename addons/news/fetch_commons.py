@@ -42,6 +42,8 @@ for t in titles:
         src = ii.get("thumburl") or ii.get("url")
         if not src: print("  ! no url:", t); continue
         stem, ext = os.path.splitext(t.replace("File:", ""))
+        if ext.lower() not in (".jpg", ".jpeg", ".png", ".webp"):  # a search also finds PDFs, scans, audio
+            print("  · skip (not a photo):", t); continue
         fn = re.sub(r'[^\wА-Яа-яЁё.-]', '_', stem)[:60] + ext.lower()  # keep Cyrillic and the extension
         dst = os.path.join(outdir, fn)
         try:
