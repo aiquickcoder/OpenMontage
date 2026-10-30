@@ -895,7 +895,7 @@ THESIS_CSS = """
     @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
     .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 56px 44px;
               background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.46) 45%, rgba(0,0,0,.74)); }
-    .thesis .t { font-family: "PT Sans Narrow", "Arial Narrow", sans-serif; font-weight: 700; font-size: 92px;
+    .thesis .t { font-family: "PT Sans Narrow", sans-serif; font-weight: 700; font-size: 92px;
                  line-height: 1.04; text-transform: uppercase; letter-spacing: .5px; color: #fff;
                  text-shadow: 0 3px 16px rgba(0,0,0,.7), 0 1px 3px rgba(0,0,0,.85); }
     .thesis em { font-style: normal; padding: 0 12px; border-radius: 6px; text-shadow: none;
