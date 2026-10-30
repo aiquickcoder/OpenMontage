@@ -22,7 +22,8 @@ theses at the bottom. Find real frames when the post is thin: `sources.py search
 article's media (`article_video.py`), `library.py find`, `fetch_commons.py`, a map; put what you used into the base
 (`library.py add`). Tell the whole story: read the agency's full posts (tg_client.py) and earlier posts on the same
 case (the article, date, place, how it happened) and transcribe the agency video's sound; put the agency's own
-words in as a sound bite (`[bite]` + `"bite"` + a `"bite": true` shot, README); say the maximum term when the article
+words in as a sound bite only where its representative speaks on camera (`[bite]` + `"bite"` + a `"bite": true`
+shot, README; never an off-screen agency narrator — its facts go into our text); say the maximum term when the article
 is known («Ему грозит до пятнадцати лет», sanction checked in the УК); end with «Подписывайтесь, чтобы первыми знать,
 что происходит в городе.». Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
