@@ -5,7 +5,8 @@
     .venv/bin/python addons/news/yt_footage.py search "ДТП Лево-Булачная Казань" [--n 8] [--fresh]
         candidates: id, length, channel, title (--fresh: the newest first)
     .venv/bin/python addons/news/yt_footage.py find <id|url> "перекрёсток красный" [--n 5]
-        YouTube's own transcript of the video (captions, Russian), the moments where those words are said
+        YouTube's own transcript of the video (captions, Russian; none — its sound transcribed here), the moments
+        where those words are said
     .venv/bin/python addons/news/yt_footage.py cut <id|url> <from> <to> projects/<slug>/media/<name>.mp4 [--tags …]
         only that part (≤720p, cut on the second); <name>.json keeps the source, the channel, the times and what is
         said; the piece goes to the base of pictures (library.py) with the tags
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -75,12 +77,30 @@ def moments(words: list[tuple[str, float]], query: str, window: float = 8.0, n: 
     return best[:n]
 
 
+def _proxy_args() -> list[str]:
+    """yt-dlp hands a section download to ffmpeg, which would go to googlevideo directly (blocked from the server):
+    the factory egress for it too."""
+    p = os.environ.get("https_proxy") or os.environ.get("HTTPS_PROXY")
+    return ["--downloader-args", f"ffmpeg_i:-http_proxy {p}"] if p else []
+
+
 def transcript(ref: str) -> list[tuple[str, float]]:
+    """YouTube's own captions; a short news clip often has none — then its sound, transcribed here (whisper)."""
     with tempfile.TemporaryDirectory() as d:
         subprocess.run([*YTDLP, "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", "ru.*,ru",
                         "--sub-format", "json3", "-o", f"{d}/v", url_of(ref)], capture_output=True, timeout=180)
         subs = sorted(Path(d).glob("v*.json3"), key=lambda f: ("orig" not in f.name, f.name))
-        return words_of(json.loads(subs[0].read_text(encoding="utf-8"))) if subs else []
+        if subs:
+            return words_of(json.loads(subs[0].read_text(encoding="utf-8")))
+        subprocess.run([*YTDLP, "-f", "ba/b", "-x", "--audio-format", "wav", "-o", f"{d}/a.%(ext)s", url_of(ref)],
+                       capture_output=True, timeout=600)
+        audio = next(Path(d).glob("a.*"), None)
+        if not audio:
+            return []
+        sys.path.insert(0, str(HERE.parents[1]))
+        from addons.news.build import transcribe
+
+        return [(w["word"].strip(), round(w["start"], 2)) for w in transcribe(audio)]
 
 
 def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None) -> Path:
@@ -88,8 +108,8 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
     meta = json.loads(subprocess.run([*YTDLP, "--skip-download", "-J", url_of(ref)], capture_output=True, text=True,
                                      timeout=120, check=True).stdout)
     subprocess.run([*YTDLP, "-f", "bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]/b", "--download-sections",
-                    f"*{t0}-{t1}", "--force-keyframes-at-cuts", "--merge-output-format", "mp4", "-o", str(dst),
-                    url_of(ref)], check=True, timeout=900)
+                    f"*{t0}-{t1}", "--force-keyframes-at-cuts", "--merge-output-format", "mp4", *_proxy_args(),
+                    "-o", str(dst), url_of(ref)], check=True, timeout=900)
     said = " ".join(w for w, t in transcript(ref) if t0 <= t < t1)
     info = {"source": meta.get("webpage_url"), "channel": meta.get("channel") or meta.get("uploader"),
             "title": meta.get("title"), "uploaded": meta.get("upload_date"), "from": t0, "to": t1, "said": said,
