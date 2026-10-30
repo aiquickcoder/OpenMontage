@@ -915,3 +915,17 @@ def test_a_one_story_film_never_crops_a_picture(tmp_path: Path):
     out = tmp_path / "s.mp4"
     build.segment({"path": phone, "dur": 0.5, "video": True, "in": 0.0, "fit": True}, out)
     assert abs(build.probe(out)[2] - 0.5) < 0.1
+
+
+def test_youtube_captions_give_the_moment_the_words_are_said():
+    from addons.news import yt_footage as yt
+
+    json3 = {"events": [{"tStartMs": 0, "segs": [{"utf8": "Сегодня"}, {"utf8": " в", "tOffsetMs": 400}]},
+                        {"tStartMs": 12000, "segs": [{"utf8": "на перекрёстке"}, {"utf8": " проехала", "tOffsetMs": 900},
+                                                     {"utf8": " на красный", "tOffsetMs": 1500}]},
+                        {"tStartMs": 40000, "segs": [{"utf8": "красный"}, {"utf8": " свет", "tOffsetMs": 300}]}]}
+    words = yt.words_of(json3)
+    assert words[2] == ("на", 12.0) and words[4] == ("проехала", 12.9)
+    m = yt.moments(words, "перекрёсток красный проехала")
+    assert m[0]["from"] == 11.0 and m[0]["score"] == 3 and "перекрёстке" in m[0]["text"]   # the best place first
+    assert yt.url_of("CgMpcYcJqZM") == "https://www.youtube.com/watch?v=CgMpcYcJqZM"
