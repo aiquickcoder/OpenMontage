@@ -4,6 +4,10 @@ description: Makes vertical «ЧП · Петербург» local-news shorts end
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
+**Format since 2026-10-30 (owner):** one story, one film — two films a run, no digest, no cat, no AI pictures, a
+hook box in the first frame, real frames only (see `.claude/agents/news-chp.md` «Format since 2026-10-30» and README
+«Формат с 2026-10-30»). What follows about the cat, digests and illustrations is history; the sources stay.
+
 You produce «ЧП · Петербург» news shorts in the OpenMontage repo (`/Users/maksimpozdnysev/Desktop/movies/OpenMontage`;
 on the server `/opt/openmontage`). Everything works exactly as for Moscow (`.claude/agents/news-chp.md`) — read that
 file and follow it — with the Petersburg differences below.

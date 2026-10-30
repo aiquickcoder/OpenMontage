@@ -57,6 +57,9 @@ CUT_MIN, SNAP_S = 1.8, 0.6  # a cut moves up to SNAP_S to land between words; no
 PIECE_S, LAST_PIECE_S = 3.35, 5.95  # cleaned post clips are 3.4 s, a story's last one 6 s (clean_footage.py)
 TAIL_S = 1.2           # hold after the last word
 CARD_ZOOM = 0.07       # a still's slow push-in (segment); "zoom": [from, to] on a cut overrides it
+PAN_Z = 1.12           # a still's sideways move (owner 2026-10-30: «движение камеры слева направо»): this much closer,
+                       # travelling across; stills take turns: pan, push-in, pan… ("move": pan|pan-left|zoom on a shot)
+HOOK_S = 3.5           # the hook box of a one-story film stays this long from the first frame
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
 BOX_Y = 930            # centre line of the picture box (the plate sits above it, captions below)
 BOX_MIN, BOX_MAX = 760, 1000
@@ -459,7 +462,7 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
             out.append({**s, "path": None, "start": round(t0 + t, 3), "dur": d, "video": False})  # storyboard only
             t += d
             continue
-        item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT}
+        item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT, "n": i}
         if item["video"]:
             w, h, length = probe(src)
             a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
@@ -667,6 +670,13 @@ def box_h(w: int, h: int) -> int:
     return int(min(BOX_MAX, max(BOX_MIN, W * h / w)))
 
 
+def still_move(item: dict) -> str:
+    """How a still moves: a card's own "zoom" or the shot's "move", else stills take turns — pan, push-in, pan…"""
+    if item.get("zoom"):
+        return "zoom"
+    return item.get("move") or ("pan" if item.get("n", 0) % 2 == 0 else "zoom")
+
+
 def segment(item: dict, dst: Path) -> None:
     src, d = item["path"], item["dur"]
     w, h, _ = probe(src)
@@ -692,10 +702,15 @@ def segment(item: dict, dst: Path) -> None:
             cv2.imwrite(str(clean), remove_sparkle(cv2.imread(str(src))))
             src = clean
         inp = ["-loop", "1", "-t", f"{d:.3f}", "-i", str(src)]
-        z0, z1 = item.get("zoom", (1.0, 1.0 + CARD_ZOOM))
+        move = still_move(item)
+        if move == "zoom":
+            z0, z1 = item.get("zoom", (1.0, 1.0 + CARD_ZOOM))
+            z, x = f"{z0:g}+{z1 - z0:.4f}*on/{frames}", "iw/2-(iw/zoom/2)"
+        else:  # across the picture at a fixed closeness, left to right (or back)
+            k = f"on/{max(1, frames - 1)}" if move == "pan" else f"(1-on/{max(1, frames - 1)})"
+            z, x = f"{PAN_Z:g}", f"(iw-iw/zoom)*{k}"
         fg = (f"[b]scale={W * 3}:{bh * 3}:force_original_aspect_ratio=increase,crop={W * 3}:{bh * 3},"
-              f"zoompan=z='{z0:g}+{z1 - z0:.4f}*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
-              f"s={W}x{bh}:fps={FPS}[fg]")
+              f"zoompan=z='{z}':x='{x}':y='ih/2-(ih/zoom/2)':d={frames}:s={W}x{bh}:fps={FPS}[fg]")
     pre = f"crop={crop[2]}:{crop[3]}:{crop[0]}:{crop[1]}," if crop else ""
     # a clip shorter than its cut (a slower voice than the one its pieces were cleaned for) holds its last frame
     hold = f"tpad=stop_mode=clone:stop_duration={d:.3f}," if item["video"] else ""
@@ -915,6 +930,33 @@ THESIS_CSS = """
                  -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
 
 
+HOOK_CSS = """
+    #hook { position: absolute; left: 50px; right: 50px; top: 1120px; z-index: 8; text-align: center; }
+    #hook .box { display: inline-block; background: #fff; color: #111; border-radius: 24px; padding: 20px 28px 18px;
+                 font-family: "Inter", sans-serif; font-weight: 800; font-size: 62px; line-height: 1.1;
+                 text-transform: uppercase; box-shadow: 0 8px 28px rgba(0,0,0,.4); }
+    #hook .box svg { width: 62px; height: 62px; vertical-align: -8px; margin: 0 8px; }
+    #hook .d { font-size: 44px; font-weight: 700; text-transform: none; margin-top: 8px; }"""
+SIREN = ('<svg viewBox="0 0 64 64"><g stroke="#e3001b" stroke-width="5" stroke-linecap="round"><path d="M6 22l8 4"/>'
+         '<path d="M58 22l-8 4"/><path d="M32 4v8"/><path d="M14 8l5 7"/><path d="M50 8l-5 7"/></g>'
+         '<path d="M18 50V36a14 14 0 0 1 28 0v14z" fill="#e3001b"/><path d="M25 36a7 7 0 0 1 7-7" stroke="#fff" '
+         'stroke-width="4" fill="none" stroke-linecap="round"/><rect x="12" y="50" width="40" height="9" rx="3" '
+         'fill="#222"/></svg>')  # 🚨 drawn, not an emoji font (HyperFrames wants every font declared)
+
+
+def hook_html(story: dict) -> tuple[str, str]:
+    """A one-story film's hook (owner 2026-10-30, a TikTok news look: «🚨 СРОЧНЫЕ НОВОСТИ: МИР ГОТОВИТСЯ К... 🚨
+    (28-ое Октября)»): black capitals on a white box with a siren each side and the date under it, there from the
+    first frame (the cover) for HOOK_S seconds."""
+    if not story.get("hook"):
+        return "", ""
+    date = f'<div class="d">({esc(story["date"])})</div>' if story.get("date") else ""
+    html = (f'    <div id="hook" class="clip" data-start="0" data-duration="{HOOK_S}" data-track-index="7">'
+            f'<div class="box">{SIREN}{esc(story["hook"])}{SIREN}{date}</div></div>')
+    js = f'  tl.to("#hook", {{opacity: 0, y: -24, duration: 0.3, ease: "power2.in"}}, {HOOK_S - 0.3:.2f});'
+    return html, js
+
+
 def thesis_markup(text: str) -> str:
     """«Задержаны *трое* иностранцев» → the starred words on our red marker; «|» breaks the line by hand."""
     return "<br>".join(re.sub(r"\*([^*]+)\*", r"<em>\1</em>", esc(part.strip())) for part in text.split("|"))
@@ -928,7 +970,7 @@ def thesis_bottom(it: dict) -> int:
     return 1480 if h / w > 1.4 else BOX_Y + box_h(w, h) // 2  # full frame: just above the captions (top 1500)
 
 
-def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, float]]]:
+def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[str], list[tuple[float, float]]]:
     """HTML, timeline and the spans they hold the screen for. A thesis starts on its cut and stays over the next ones
     of its story ("span", 2 by default) in one place — on the edge of its first picture, so it does not jump at the
     cut; the running captions give way to it (it says the same phrases shorter) and come back after it."""
@@ -936,7 +978,7 @@ def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, f
     marked = [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]
     for k, (n, it) in enumerate(marked):
         story = [x for x in items[n:] if x.get("w") == it.get("w")]
-        a = it["start"]
+        a = max(it["start"], not_before)  # a hook holds the first seconds
         if it.get("span"):
             run = story[:int(it["span"])]
             d = round(run[-1]["start"] + run[-1]["dur"] - a, 3)
@@ -1062,10 +1104,11 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
         anchor_js = "\n".join(js + tv_js)
-    thesis_html, thesis_js, spans = theses(items)
+    hook_div, hook_js = hook_html(story)
+    thesis_html, thesis_js, spans = theses(items, HOOK_S if hook_div else 0.0)
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
-    caps = around(word_cues(timing["words"]), spans)
+    caps = around(word_cues(timing["words"]), spans + ([(0.0, HOOK_S)] if hook_div else []))
     caps_html = "\n".join(
         f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
         f'<span>{esc(t)}</span></div>' for i, (a, b, t) in enumerate(caps))
@@ -1130,7 +1173,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         plate_html.append(
             f'    <div id="plate{w}" class="clip plate" data-start="{p0}" data-duration="{w1 - p0:.3f}" data-track-index="3">\n'
             f'      <span class="tag">{esc(story.get("tag", "ЧП · МОСКВА"))}</span><span class="date">{date}</span>\n'
-            f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n    </div>')
+            + ("" if story.get("hook") else  # one story: the hook carries the headline, the plate is the brand
+               f'      <div class="head">{esc(s["headline"]) if len(S_) > 1 else head}</div>\n') + '    </div>')
         if p0 >= 0.05:  # a plate on the first frame (a cold open, a short) is the cover: there at once
             plate_js.append(
                 f'  tl.from("#plate{w} .tag", {{ x: -60, opacity: 0, duration: 0.35, ease: "power3.out" }}, {p0 + 0.05:.2f});\n'
@@ -1187,7 +1231,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
                  background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
                  text-shadow: 0 2px 6px rgba(0,0,0,.6); }}
-    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}
+    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}
   </style>
 </head>
 <body>
@@ -1198,6 +1242,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {chr(10).join(plate_html)}
 {chr(10).join(chips)}
 {chr(10).join(thesis_html)}
+{hook_div}
 {caps_html}
     <div id="fade" class="clip" data-start="0" data-duration="{duration}" data-track-index="8"></div>
 {audio}
@@ -1209,6 +1254,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {lower_js}
 {anchor_js}
 {chr(10).join(thesis_js)}
+{hook_js}
 {caps_js}
 {audio_js}
 {"" if story.get("loop") else f'  tl.to("#fade", {{ opacity: 1, duration: 0.6, ease: "power1.in" }}, {duration - 0.6:.2f});'}

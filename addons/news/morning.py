@@ -1,6 +1,7 @@
-"""The unattended morning digest: Claude Code headless runs the news agent so the film is in the owner's bot by 9:00.
+"""The unattended run: Claude Code headless runs the news agent so the films are in the owner's bot on time — since
+2026-10-30 two one-story films a run (projects/<slug>-1, -2), no digest.
 
-    .venv/bin/python addons/news/morning.py [--city russia] [--deadline 08:45]      # a new digest from today's news
+    .venv/bin/python addons/news/morning.py [--city russia] [--deadline 08:45]      # today's two films
     .venv/bin/python addons/news/morning.py --project projects/<slug> [--deadline HH:MM]  # finish a started one
 
 Timers (all MSK): news-morning-ru 06:00 (in the bot by 9:00); news-evening-kazan 17:30, -moscow 17:50, -spb 18:10
@@ -25,7 +26,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 MSK = timezone(timedelta(hours=3))
 AGENTS = {"russia": "news-chp-russia", "moscow": "news-chp", "kazan": "news-chp-kazan", "spb": "news-chp-spb"}
-SLUG = {"russia": "news-ru-{d}", "moscow": "news-vypusk-{d}", "kazan": "news-kzn-vypusk-{d}", "spb": "news-spb-vypusk-{d}"}
+SLUG = {"russia": "news-ru-{d}", "moscow": "news-msk-{d}", "kazan": "news-kzn-{d}", "spb": "news-spb-{d}"}
+VIDEOS = 2  # one story, one film (owner 2026-10-30: «1 ролик на 1 новость», «2 лучших новости» a run)
 RESULT = re.compile(r"^MORNING_RESULT:\s*(READY|FAILED)\s*(.*)$", re.M)
 
 
@@ -51,9 +53,10 @@ def main() -> None:
         stop += timedelta(days=1)
     slug = a.project.name if a.project else a.slug or SLUG[a.city].format(
         d=now.strftime("%d-%m") + ("" if now.hour < 12 else "-vecher"))
-    if a.slug and (REPO / "projects" / slug / "story.json").is_file():
-        sys.exit(f"projects/{slug} exists: an extra digest needs a new name")
-    proj = REPO / "projects" / slug
+    films = [slug] if a.project else [f"{slug}-{n}" for n in range(1, VIDEOS + 1)]
+    if a.slug and any((REPO / "projects" / f / "story.json").is_file() for f in films):
+        sys.exit(f"projects/{slug}-… exists: an extra run needs a new name")
+    proj = REPO / "projects" / films[0]  # the run's log lives with its first film
     proj.mkdir(parents=True, exist_ok=True)
     agent = (REPO / ".claude" / "agents" / f"{AGENTS[a.city]}.md").read_text(encoding="utf-8")
     prompt = "\n".join([
@@ -65,24 +68,31 @@ def main() -> None:
          "build.py --voice-only lists (assets/beats.json), write illustrations for what has no footage, run "
          "clean_footage.py --plan and open every qa/wm_*.jpg, give each NEEDS A LOOK file its media/wm.json "
          "decision, then produce.py."
-         if a.project else f"Make today's digest as the agent below describes. Project: projects/{slug}."),
+         if a.project else
+         f"Make today's {VIDEOS} films — one story each (owner 2026-10-30: one story, one film; no digest, no cat, "
+         f"no AI pictures): the {VIDEOS} best stories pick.py offers that have real pictures, in the one-story "
+         f"format of the README «Формат с 2026-10-30» (a hook, the story's own footage, a loop). Projects: "
+         + ", ".join(f"projects/{f}" for f in films) + ". Finish each with produce.py --send --kinescope."),
         f"Today is {now:%Y-%m-%d}.",
         *([f"The owner's remarks on this digest (fix every one): {a.note}"] if a.note else []),
-        f"The film must be sent to the owner's Telegram and Kinescope before {a.deadline} MSK: keep the work lean — "
-        "reuse the night pre-clean (clean_footage.py cuts from it). AI pictures at most the city's cities.json "
-        "ai_max_share (0.3 now): prefer stories with footage of their own and fill phrases from it first — "
-        "other seconds of the video, other channels' media of the same event, crops (\"crop\": [x, y, w, h]), "
-        "Commons photos of the very place, a map of the place (\"map\", README «Кадр из данных»), the photo of a news "
-        "site's article about it and other seconds of an agency's video; under a phrase nothing real can show, a real "
-        "frame of the same story goes instead of an AI picture (owner 2026-10-30) unless it contradicts the phrase; "
-        "illustrations only where no real frame of the story is left. Never another story's picture or an unrelated "
-        "place; check build.py --storyboard before the render.",
+        f"The films must be in the owner's Telegram and on Kinescope before {a.deadline} MSK: keep the work lean — "
+        "reuse the night pre-clean (clean_footage.py cuts from it). NO AI pictures at all (owner 2026-10-30; "
+        "cities.json ai_max_share = 0, build.py refuses them): only real frames — the post's media of every channel "
+        "(big Telegram videos come whole through tg_client.py), the agency's own video (sources.py search \"<event "
+        "words>\" finds it on Rutube), a news site's article photo or video (article_video.py), the base of pictures "
+        "(library.py find <city> <place>), a Commons photo of the very place (fetch_commons.py — it adds to the base), "
+        "a map of the place. Video runs whole (one shot per continuous piece); stills move (pan / push-in, by "
+        "themselves). A story without enough real frames is not taken — take the next one. Every film opens on its "
+        "hook (story.json \"hook\": the strongest honest bait, README «Хук») and its hardest picture. Put every new "
+        "real picture you used into the base (library.py add … --tags city,place,agency). Check build.py "
+        "--storyboard before the render.",
         "Server specifics: run python tools as the current user from /opt/openmontage with .venv/bin/python; t.me and "
-        "OpenRouter need https_proxy=http://127.0.0.1:10809; the Flow browser is on DISPLAY=:99. Do not print secrets.",
+        "OpenRouter need https_proxy=http://127.0.0.1:10809. Do not print secrets.",
         "To wait for a background job, wait on its PID (`while kill -0 $PID`) or on a file it writes — never on "
         "`pgrep -f '<command text>'`: it matches your own waiting shell and never ends (two agents hung for hours on "
         "2026-10-29). Once produce.py has printed PRODUCE_RESULT, finish with the MORNING_RESULT line right away.",
-        "End with exactly one line: MORNING_RESULT: READY projects/<slug> — or MORNING_RESULT: FAILED <reason>.",
+        "End with exactly one line: MORNING_RESULT: READY " + " ".join(f"projects/{f}" for f in films)
+        + " (only those delivered) — or MORNING_RESULT: FAILED <reason>.",
         "", "AGENT INSTRUCTIONS:", agent])
     env = dict(os.environ)
     proxy = env.get("FACTORY_CLAUDE_PROXY", "")
@@ -101,15 +111,16 @@ def main() -> None:
         out = f"{e.stdout or ''}\n[stopped at the {a.deadline} deadline]"
     (proj / "morning.log").write_text(f"PROMPT:\n{prompt}\n\nOUTPUT:\n{out}", encoding="utf-8")
     found = RESULT.findall(out)
-    delivered = proj / "kinescope.json"
-    if not found and delivered.is_file() and delivered.stat().st_mtime >= started:
+    delivered = [f for f in films if (REPO / "projects" / f / "kinescope.json").is_file()
+                 and (REPO / "projects" / f / "kinescope.json").stat().st_mtime >= started]
+    if not found and delivered:
         # text output keeps only the agent's last message; one that said its result earlier and then «Task complete»
         # was reported as FAILED although the film was out (Moscow 29.10). The film on Kinescope is the proof.
-        found = [("READY", f"projects/{slug} (delivered; the agent's last message had no result line)")]
+        found = [("READY", " ".join(f"projects/{f}" for f in delivered) + " (delivered; no result line)")]
     status, detail = found[-1] if found else ("FAILED", "no MORNING_RESULT line: " + out.strip()[-200:])
     print(f"MORNING_RESULT: {status} {detail}", flush=True)
     if status != "READY":
-        telegram(f"⚠️ Утренний выпуск «{AGENTS[a.city]}» не собрался: {detail[:500]}\nЛог: projects/{slug}/morning.log")
+        telegram(f"⚠️ Ролики «{AGENTS[a.city]}» не собрались: {detail[:500]}\nЛог: projects/{films[0]}/morning.log")
         sys.exit(1)
 
 

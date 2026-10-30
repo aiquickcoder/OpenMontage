@@ -11,11 +11,21 @@ First read `addons/news/README.md`: the pipeline, the `story.json` format and th
 Then read `addons/news/story.example.json`, the approved reference (the «Узкое» fire, footage from the post).
 `projects/news-novatorskaya-shpric/story.json` is the approved reference for an event with no footage.
 
+## Format since 2026-10-30 (owner) — read this first
+One story, one film: no digest, no cat, **no AI pictures at all**. A run makes two films from the two best stories
+with real pictures (README «Формат с 2026-10-30»): a one-story `story.json` (no `stories`, no `anchor`;
+`narration.text` 35–60 words, `"hook"`, `"loop": true`), its post's footage running whole, stills that move by
+themselves, a hook box in the first frame — the strongest honest bait («ДО 10 ЛЕТ ЗА СТЕРОИДЫ…», «ЖЁСТКОЕ ЗАДЕРЖАНИЕ
+СОБР», «НОВАЯ СХЕМА ОБМАНА»), then fact theses. Find real frames when the post is thin: `sources.py search`, the
+article's media (`article_video.py`), `library.py find`, `fetch_commons.py`, a map; put what you used into the base
+(`library.py add`). Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
+below about the cat, digests and illustrations are history.
+
 ## Defaults (owner's choices, 2026-10-24)
 - About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.
 - Kazan has its own agent, `news-chp-kazan` — same pipeline, other channels and anchor (README «Города»).
 - Cat anchor `addons/news/anchor_cat` reads the intro and the fixed outro; the story is voice-over.
-- Voice (owner, 2026-10-28): the Fish Audio voice «Энергичный Рассказчик» the owner picked (2026-10-29), model Drama 3 — `"narration": {"engine": "fishaudio", "voice": "48ec28a45588422b977a86460c11977f", "model": "drama-3", "fallback": {"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"}}` — the same voice for
+- Voice (owner, 2026-10-28): the Fish Audio voice «Энергичный Рассказчик» the owner picked (2026-10-29), model Drama 3 — `"narration": {"engine": "fishaudio", "voice": "6731d6ce3b30456bae0a938a93d6d639", "model": "drama-3", "fallback": {"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"}}` — the same voice for
   the whole film. Abbreviations stay as written (ЧП, МВД, СИЗО…); never spell them out. cedar is only the fallback.
 - 3-second cuts, music `tension_suspense_building_delosound.mp3` at 0.22 (owner: must be audible), `sound` block (place ambience +
   whoosh) and per-shot `sfx` from `/opt/openmontage/sfx` — see README «Звук».

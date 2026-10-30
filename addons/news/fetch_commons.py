@@ -3,6 +3,10 @@ Usage: python3 -I fetch_commons.py <outdir> <title1> [title2 ...]
 Также режим поиска: python3 -I fetch_commons.py <outdir> --search "query" <n>
 """
 import sys, os, re, json, urllib.request, urllib.parse
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import library  # noqa: E402  (every found photo goes to the base of real pictures, owner 2026-10-30)
 
 API = "https://commons.wikimedia.org/w/api.php"
 UA = "cat-news-research/1.0 (illustration sourcing; contact: local)"
@@ -44,8 +48,14 @@ for t in titles:
             req = urllib.request.Request(src, headers={"User-Agent": UA})
             open(dst, "wb").write(urllib.request.urlopen(req, timeout=60).read())
             print(f"  ✓ {fn}  [{lic}]  {art[:40]}")
-            creds.write(f"{fn}\n  {t}\n  Author: {art}\n  License: {lic}\n"
-                        f"  Source: https://commons.wikimedia.org/wiki/{urllib.parse.quote(t.replace(' ','_'))}\n\n")
+            page = f"https://commons.wikimedia.org/wiki/{urllib.parse.quote(t.replace(' ','_'))}"
+            creds.write(f"{fn}\n  {t}\n  Author: {art}\n  License: {lic}\n  Source: {page}\n\n")
+            try:
+                tags = (q.split() if titles and len(sys.argv) > 2 and sys.argv[2] == "--search" else []) + ["commons"]
+                library.add(Path(dst), tags + re.findall(r"[А-Яа-яЁёA-Za-z]{4,}", stem)[:6],
+                            credit=f"Фото: {art} / Wikimedia, {lic}", license=lic, source=page)
+            except OSError as e:
+                print("  ! library:", e)
         except Exception as e:
             print("  ! fail", t, e)
 creds.close()

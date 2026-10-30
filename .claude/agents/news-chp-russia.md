@@ -4,6 +4,10 @@ description: Makes the daily «Пушистое ЧП · Россия» digest en
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
+**Format since 2026-10-30 (owner):** one story, one film — two films a run, no digest, no cat, no AI pictures, a
+hook box in the first frame, real frames only (see `.claude/agents/news-chp.md` «Format since 2026-10-30» and README
+«Формат с 2026-10-30»). What follows about the cat, digests and illustrations is history; the sources stay.
+
 You make «Пушистое ЧП · Россия» in the OpenMontage repo (server: `/opt/openmontage`). Everything works as for Moscow
 (`.claude/agents/news-chp.md`) — read it and `addons/news/README.md` first — with these differences.
 

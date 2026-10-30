@@ -468,7 +468,7 @@ def test_ai_budget_zero_drops_stories_without_footage_and_favours_rich_ones(tmp_
 def test_ai_budget_counts_illustrations_against_the_city_limit():
     s = {"city": "kazan", "stories": [{"shots": [{"src": "media/clean/a_0.clean.mp4"},
                                                   {"src": "illustrations/k1.png", "label": "ИИ-иллюстрация"}]}]}
-    assert build.ai_budget(s) == (1, 2, 0.3)               # Kazan: at most 30% AI pictures (2026-10-29)
+    assert build.ai_budget(s) == (1, 2, 0)                 # no AI pictures at all (owner 2026-10-30; 30% before)
     assert build.ai_budget({**s, "ai_max_share": 0.5})[2] == 0.5
 
 
@@ -796,3 +796,63 @@ def test_a_thesis_gives_way_to_the_next_one(tmp_path: Path):
            {"path": v, "video": True, "start": 2.0, "dur": 6.0, "w": 0, "thesis": "Факт"}]
     html, _, spans = build.theses(its)
     assert spans == [(0.0, 2.0), (2.0, 8.0)] and 'data-duration="2.0"' in html[0]
+
+
+def test_stills_take_turns_panning_left_to_right_and_pushing_in(tmp_path: Path):
+    assert [build.still_move({"n": n}) for n in range(4)] == ["pan", "zoom", "pan", "zoom"]
+    assert build.still_move({"n": 0, "move": "zoom"}) == "zoom" and build.still_move({"n": 1, "zoom": [1.07, 1.0]}) == "zoom"
+    png = tmp_path / "p.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360", "-frames:v", "1",
+                    str(png)], check=True)
+    out = tmp_path / "pan.mp4"
+    build.segment({"path": png, "dur": 1.0, "video": False, "n": 0}, out)
+    import cv2
+
+    cap = cv2.VideoCapture(str(out))
+    frames = []
+    while True:
+        ok, f = cap.read()
+        if not ok:
+            break
+        frames.append(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)[build.BOX_Y - 100:build.BOX_Y + 100].astype(np.float32))
+    a, b = frames[0], frames[-1]
+    shift = cv2.phaseCorrelate(a, b)[0][0]
+    assert shift < -20                                       # the picture slides left: the camera goes right
+
+
+def test_a_one_story_film_opens_on_its_hook_and_the_plate_is_the_brand(tmp_path: Path):
+    s = {"slug": "x", "tag": "ЧП · КАЗАНЬ", "date": "29 октября", "headline": "Гормон в багаже",
+         "hook": "До 10 лет за стероиды…", "loop": True, "narration": {"text": "Иностранец вёз флаконы гормона."}}
+    words = [[w, round(0.3 + i * 0.4, 3), round(0.6 + i * 0.4, 3)] for i, w in enumerate(build.full_text(s).split())]
+    assert build.story_windows(s, words, 3.0) == [[0.0, 3.0]]           # pictures from the first frame, no cat
+    html, js = build.hook_html(s)
+    assert 'data-start="0"' in html and "До 10 лет за стероиды…" in html and "(29 октября)" in html and "<svg" in html
+    v = _clip(tmp_path / "v.mp4")
+    items = [{"path": v, "video": True, "start": 0.0, "dur": 6.0, "w": 0, "thesis": "*Трое* под стражей"}]
+    _, _, spans = build.theses(items, build.HOOK_S)
+    assert spans[0][0] == build.HOOK_S                                 # the fact comes after the hook
+
+
+def test_the_library_keeps_real_pictures_by_tags(tmp_path: Path):
+    from addons.news import library as lib
+
+    pic = tmp_path / "Kazan_Airport_Terminal_1A.jpg"
+    pic.write_bytes(b"jpeg-bytes")
+    e = lib.add(pic, ["Казань", "аэропорт", "терминал"], "Фото: X / Wikimedia, CC BY-SA 3.0", "CC BY-SA 3.0", "https://c", tmp_path / "lib")
+    again = lib.add(pic, ["Кремлёвская"], r=tmp_path / "lib")
+    assert again["id"] == e["id"] and "кремлевская" in again["tags"]          # one file, the tags merged
+    other = tmp_path / "court.jpg"
+    other.write_bytes(b"other")
+    lib.add(other, ["Казань", "суд"], r=tmp_path / "lib")
+    found = lib.find(["казань", "аэропорт"], tmp_path / "lib")
+    assert [x["name"] for x in found] == ["Kazan_Airport_Terminal_1A.jpg", "court.jpg"]   # both words first
+    out = lib.copy(e["id"], tmp_path / "media", tmp_path / "lib")
+    assert out.read_bytes() == b"jpeg-bytes"
+
+
+def test_no_ai_pictures_anywhere():
+    cities = json.loads((Path(build.__file__).parent / "cities.json").read_text(encoding="utf-8"))
+    assert all(c.get("ai_max_share") == 0 for c in cities.values() if isinstance(c, dict))
+    story = {"city": "kazan", "shots": [{"src": "illustrations/k1.png", "label": "ИИ-иллюстрация"}, {"src": "media/a.jpg"}]}
+    ai, total, limit = build.ai_budget(story)
+    assert (ai, total, limit) == (1, 2, 0)

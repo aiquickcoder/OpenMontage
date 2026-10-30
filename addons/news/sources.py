@@ -141,6 +141,26 @@ def site(list_url: str, n: int = 15, official: bool = False, cache: Path = CACHE
     return out
 
 
+def search(query: str, people: list[str] | None = None, n: int = 10) -> list[dict]:
+    """Rutube videos about an event (an agency's own one first): the material for a story whose post has no video —
+    «ищем в интернете необходимую информацию» (owner 2026-10-30). people: Rutube channel ids to keep (the agencies of
+    cities.json "sources"); None keeps every channel, the agencies' marked."""
+    from urllib.parse import quote
+
+    d = json.loads(av.get(f"https://rutube.ru/api/search/video/?query={quote(query)}"))
+    agencies = set(people or [s[1] for c in json.loads((Path(__file__).with_name("cities.json")).read_text(encoding="utf-8")).values()
+                              if isinstance(c, dict) for s in c.get("sources", []) if s[0] == "rutube"])
+    out = []
+    for v in d.get("results", [])[:40]:
+        who = str((v.get("author") or {}).get("id", ""))
+        if people is not None and who not in agencies:
+            continue
+        out.append({"id": v["id"], "title": v.get("title", ""), "author": (v.get("author") or {}).get("name", ""),
+                    "agency": who in agencies, "created": v.get("created_ts", "")[:16], "duration": v.get("duration"),
+                    "url": v.get("video_url"), "video": f"rutube:{v['id']}"})
+    return sorted(out, key=lambda x: (x["agency"], x["created"]), reverse=True)[:n]  # agencies, then the newest
+
+
 def posts(spec: list, cache: Path = CACHE) -> list[dict]:
     kind, ref, *rest = spec
     official = bool(rest[1]) if len(rest) > 1 else False
@@ -186,5 +206,12 @@ def fetch_video(ref: str, dst: Path, max_height: int = 720) -> bool:
 
 
 if __name__ == "__main__":
-    for p in posts(sys.argv[1:3] + [False, False]):
-        print(p["dt"], p["ch"], p["mp4"] or "-", "|", p["text"][:150])
+    if sys.argv[1] == "search":  # sources.py search "<event words>" [--any]: find a video of the event on Rutube
+        for v in search(sys.argv[2], None if "--any" in sys.argv else []):
+            print(("АГЕНТСТВО " if v["agency"] else "") + f'{v["created"]} {v["duration"]}s {v["author"]} | '
+                  f'{v["title"][:90]} | {v["url"]}')
+    elif sys.argv[1] == "fetch":  # sources.py fetch rutube:<id> <dst.mp4>
+        sys.exit(0 if fetch_video(sys.argv[2], Path(sys.argv[3])) else 1)
+    else:
+        for p in posts(sys.argv[1:3] + [False, False]):
+            print(p["dt"], p["ch"], p["mp4"] or "-", "|", p["text"][:150])
