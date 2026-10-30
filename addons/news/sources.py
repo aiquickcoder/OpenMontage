@@ -153,7 +153,8 @@ def posts(spec: list, cache: Path = CACHE) -> list[dict]:
 
 
 def fetch_video(ref: str, dst: Path, max_height: int = 720) -> bool:
-    """A source post's video into dst (MP4): "rutube:<id>" by its HLS, "youtube:<id>" by yt-dlp, else a direct link."""
+    """A post's video into dst (MP4): "rutube:<id>" by its HLS, "youtube:<id>" by yt-dlp, "tg:<channel>/<post>" by
+    Telegram's API (tg_client.py, once the owner has logged in), else a direct link."""
     try:
         if ref.startswith("rutube:"):
             opts = json.loads(av.get(f"https://rutube.ru/api/play/options/{ref[7:]}/?format=json&no_404=true"))
@@ -162,6 +163,11 @@ def fetch_video(ref: str, dst: Path, max_height: int = 720) -> bool:
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-user_agent", av.UA, "-i", url, "-c", "copy",
                             "-movflags", "+faststart", str(dst)], check=True, timeout=900,
                            env={k: v for k, v in os.environ.items() if "proxy" not in k.lower()})  # Rutube: directly
+        elif ref.startswith("tg:"):  # a Telegram video too big for the web preview: the app's API (tg_client.py)
+            ch, post = ref[3:].split("/")
+            py = _VENV.parent / "python"
+            return subprocess.run([str(py) if py.is_file() else sys.executable, str(Path(__file__).with_name("tg_client.py")),
+                                   "fetch", ch, post, str(dst)], timeout=900).returncode == 0
         elif ref.startswith("youtube:"):
             subprocess.run([*YTDLP, "-f", f"bv*[height<={max_height}][ext=mp4]+ba[ext=m4a]/b[height<={max_height}]",
                             "--merge-output-format", "mp4", "-o", str(dst), f"https://www.youtube.com/watch?v={ref[8:]}"],

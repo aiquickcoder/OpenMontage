@@ -97,8 +97,12 @@ def parse(ch, raw):
         # too big for the web preview has no src, its preview frame then comes as a photo
         vids = re.findall(r'<video[^>]+src="([^"]+\.mp4[^"]*)"', c)
         pics = re.findall(r"tgme_widget_message_photo_wrap[^>]*background-image:url\('([^']+)'\)", c)
-        if not vids:
+        # a video too big for the preview («Media is too big») has no src: tg_client.py fetches it whole through the
+        # app's API (2026-10-30); its preview frame stays as a photo in case that fails
+        big = re.findall(r'tgme_widget_message_video_player not_supported[^>]*href="https://t\.me/([^"/?]+)/(\d+)', c)
+        if not vids or big:
             pics += re.findall(r"tgme_widget_message_video_thumb[^>]*background-image:url\('([^']+)'\)", c)
+        vids += list(dict.fromkeys(f"tg:{a}/{b}" for a, b in big))
         dt = re.search(r'<time datetime="([^"]+)"', c)
         ln = re.search(r'tgme_widget_message_date"[^>]*href="([^"]+)"', c)
         vw = VIEWS.search(c)
@@ -240,7 +244,7 @@ out = sorted(events.values(), key=lambda x: (-x["hype"], x["dt"]))
 
 # --- качаем медиа только у топ-DL_TOP по хайпу ---
 def dl(url, dst, rng):
-    if url.startswith(("rutube:", "youtube:")):  # a source's video: big, fetched once
+    if url.startswith(("rutube:", "youtube:", "tg:")):  # a big video: fetched once
         return (os.path.getsize(dst) > 1024 if os.path.isfile(dst) else False) or sources.fetch_video(url, Path(dst))
     try:
         data = fetch(url, rng=rng)
