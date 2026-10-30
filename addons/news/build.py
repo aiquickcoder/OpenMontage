@@ -158,12 +158,14 @@ def narrator_windows(story: dict, words: list, duration: float, text: list[list[
 
 
 def story_windows(story: dict, words: list, duration: float) -> list[list[float]]:
-    """Each story's b-roll runs from just after the anchor's preceding line to just before the next one."""
+    """Each story's b-roll runs from just after the anchor's preceding line to just before the next one. A "cold_open"
+    film starts on the first story's pictures, not on the cat (owner 2026-10-30, the TikTok review: «первый кадр должен
+    бить самым жёстким ЧП»): its hook line is read over them."""
     out, k = [], 0
     for p in parts(story):
         n = len(plain(p["text"]).split())
         if p["kind"] == "story":
-            b0 = round(words[k - 1][2] + 0.15, 3) if k else 0.0
+            b0 = 0.0 if story.get("cold_open") and not out else round(words[k - 1][2] + 0.15, 3) if k else 0.0
             b1 = round(words[k + n][1] - 0.1, 3) if k + n < len(words) else duration
             out.append([b0, b1])
         k += n
@@ -1092,7 +1094,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         shutil.copy2(proj / "assets" / "sfx.wav", ws / "assets" / "sfx.wav")
         audio += (f'\n    <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="{duration}" '
                   f'data-track-index="12" data-volume="1"></audio>')
-    audio_js = f'  tl.to("#bgm", {{ volume: 0, duration: 1.5, ease: "power1.in" }}, {duration - 1.5:.2f});' if found else ""
+    audio_js = f'  tl.to("#bgm", {{ volume: 0, duration: 1.5, ease: "power1.in" }}, {duration - 1.5:.2f});' \
+        if found and not story.get("loop") else ""
     head = esc(story.get("headline") or stories(story)[0]["headline"])
     S_ = stories(story)
     broll_html, plate_html, plate_js = [], [], []
@@ -1194,7 +1197,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {chr(10).join(thesis_js)}
 {caps_js}
 {audio_js}
-  tl.to("#fade", {{ opacity: 1, duration: 0.6, ease: "power1.in" }}, {duration - 0.6:.2f});
+{"" if story.get("loop") else f'  tl.to("#fade", {{ opacity: 1, duration: 0.6, ease: "power1.in" }}, {duration - 0.6:.2f});'}
   window.__timelines["main"] = tl;
 </script>
 </body>
@@ -1226,6 +1229,60 @@ def qa(proj: Path, video: Path, items: list[dict]) -> dict:
     return report
 
 
+def part_words(story: dict, words: list) -> list[dict]:
+    """Each read part with its timed words: {"role", "i", "words"}."""
+    out, k = [], 0
+    for p in parts(story):
+        n = len(plain(p["text"]).split())
+        out.append({**p, "words": words[k:k + n]})
+        k += n
+    return out
+
+
+def split_story(proj: Path, story: dict, timing: dict, items: list[dict], i: int) -> Path:
+    """One story of a digest as its own short for TikTok (owner 2026-10-30, the review: one story of 15–25 s, no
+    greeting, the hardest picture and a big headline in the first frame, a loop): its pictures from the first second
+    under its plate (the headline) and its opening thesis, the voice from the story's first word — the lead and the
+    greeting are left out — to the end of the cat's comment, no fade-out, so the end runs back into the start. Made
+    from the digest's own voice and pictures: projects/<id>/tiktok/<n>/, rendered to renders/tiktok_<n>.mp4."""
+    pw = part_words(story, timing["words"])
+    text = next(p for p in pw if p["role"] == "story" and p["i"] == i)["words"]
+    comment = next((p for p in pw if p["role"] == "comment" and p["i"] == i), None)
+    tail = (comment or {}).get("words") or text
+    s0 = max(VOICE_AT, text[0][1] - 0.25)
+    after = [w for w in timing["words"] if w[1] > tail[-1][1]]  # the next lead must not be heard
+    end = min(tail[-1][2] + 0.6, after[0][1] - 0.05) if after else tail[-1][2] + 0.6
+    shift = s0 - VOICE_AT  # composition time t of the digest is t - shift in the short (the voice still starts at 0.3)
+    sub = proj / "tiktok" / f"{i + 1}"
+    shutil.rmtree(sub, ignore_errors=True)
+    (sub / "assets").mkdir(parents=True)
+    sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{s0 - VOICE_AT:.3f}", "-t", f"{end - s0:.3f}", "-i",
+        str(proj / "assets" / "narration.mp3"), "-c:a", "libmp3lame", "-q:a", "2", str(sub / "assets" / "narration.mp3")])
+    s = stories(story)[i]
+    w0, w1 = windows(timing)[i]
+    duration = round(end - shift, 2)
+    t = {"words": [[w, round(a - shift, 3), round(b - shift, 3)] for w, a, b in timing["words"]
+                   if s0 - 0.05 <= a <= tail[-1][1]],
+         "duration": duration, "speech_end": round(tail[-1][2] - shift, 3),
+         "windows": [[0.0, round(min(w1, end) - shift, 3)]]}
+    t["broll"] = t["windows"][0]
+    its = [{**it, "start": round(it["start"] - shift, 3), "w": 0} for it in items if it["w"] == i]
+    its = [it for it in its if it["start"] < t["windows"][0][1]]
+    its[0] = {**its[0], "dur": round(its[0]["dur"] + its[0]["start"], 3), "start": 0.0}  # a picture from the first frame
+    last = its[-1]
+    its[-1] = {**last, "dur": round(t["windows"][0][1] - last["start"], 3)}
+    a = story.get("anchor") or {}
+    one = {**story, "stories": [s], "headline": s.get("headline", story.get("headline")), "loop": True,
+           "anchor": {**a, "intro": "", "outro": ""}, "date": s.get("date", story.get("date"))}
+    one.pop("cold_open", None)
+    broll(sub, its)
+    sound_bed(sub, one, t, its)
+    ws = write_workspace(sub, one, t, its)
+    out = proj / "renders" / f"tiktok_{i + 1}.mp4"
+    render(ws, out)
+    return out
+
+
 def unclean_footage(story: dict) -> list[str]:
     """Post media that has not been through addons/news/clean_footage.py (owner 2026-10-28: no foreign watermarks).
     Commons photos (credit names Wikimedia) and illustrations are not post media; "footage_clean": false opts an old
@@ -1250,6 +1307,9 @@ def main() -> None:
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--storyboard", action="store_true",
                     help="only qa/storyboard_<n>.jpg (each picture next to its words) and the picture warnings")
+    ap.add_argument("--split", nargs="?", const="all", metavar="N,N",
+                    help="also one short per story for TikTok (renders/tiktok_<n>.mp4); with --retime and the digest "
+                         "already built it only cuts and renders the shorts")
     a = ap.parse_args()
     proj = a.project.resolve()
     story = json.loads((proj / "story.json").read_text(encoding="utf-8"))
@@ -1284,6 +1344,10 @@ def main() -> None:
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = film_items(proj, story, timing, phrases)
+    if a.split and a.retime and (proj / "renders" / "final.mp4").is_file():  # the digest is done: only the shorts
+        for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):
+            print("short:", split_story(proj, story, timing, items, i), flush=True)
+        return
     storyboard(proj, story, items, timing)
     broll(proj, items)
     (proj / "assets" / "sfx.wav").unlink(missing_ok=True)
@@ -1295,6 +1359,9 @@ def main() -> None:
     out = proj / "renders" / "final.mp4"
     render(ws, out)
     print(json.dumps(qa(proj, out, items), ensure_ascii=False)[:400])
+    if a.split and story.get("stories"):
+        for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):
+            print("short:", split_story(proj, story, timing, items, i), flush=True)
 
 
 if __name__ == "__main__":

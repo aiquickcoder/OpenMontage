@@ -37,6 +37,10 @@ a news site's article video (tnv.ru) comes with `article_video.py`. A ministry v
 is not footage. Before writing about the hurt, look for a later report (29.10: «выжила» in one channel, died in
 hospital per TNV).
 
+TikTok (2026-10-30): `build.py projects/<id> --split` cuts one short per story (15–25 s, no greeting, the story's
+pictures and its headline plate and first thesis from the first frame, a loop) — so put the hardest picture first
+and a shock-headline thesis on it. `"cold_open": true` opens a digest the same way (README «TikTok»).
+
 ## Steps
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.

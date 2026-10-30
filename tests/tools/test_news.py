@@ -683,3 +683,44 @@ def test_a_thesis_lasts_four_to_seven_seconds_whatever_the_cuts(tmp_path: Path):
              {"path": v, "video": True, "start": 1.8, "dur": 1.6, "w": 0},
              {"path": v, "video": True, "start": 3.4, "dur": 2.0, "w": 0}]
     assert build.theses(short)[2] == [(0.0, 5.4)]           # whole cuts until 4 s have passed
+
+
+def test_a_cold_open_starts_on_the_first_story_pictures():
+    s = {"anchor": {"intro": "", "outro": "Это «ЧП Казань»."}, "cold_open": True,
+         "stories": [{"lead": "Лидера ОПГ тайно привезли в Казань.", "text": "Его этапировали ночью.", "comment": "Ждём суда."},
+                     {"lead": "Дальше.", "text": "Горит склад.", "comment": "Берегитесь."}]}
+    words = [[w, 0.3 + i * 0.5, 0.3 + i * 0.5 + 0.4] for i, w in enumerate(build.full_text(s).split())]
+    ws = build.story_windows(s, words, 12.0)
+    assert ws[0][0] == 0.0 and ws[1][0] > 0.0                       # the hook line is read over the pictures
+    assert build.story_windows({**s, "cold_open": False}, words, 12.0)[0][0] > 0.0
+
+
+def test_a_story_becomes_its_own_looping_short(tmp_path: Path, monkeypatch):
+    s = {"anchor": {"dir": "addons/news/anchor_kzn", "intro": "Привет.", "outro": "Пока."}, "headline": "Выпуск",
+         "stories": [{"lead": "Начнём.", "text": "Горит театр на юге.", "comment": "Берегите себя.", "headline": "Театр"},
+                     {"lead": "Дальше.", "text": "Ищут девушку.", "comment": "Звоните.", "headline": "Поиск"}]}
+    words = [[w, round(0.3 + i * 0.5, 3), round(0.7 + i * 0.5, 3)] for i, w in enumerate(build.full_text(s).split())]
+    timing = {"words": words, "duration": 9.0, "windows": build.story_windows(s, words, 9.0)}
+    (tmp_path / "assets").mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "9",
+                    str(tmp_path / "assets" / "narration.mp3")], check=True)
+    v = _clip(tmp_path / "v.mp4", 6.0)
+    w0, w1 = timing["windows"][0]
+    items = [{"path": v, "video": True, "in": 0, "start": w0, "dur": round(w1 - w0, 3), "w": 0, "thesis": "*Театр*"},
+             {"path": v, "video": True, "in": 0, "start": timing["windows"][1][0], "dur": 1.0, "w": 1}]
+    got = {}
+    monkeypatch.setattr(build, "broll", lambda p, its: got.setdefault("items", its))
+    monkeypatch.setattr(build, "sound_bed", lambda *a: None)
+    monkeypatch.setattr(build, "write_workspace", lambda p, story, t, its: got.update(story=story, t=t) or p)
+    monkeypatch.setattr(build, "render", lambda ws, out: None)
+    out = build.split_story(tmp_path, s, timing, items, 0)
+    assert out.name == "tiktok_1.mp4"
+    its, t, one = got["items"], got["t"], got["story"]
+    assert len(its) == 1 and its[0]["start"] == 0.0 and its[0]["thesis"] == "*Театр*"   # pictures from the first frame
+    assert [w[0] for w in t["words"]] == ["Горит", "театр", "на", "юге.", "Берегите", "себя."]  # no greeting, no lead
+    assert t["words"][0][1] == 0.55 and t["windows"] == [[0.0, round(w1 - (words[2][1] - 0.25 - 0.3), 3)]]
+    assert one["loop"] and one["anchor"]["intro"] == "" and one["headline"] == "Театр" and len(one["stories"]) == 1
+    secs = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                 str(tmp_path / "tiktok" / "1" / "assets" / "narration.mp3")],
+                                capture_output=True, text=True).stdout)
+    assert abs(secs - (t["duration"] - 0.3)) < 0.15                 # the voice from the story's first word to the comment
