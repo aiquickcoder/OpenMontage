@@ -6,7 +6,7 @@ the city at night, tea and a newspaper on the desk. The cat stays the channel's 
 
 draw: a Flow edit of base.png per look (KEEP + the change; the head is told to stay) -> <dir>/looks/<name>.png.
 compose: the edit aligned onto the base (ECC), then the cat's head — the mouth and eyes boxes of anchor.json with
-room for the ears and the cheeks — pasted back from the base with a soft edge, so the lip-flap and blink patches
+room for the ears and the cheeks — and the monitors with the brand pasted back from the base with a soft edge, so the lip-flap and blink patches
 (layers/open|mid|blink.png) fit every look exactly -> <dir>/layers/looks/<name>.jpg. build.py takes a look by the
 day (story.json "anchor": {"look": "<name>"} fixes one, "base" the plain studio).
 """
@@ -48,16 +48,24 @@ def head_mask(cfg: dict, pad: tuple[int, int, int, int] = (110, 210, 110, 70)) -
     return cv2.GaussianBlur(m, (0, 0), 18)[..., None]
 
 
+def monitors_mask(cfg: dict) -> np.ndarray:
+    """The studio monitors over the cat («ЧП · КАЗАНЬ», «ПРОИСШЕСТВИЯ»): the brand, kept from the base too (a rain look
+    lost the right one's text, 2026-10-30). anchor.json "monitors_band": the top rows they sit in (default 380)."""
+    m = np.zeros((anc.H, anc.W), np.float32)
+    m[: int(cfg.get("monitors_band", 380))] = 1.0
+    return cv2.GaussianBlur(m, (0, 0), 14)[..., None]
+
+
 def compose(d: Path) -> list[str]:
     cfg = json.loads((d / "anchor.json").read_text())
     from addons.mural.build import remove_sparkle
 
     base = anc.fit(remove_sparkle(cv2.imread(str(d / "base.png"))))
-    keep = head_mask(cfg)
+    keep = np.maximum(head_mask(cfg), monitors_mask(cfg))
     out = d / "layers" / "looks"
     out.mkdir(parents=True, exist_ok=True)
     made = []
-    for src in sorted((d / "looks").glob("*.png")):
+    for src in sorted((d / "looks").glob("*.png")):  # a look moved aside (<name>.png.hold) is not used
         var = anc.align(base, anc.fit(remove_sparkle(cv2.imread(str(src)))))
         look = (keep * base + (1 - keep) * var).astype(np.uint8)
         changed = float((cv2.absdiff(base, var).max(axis=2) > 24).mean())
