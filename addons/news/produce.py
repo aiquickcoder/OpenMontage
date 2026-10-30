@@ -10,8 +10,10 @@ still cameras go into media/wm.json before this (see addons/news/README.md «О�
    on 2026-10-27 and Flow never loaded through it.
 2. In parallel: gen_shots.py (Flow, the browser) and clean_footage.py --run (the watermark-cleaner, CPU).
 3. build.py --retime under a lock shared by every project (two renders at once starve the server).
-4. --send: the render to the owner's Telegram (caption from --caption); --kinescope: kinescope_upload.py, --replace when
-   the project was uploaded before.
+4. A digest also gives one short per story for TikTok (build.py --split: 15–25 s, the hook in the first frame, a loop,
+   no cat by default — owner 2026-10-30, the TikTok review); "tiktok": {"split": false} in story.json skips them.
+5. --send: the render to the owner's Telegram (caption from --caption), then the shorts; --kinescope:
+   kinescope_upload.py for the digest, --replace when the project was uploaded before.
 The last line is PRODUCE_RESULT: READY|FAILED <project> <reason>.
 """
 from __future__ import annotations
@@ -103,6 +105,16 @@ def main() -> None:
                  "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "build.log")
         if b.wait() != 0:
             fail(f"build failed: {(logs / 'build.log').read_text()[-300:]}")
+        shorts = []
+        if story.get("stories") and (story.get("tiktok") or {}).get("split", True):
+            print("shorts: start", flush=True)
+            t = run([PY, "addons/news/build.py", rel, "--retime", "--split"],
+                    {"https_proxy": os.environ.get("NEWS_HTTPS_PROXY", "http://127.0.0.1:10809"),
+                     "HYPERFRAMES_BIN": "/opt/node22/hyperframes.sh",
+                     "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "shorts.log")
+            if t.wait() != 0:  # the digest is out either way: a failed short is reported, not fatal
+                print(f"shorts failed: {(logs / 'shorts.log').read_text()[-300:]}", flush=True)
+            shorts = sorted((proj / "renders").glob("tiktok_*.mp4"), key=lambda f: int(f.stem.split("_")[1]))
     render = proj / "renders" / "final.mp4"
     print((logs / "build.log").read_text()[-400:], flush=True)
     if a.send:
@@ -110,6 +122,11 @@ def main() -> None:
         if subprocess.run([PY, "addons/mural/send_telegram.py", caption, str(render)], cwd=REPO,
                           env={**os.environ, "PYTHONPATH": str(REPO)}).returncode != 0:
             fail("telegram send failed")
+        for f in shorts:
+            n = int(f.stem.split("_")[1])
+            head = story["stories"][n - 1].get("headline", "")
+            subprocess.run([PY, "addons/mural/send_telegram.py", f"TikTok {n}/{len(story['stories'])}: {head}", str(f)],
+                           cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)})
     if a.kinescope:
         k = [PY, "addons/news/kinescope_upload.py", rel, "--notify"] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
         if subprocess.run(k, cwd=REPO).returncode != 0:

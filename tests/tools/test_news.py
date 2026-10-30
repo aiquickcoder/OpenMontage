@@ -716,7 +716,7 @@ def test_a_story_becomes_its_own_looping_short(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(build, "sound_bed", lambda *a: None)
     monkeypatch.setattr(build, "write_workspace", lambda p, story, t, its: got.update(story=story, t=t) or p)
     monkeypatch.setattr(build, "render", lambda ws, out: None)
-    out = build.split_story(tmp_path, s, timing, items, 0)
+    out = build.split_story(tmp_path, s, timing, items, 0, cat=True)
     assert out.name == "tiktok_1.mp4"
     its, t, one = got["items"], got["t"], got["story"]
     assert len(its) == 1 and its[0]["start"] == 0.0 and its[0]["thesis"] == "*Театр*"   # pictures from the first frame
@@ -746,3 +746,27 @@ def test_the_cat_keeps_his_head_in_every_look_and_the_looks_rotate_by_day(tmp_pa
     assert days == {"base.jpg", "rain.jpg", "snow.jpg"}
     assert al.pick(d, {"anchor": {"look": "snow"}}, 0).name == "snow.jpg"
     assert al.pick(d, {"anchor": {"look": "base"}}, 1).name == "base.jpg"
+
+
+
+def test_a_short_without_the_cat_ends_on_the_story_last_word(tmp_path: Path, monkeypatch):
+    s = {"anchor": {"dir": "addons/news/anchor_kzn", "intro": "Привет.", "outro": "Пока."}, "headline": "Выпуск",
+         "stories": [{"lead": "Начнём.", "text": "Горит театр на юге.", "comment": "Берегите себя.", "headline": "Театр"},
+                     {"lead": "Дальше.", "text": "Ищут девушку.", "comment": "Звоните.", "headline": "Поиск"}]}
+    words = [[w, round(0.3 + i * 0.5, 3), round(0.7 + i * 0.5, 3)] for i, w in enumerate(build.full_text(s).split())]
+    timing = {"words": words, "duration": 9.0, "windows": build.story_windows(s, words, 9.0)}
+    (tmp_path / "assets").mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "9",
+                    str(tmp_path / "assets" / "narration.mp3")], check=True)
+    v = _clip(tmp_path / "v.mp4", 6.0)
+    w0, w1 = timing["windows"][0]
+    items = [{"path": v, "video": True, "in": 0, "start": w0, "dur": round(w1 - w0, 3), "w": 0}]
+    got = {}
+    monkeypatch.setattr(build, "broll", lambda p, its: got.setdefault("items", its))
+    monkeypatch.setattr(build, "sound_bed", lambda *a: None)
+    monkeypatch.setattr(build, "write_workspace", lambda p, story, t, its: got.update(story=story, t=t) or p)
+    monkeypatch.setattr(build, "render", lambda ws, out: None)
+    build.split_story(tmp_path, s, timing, items, 0)                    # the default: no cat
+    t, one = got["t"], got["story"]
+    assert [w[0] for w in t["words"]] == ["Горит", "театр", "на", "юге."] and one["anchor"] == {}
+    assert t["windows"][0][1] == t["duration"] and got["items"][-1]["start"] + got["items"][-1]["dur"] == t["duration"]

@@ -1250,15 +1250,19 @@ def part_words(story: dict, words: list) -> list[dict]:
     return out
 
 
-def split_story(proj: Path, story: dict, timing: dict, items: list[dict], i: int) -> Path:
+def split_story(proj: Path, story: dict, timing: dict, items: list[dict], i: int, cat: Optional[bool] = None) -> Path:
     """One story of a digest as its own short for TikTok (owner 2026-10-30, the review: one story of 15–25 s, no
     greeting, the hardest picture and a big headline in the first frame, a loop): its pictures from the first second
     under its plate (the headline) and its opening thesis, the voice from the story's first word — the lead and the
     greeting are left out — to the end of the cat's comment, no fade-out, so the end runs back into the start. Made
-    from the digest's own voice and pictures: projects/<id>/tiktok/<n>/, rendered to renders/tiktok_<n>.mp4."""
+    from the digest's own voice and pictures: projects/<id>/tiktok/<n>/, rendered to renders/tiktok_<n>.mp4.
+    Without the cat (owner 2026-10-30: «давай вообще без кота попробуем»; the default, "tiktok": {"cat": true} in
+    story.json or cities.json brings him back) the short ends on the story's last word over its own pictures."""
+    if cat is None:
+        cat = bool((story.get("tiktok") or CITIES.get(story.get("city", ""), {}).get("tiktok") or {}).get("cat", False))
     pw = part_words(story, timing["words"])
     text = next(p for p in pw if p["role"] == "story" and p["i"] == i)["words"]
-    comment = next((p for p in pw if p["role"] == "comment" and p["i"] == i), None)
+    comment = next((p for p in pw if p["role"] == "comment" and p["i"] == i), None) if cat else None
     tail = (comment or {}).get("words") or text
     s0 = max(VOICE_AT, text[0][1] - 0.25)
     after = [w for w in timing["words"] if w[1] > tail[-1][1]]  # the next lead must not be heard
@@ -1275,7 +1279,7 @@ def split_story(proj: Path, story: dict, timing: dict, items: list[dict], i: int
     t = {"words": [[w, round(a - shift, 3), round(b - shift, 3)] for w, a, b in timing["words"]
                    if s0 - 0.05 <= a <= tail[-1][1]],
          "duration": duration, "speech_end": round(tail[-1][2] - shift, 3),
-         "windows": [[0.0, round(min(w1, end) - shift, 3)]]}
+         "windows": [[0.0, round((min(w1, end) if cat else end) - shift, 3)]]}
     t["broll"] = t["windows"][0]
     its = [{**it, "start": round(it["start"] - shift, 3), "w": 0} for it in items if it["w"] == i]
     its = [it for it in its if it["start"] < t["windows"][0][1]]
@@ -1284,7 +1288,7 @@ def split_story(proj: Path, story: dict, timing: dict, items: list[dict], i: int
     its[-1] = {**last, "dur": round(t["windows"][0][1] - last["start"], 3)}
     a = story.get("anchor") or {}
     one = {**story, "stories": [s], "headline": s.get("headline", story.get("headline")), "loop": True,
-           "anchor": {**a, "intro": "", "outro": ""}, "date": s.get("date", story.get("date"))}
+           "anchor": {**a, "intro": "", "outro": ""} if cat else {}, "date": s.get("date", story.get("date"))}
     one.pop("cold_open", None)
     broll(sub, its)
     sound_bed(sub, one, t, its)
@@ -1318,6 +1322,8 @@ def main() -> None:
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--storyboard", action="store_true",
                     help="only qa/storyboard_<n>.jpg (each picture next to its words) and the picture warnings")
+    ap.add_argument("--cat", action=argparse.BooleanOptionalAction, default=None,
+                    help="the shorts end on the cat's comment (default: story/city \"tiktok\": {\"cat\"}, off)")
     ap.add_argument("--split", nargs="?", const="all", metavar="N,N",
                     help="also one short per story for TikTok (renders/tiktok_<n>.mp4); with --retime and the digest "
                          "already built it only cuts and renders the shorts")
@@ -1357,7 +1363,7 @@ def main() -> None:
     items = film_items(proj, story, timing, phrases)
     if a.split and a.retime and (proj / "renders" / "final.mp4").is_file():  # the digest is done: only the shorts
         for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):
-            print("short:", split_story(proj, story, timing, items, i), flush=True)
+            print("short:", split_story(proj, story, timing, items, i, a.cat), flush=True)
         return
     storyboard(proj, story, items, timing)
     broll(proj, items)
@@ -1372,7 +1378,7 @@ def main() -> None:
     print(json.dumps(qa(proj, out, items), ensure_ascii=False)[:400])
     if a.split and story.get("stories"):
         for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):
-            print("short:", split_story(proj, story, timing, items, i), flush=True)
+            print("short:", split_story(proj, story, timing, items, i, a.cat), flush=True)
 
 
 if __name__ == "__main__":
