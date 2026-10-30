@@ -60,7 +60,7 @@ def sh(cmd: list[str]) -> str:
 
 def frames(path: Path, n: int = 90) -> list[np.ndarray]:
     cap = cv2.VideoCapture(str(path))
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    total = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))  # a photo reports -1 (--save-template from a photo)
     out = []
     for i in np.linspace(0, total - 1, min(n, total)).astype(int):
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
