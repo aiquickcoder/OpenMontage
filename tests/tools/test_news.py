@@ -727,3 +727,22 @@ def test_a_story_becomes_its_own_looping_short(tmp_path: Path, monkeypatch):
                                  str(tmp_path / "tiktok" / "1" / "assets" / "narration.mp3")],
                                 capture_output=True, text=True).stdout)
     assert abs(secs - (t["duration"] - 0.3)) < 0.15                 # the voice from the story's first word to the comment
+
+
+def test_the_cat_keeps_his_head_in_every_look_and_the_looks_rotate_by_day(tmp_path: Path):
+    import cv2
+
+    from addons.news import anchor_looks as al
+
+    cfg = {"mouth_box": [440, 700, 650, 880], "eyes_box": [405, 555, 695, 715]}
+    m = al.head_mask(cfg)
+    assert m[790, 545, 0] > 0.99 and m[620, 550, 0] > 0.99       # mouth and eyes come from the base, untouched
+    assert m[100, 100, 0] < 0.01 and m[1800, 900, 0] < 0.01      # the window and the desk are the look's own
+    d = tmp_path / "anchor"
+    (d / "layers" / "looks").mkdir(parents=True)
+    for f in ("layers/base.jpg", "layers/looks/rain.jpg", "layers/looks/snow.jpg"):
+        cv2.imwrite(str(d / f), np.zeros((4, 4, 3), np.uint8))
+    days = {al.pick(d, {}, day).name for day in range(3)}
+    assert days == {"base.jpg", "rain.jpg", "snow.jpg"}
+    assert al.pick(d, {"anchor": {"look": "snow"}}, 0).name == "snow.jpg"
+    assert al.pick(d, {"anchor": {"look": "base"}}, 1).name == "base.jpg"

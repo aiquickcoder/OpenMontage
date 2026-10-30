@@ -1009,8 +1009,14 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         L = anchor_dir(proj, a["dir"]) / "layers"
         layers = json.loads((L / "layers.json").read_text())
         (ws / "assets" / "anchor").mkdir()
-        for f in ["base.jpg", *[f"{k}.png" for k in layers]]:
+        for f in [f"{k}.png" for k in layers]:
             shutil.copy2(L / f, ws / "assets" / "anchor" / f)
+        # the same cat in a fresh scene by the day — rain, snow, the city at night (owner 2026-10-30, anchor_looks.py)
+        from datetime import date
+
+        from addons.news.anchor_looks import pick
+
+        shutil.copy2(pick(L.parent, story, date.today().toordinal()), ws / "assets" / "anchor" / "base.jpg")
         imgs = "".join(f'<img id="a_{k}" class="patch" src="assets/anchor/{k}.png" alt="" '
                        f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px" />' for k, (x, y, w, h) in layers.items())
         # the studio monitor behind the anchor shows the story he is leading into / commenting on
