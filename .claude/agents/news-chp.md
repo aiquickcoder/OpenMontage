@@ -29,6 +29,13 @@ Voice text is plain (owner, 2026-10-29): no tone cues `[…]`, no `<stress>`, no
 the calm direction in fish_voice.py does the delivery and build.py adds the pauses between stories. No house number
 next to what is counted («у дома девяносто три мужчину» sounds like ninety-three men): drop it or say «дом номер …».
 
+Theses (owner, 2026-10-30): 1–2 per story, a shot's `"thesis"` with the phrase's key fact in figures, `*starred*`
+words on the red marker, ≤44 characters (README «Тезисы на кадрах»). Official agency footage — МВД России on Rutube,
+НАК on YouTube — goes in as published with `"clean": "none"` (no cleaning), facts from the agency's own description;
+a news site's article video (tnv.ru) comes with `article_video.py`. A ministry video marked «Видео сгенерировано ИИ»
+is not footage. Before writing about the hurt, look for a later report (29.10: «выжила» in one channel, died in
+hospital per TNV).
+
 ## Steps
 1. **Find the news (stage 1).** Run `python3 -I addons/news/pick.py --city moscow --base <base>`. It harvests the channels, drops
    banned topics, non-Moscow, stale and already-made events, and ranks the rest into `<base>/candidates.json`.

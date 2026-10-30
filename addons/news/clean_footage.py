@@ -299,6 +299,8 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
             src = sh_.get("src_orig") or sh_.get("src", "")
             if not src.startswith("media/") or "Wikimedia" in (sh_.get("credit") or "") or "/clean/" in src:
                 continue
+            if sh_.get("clean") == "none" and not sh_.get("src_orig"):  # official footage, shown as published:
+                continue  # МВД России on Rutube, НАК (owner 2026-10-30: «с этих каналов очистку не делай»)
             video = Path(src).suffix.lower() in VIDEO
             t = float(sh_.get("in_orig", sh_.get("in", 0.0))) if video else 0.0
             if bs is not None:

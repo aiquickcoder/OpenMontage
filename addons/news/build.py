@@ -640,6 +640,9 @@ def storyboard(proj: Path, story: dict, items: list[dict], timing: dict) -> list
             lines.append(line)
             d.text((400, y + 6), f"{k + 1}. {it['dur']:.1f} с", font=_font(22), fill=(150, 150, 150))
             d.multiline_text((400, y + 36), "\n".join(lines[:5]), font=_font(28), fill=(240, 240, 240), spacing=6)
+            if it.get("thesis"):  # on screen in capitals over the bottom of the picture
+                d.text((400, y + TH - 56), "ТЕЗИС: " + it["thesis"].replace("*", "").replace("|", " ").upper(),
+                       font=_font(22), fill=(255, 90, 90))
             name = Path(it["path"]).name if it.get("path") else (it.get("src") or "?")
             d.text((400, y + TH - 26), name + (f" @{it['in']}" if it.get("video") else ""), font=_font(18),
                    fill=(120, 120, 120))
@@ -885,6 +888,73 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+# -- theses: the fact of a phrase in large capitals over the bottom of its picture (owner 2026-10-30) ---------------
+THESIS_FONT = HERE / "fonts" / "PTSansNarrow-Bold.ttf"  # ParaType Free Font License (in the font's own name table)
+THESIS_MAX = 44  # characters: a headline over the picture, not a sentence
+THESIS_CSS = """
+    @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
+    .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 56px 44px;
+              background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.46) 45%, rgba(0,0,0,.74)); }
+    .thesis .t { font-family: "PT Sans Narrow", "Arial Narrow", sans-serif; font-weight: 700; font-size: 92px;
+                 line-height: 1.04; text-transform: uppercase; letter-spacing: .5px; color: #fff;
+                 text-shadow: 0 3px 16px rgba(0,0,0,.7), 0 1px 3px rgba(0,0,0,.85); }
+    .thesis em { font-style: normal; padding: 0 12px; border-radius: 6px; text-shadow: none;
+                 background: linear-gradient(#e3001b, #e3001b) no-repeat 0 0 / 100% 100%;
+                 -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
+
+
+def thesis_markup(text: str) -> str:
+    """«Задержаны *трое* иностранцев» → the starred words on our red marker; «|» breaks the line by hand."""
+    return "<br>".join(re.sub(r"\*([^*]+)\*", r"<em>\1</em>", esc(part.strip())) for part in text.split("|"))
+
+
+def thesis_bottom(it: dict) -> int:
+    """Where the picture of a cut ends on screen (segment's layout): the thesis sits on that edge."""
+    w, h, _ = probe(it["path"])
+    if it.get("crop"):
+        w, h = it["crop"][2], it["crop"][3]
+    return 1480 if h / w > 1.4 else BOX_Y + box_h(w, h) // 2  # full frame: just above the captions (top 1500)
+
+
+def theses(items: list[dict]) -> tuple[list[str], list[str], list[tuple[float, float]]]:
+    """HTML, timeline and the spans they hold the screen for: the running captions give way to a thesis (it says the
+    same phrase shorter) and come back with the next cut."""
+    html, js, spans = [], [], []
+    for k, it in enumerate(i for i in items if i.get("thesis") and i.get("path")):
+        a, d = it["start"], it["dur"]
+        html.append(f'    <div id="th{k}" class="clip thesis" data-start="{a}" data-duration="{d}" data-track-index="4" '
+                    f'style="bottom:{H - thesis_bottom(it)}px"><div class="t">{thesis_markup(it["thesis"])}</div></div>')
+        js.append(f'  tl.from("#th{k}", {{opacity: 0, duration: 0.25, ease: "none"}}, {a:.2f});\n'
+                  f'  tl.from("#th{k} .t", {{y: 46, opacity: 0, duration: 0.4, ease: "power3.out"}}, {a + 0.1:.2f});\n'
+                  f'  tl.from("#th{k} em", {{backgroundSize: "0% 100%", duration: 0.35, ease: "power2.out", '
+                  f'stagger: 0.1}}, {a + 0.35:.2f});')
+        spans.append((a, round(a + d, 3)))
+    return html, js, spans
+
+
+def around(caps: list[tuple[float, float, str]], spans: list[tuple[float, float]]) -> list[tuple[float, float, str]]:
+    """Captions outside the theses: one that runs into a thesis is cut where it starts, one under it is dropped."""
+    out = []
+    for a, b, t in caps:
+        if any(s <= a < e for s, e in spans):
+            continue
+        b = min([b, *(s for s, _ in spans if a < s < b)])
+        if b - a >= 0.05:
+            out.append((a, b, t))
+    return out
+
+
+def thesis_warnings(story: dict) -> list[str]:
+    out = []
+    for w, st in enumerate(stories(story)):
+        ts = [s["thesis"] for s in st.get("shots", []) if s.get("thesis")]
+        out += [f"story {w + 1}: thesis «{t}» is {len(t.replace('*', '').replace('|', ''))} characters — at most "
+                f"{THESIS_MAX}" for t in ts if len(t.replace("*", "").replace("|", "")) > THESIS_MAX]
+        if len(ts) > 2:
+            out.append(f"story {w + 1}: {len(ts)} theses — one or two per story, on its strongest facts")
+    return out
+
+
 def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) -> Path:
     ws = proj / "hyperframes"
     shutil.rmtree(ws / "assets", ignore_errors=True)
@@ -952,7 +1022,10 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
         anchor_js = "\n".join(js + tv_js)
-    caps = word_cues(timing["words"])
+    thesis_html, thesis_js, spans = theses(items)
+    if thesis_html:
+        shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
+    caps = around(word_cues(timing["words"]), spans)
     caps_html = "\n".join(
         f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
         f'<span>{esc(t)}</span></div>' for i, (a, b, t) in enumerate(caps))
@@ -1072,7 +1145,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
                  background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
                  text-shadow: 0 2px 6px rgba(0,0,0,.6); }}
-    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}
+    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}
   </style>
 </head>
 <body>
@@ -1082,6 +1155,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {lower_html}
 {chr(10).join(plate_html)}
 {chr(10).join(chips)}
+{chr(10).join(thesis_html)}
 {caps_html}
     <div id="fade" class="clip" data-start="0" data-duration="{duration}" data-track-index="8"></div>
 {audio}
@@ -1092,6 +1166,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {chr(10).join(plate_js)}
 {lower_js}
 {anchor_js}
+{chr(10).join(thesis_js)}
 {caps_js}
 {audio_js}
   tl.to("#fade", {{ opacity: 1, duration: 0.6, ease: "power1.in" }}, {duration - 0.6:.2f});
@@ -1173,7 +1248,7 @@ def main() -> None:
     print(f"AI pictures: {ai} of {total} shots, allowed {limit:.0%} (cities.json ai_max_share)"
           + (" — OVER: use the post's footage at other in-points, crops of its photos, Commons photos of the very "
              "place, or drop the story" if over else ""), flush=True)
-    for warning in picture_warnings(story) + unused_post_media(proj, story):
+    for warning in picture_warnings(story) + thesis_warnings(story) + unused_post_media(proj, story):
         print("warning:", warning, flush=True)
     if a.storyboard:
         items = film_items(proj, story, timing, phrases, strict=False)

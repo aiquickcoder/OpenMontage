@@ -575,3 +575,44 @@ def test_without_the_cat_a_map_can_go_under_a_lead(tmp_path: Path):
     lead = next(it for it in build.film_items(tmp_path, s, timing, [[], []]) if it["w"] == 1)
     assert lead["card"] == "lead" and lead["path"].name == "map.mp4" and lead["video"] and lead["in"] == 0.0
     assert (lead["start"], lead["dur"]) == (3.9, 1.05)                 # «Дальше.» over the map, then the story's clip
+
+
+def test_a_thesis_sits_on_its_picture_and_the_captions_give_way(tmp_path: Path):
+    assert build.thesis_markup("Задержаны *трое*|под стражей") == "Задержаны <em>трое</em><br>под стражей"
+    assert "<em>&lt;b&gt;</em>" in build.thesis_markup("*<b>*")     # the text is escaped, only the stars mark
+    v = _clip(tmp_path / "v.mp4")                                    # 320x180: a box 760 high around BOX_Y
+    items = [{"path": v, "video": True, "start": 2.0, "dur": 2.0, "thesis": "*20 флаконов* в багаже"},
+             {"path": v, "video": True, "start": 4.0, "dur": 2.0}]
+    html, js, spans = build.theses(items)
+    assert len(html) == 1 and spans == [(2.0, 4.0)] and 'data-start="2.0"' in html[0]
+    assert f"bottom:{build.H - (build.BOX_Y + 380)}px" in html[0] and "<em>20 флаконов</em>" in html[0]
+    caps = [(1.0, 2.4, "до"), (2.5, 3.0, "под тезисом"), (4.0, 4.5, "после")]
+    assert build.around(caps, spans) == [(1.0, 2.0, "до"), (4.0, 4.5, "после")]
+
+
+def test_thesis_warnings_keep_them_short_and_few():
+    story = {"stories": [{"shots": [{"thesis": "*Трое* под стражей"}, {"thesis": "x" * 50},
+                                    {"thesis": "a"}, {"thesis": "b"}]}]}
+    w = build.thesis_warnings(story)
+    assert any("50 characters" in x for x in w) and any("4 theses" in x for x in w)
+
+
+def test_official_footage_marked_clean_is_not_sent_to_the_cleaner(tmp_path: Path):
+    from addons.news import clean_footage as cf
+
+    story = {"stories": [{"shots": [{"src": "media/mvd.mp4", "in": 1, "clean": "none"}, {"src": "media/post.mp4"}]}]}
+    assert list(cf.footage(tmp_path, story)) == ["media/post.mp4@0"]
+
+
+def test_an_article_gives_its_text_date_and_own_video_not_the_live_channels():
+    from addons.news import article_video as av
+
+    page = ('<meta property="og:title" content="Задержали пятерых" /><nav>Онлайн трансляция</nav>'
+            '<source src="https://planeta.mediacdn.ru/cdn/tnvplanet/playlist.m3u8">'
+            '<h1>Задержали пятерых</h1><p class="d">29 октября 2026, 14:38</p><div>В&nbsp;Ульяновской области '
+            'задержали пятерых.<br><br>Ущерб — 25 млн.<br>https://tnv.ru</div><div>Читайте новости в нашем Telegram</div>'
+            '<video src="https://cdn.example.ru/news/584371.mp4"></video>')
+    a = av.article(page, "https://tnv.ru/x")
+    assert a["title"] == "Задержали пятерых" and a["date"] == "29 октября 2026 14:38"
+    assert a["text"] == "В Ульяновской области задержали пятерых. Ущерб — 25 млн."
+    assert av.video_source(page) == ("mp4", "https://cdn.example.ru/news/584371.mp4")
