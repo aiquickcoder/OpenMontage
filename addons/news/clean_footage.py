@@ -460,6 +460,8 @@ def main() -> None:
     for st in story.get("stories", []):
         for s in st.get("shots", []):
             src = s.get("src_orig") or s.get("src")
+            if not src:  # a map before build.py has made it: not post media
+                continue
             video = Path(src).suffix.lower() in VIDEO
             t0 = float(s.get("in_orig", s.get("in", 0.0))) if video else 0.0
             p = plan.get(f"{src}@{t0:g}")

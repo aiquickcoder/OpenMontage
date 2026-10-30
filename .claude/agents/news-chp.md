@@ -70,10 +70,14 @@ hospital per TNV).
      (`"crop": [x, y, w, h]` — a wide view, a detail, the car, the people: different shots), a Commons photo of the
      very place; and pictures made from data (README «Кадры из данных»): a map of the place under the «where»
      phrase (`"map": {"street", "city", "label"}`, one per story). No fact cards or plates over the picture (owner,
-     2026-10-29). Illustrations only where nothing real shows the phrase, within the limit:
-     **every picture shows its phrase** (README «Кадры без футажа»): post media of this story if it
-     shows what is said, a Commons photo only of the very place the phrase names (not a namesake: the metro station
-     «Гражданский проспект» is not the avenue), otherwise an illustration drawn for that phrase. Never another
+     2026-10-29). Illustrations only where no real frame of the story is left, within the limit:
+     **every picture shows its phrase, or — where nothing real can — this same story** (README «Кадры без футажа»,
+     owner 2026-10-30): post media of this story if it shows what is said; then real frames of this story from other
+     sources — the article's photo (tnv.ru), other seconds of the agency's video, the agency's photos — even under an
+     abstract phrase (money, cards, a promise, a hospital), as long as the frame does not contradict it; then a Commons
+     photo of the very place of the story (not a namesake: the metro station «Гражданский проспект» is not the
+     avenue); an illustration only when none of these exists. A site's staged stock picture is not a frame of the
+     story. Never another
      story's picture, never an unrelated place, a picture at most twice per story and never twice in a row — short
      on time is no excuse: start Flow as soon as the phrases are known (2–3 min a picture). Write illustrations as
      fields, not prose: `"facts"` once per story (place, time, season), then per picture `"story"`, `"beat"`,
