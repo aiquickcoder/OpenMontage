@@ -770,3 +770,22 @@ def test_a_short_without_the_cat_ends_on_the_story_last_word(tmp_path: Path, mon
     t, one = got["t"], got["story"]
     assert [w[0] for w in t["words"]] == ["Горит", "театр", "на", "юге."] and one["anchor"] == {}
     assert t["windows"][0][1] == t["duration"] and got["items"][-1]["start"] + got["items"][-1]["dur"] == t["duration"]
+
+
+def test_moscow_is_not_the_moscow_region_and_sexual_violence_is_caught_in_any_wording():
+    from datetime import datetime, timezone
+
+    from addons.news import pick
+
+    now = datetime(2026, 10, 30, 6, 0, tzinfo=timezone.utc)
+    base = {"dt": "2026-10-29T12:00", "channels": ["mash"], "links": [], "media_got": []}
+    region = pick.judge({**base, "key": "a", "text": "Житель Подмосковья ворвался в школу в Ивантеевке, задержан"},
+                        now, 36, set(), set(), "moscow")
+    oblast = pick.judge({**base, "key": "b", "text": "В Московской области задержан грабитель"}, now, 36, set(), set(), "moscow")
+    city = pick.judge({**base, "key": "c", "text": "В Москве задержан грабитель, московский суд арестовал его"},
+                      now, 36, set(), set(), "moscow")
+    assert "не Москва" in region["skip"] and "не Москва" in oblast["skip"] and "не Москва" not in city["skip"]
+    sexual = pick.judge({**base, "key": "d", "channels": ["moscowach"],
+                         "text": "В Москве задержаны подозреваемые: один совершил насильственные действия сексуального характера"},
+                        now, 36, set(), set(), "moscow")
+    assert "сексуальное насилие" in sexual["skip"]

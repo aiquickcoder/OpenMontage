@@ -39,6 +39,7 @@ MSK = timezone(timedelta(hours=3))
 _VENV = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "yt-dlp"  # the harvesters run on the system python
 YTDLP = [str(_VENV) if _VENV.is_file() else "yt-dlp", "--quiet", "--no-warnings"]
 TAGS = re.compile(r"#\w+")
+_tg_left = int(os.environ.get("NEWS_TG_MAX", "12"))  # big Telegram videos fetched per harvest run (the rest next run)
 CACHE = Path(os.environ.get("NEWS_SOURCES_CACHE", Path.home() / ".cache" / "openmontage" / "sources"))  # all cities
 NAMES = {"23350159": "МВД России (Rutube)", "@NAK_antiterror": "НАК (YouTube)"}
 
@@ -164,6 +165,10 @@ def fetch_video(ref: str, dst: Path, max_height: int = 720) -> bool:
                             "-movflags", "+faststart", str(dst)], check=True, timeout=900,
                            env={k: v for k, v in os.environ.items() if "proxy" not in k.lower()})  # Rutube: directly
         elif ref.startswith("tg:"):  # a Telegram video too big for the web preview: the app's API (tg_client.py)
+            global _tg_left
+            if _tg_left <= 0:  # a harvest's first run would pull dozens of big files: the freshest first, a few a run
+                return False
+            _tg_left -= 1
             ch, post = ref[3:].split("/")
             py = _VENV.parent / "python"
             return subprocess.run([str(py) if py.is_file() else sys.executable, str(Path(__file__).with_name("tg_client.py")),

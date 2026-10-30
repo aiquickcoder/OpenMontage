@@ -205,7 +205,7 @@ def dl(url, dst, rng):
     except Exception:
         return False
 
-for e in events.values():
+for e in sorted(events.values(), key=lambda x: x["dt"], reverse=True):  # the freshest first (big videos are capped)
     d = os.path.join(MEDIA, e["key"]);
     got = []
     for i, m in enumerate(e["media"]):
