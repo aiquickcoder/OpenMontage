@@ -29,8 +29,9 @@ Voice text is plain (owner, 2026-10-29): no tone cues `[…]`, no `<stress>`, no
 the calm direction in fish_voice.py does the delivery and build.py adds the pauses between stories. No house number
 next to what is counted («у дома девяносто три мужчину» sounds like ninety-three men): drop it or say «дом номер …».
 
-Theses (owner, 2026-10-30): every story opens with one on its first shot (its main fact), a second one may come on
-the outcome; each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
+Theses (owner, 2026-10-30): every story opens with a **hook** on its first shot — a 2–5-word bait that makes one
+watch on («*Жёсткое задержание* СОБР», «*Новая схема* обмана»), true to the footage and the source, no «шок», no
+guilt before a verdict — and a second one, a fact, may come on the outcome; each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
 marker, ≤44 characters (README «Тезисы на кадрах»). Official agency footage — МВД России on Rutube,
 НАК on YouTube — goes in as published with `"clean": "none"` (no cleaning), facts from the agency's own description;
 a news site's article video (tnv.ru) comes with `article_video.py`. A ministry video marked «Видео сгенерировано ИИ»
