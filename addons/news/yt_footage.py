@@ -219,9 +219,10 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
 
 # a staged or generated picture is never a story's footage (31.10: «Lądowanie w Warszawie 30.10.2026» was X-Plane 12,
 # «…makes a sudden U-turn over Spain» a content farm's animated map)
+# (not a bare «AI»: a story about AI agents has it in every title — 31.10, the Lindy demos)
 STAGED = re.compile(r"inscenizac|symulac|symulator|x-?plane|msfs|flight ?sim|simulat|reconstruct|rekonstrukc|"
-                    r"\bA\.?I\.?\b|sztuczn\w* inteligenc|нейросет|симуляц|реконструкц|сгенерирова|animation|animacj",
-                    re.I)
+                    r"\bAI[- ](?:generated|animation|animated|video)|(?:generated|made|created) (?:by|with|using) AI|"
+                    r"wygenerowan|нейросет\w* (?:сгенер|созда|нарисова)|симуляц|реконструкц|сгенерирова", re.I)
 
 
 def staged(ref: str) -> bool:

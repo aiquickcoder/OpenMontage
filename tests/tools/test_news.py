@@ -986,6 +986,8 @@ def test_a_staged_youtube_video_is_never_footage():
     assert yt.STAGED.search("Powrót Samolotu… Inscenizacja X-Plane 12 by Artanis")
     assert yt.STAGED.search("POLISH PRESIDENT'S PLANE U-TURN — AI animation")
     assert not yt.STAGED.search("Szarpanina w TK z udziałem Nawrockiego. Berek: prezydent wszedł")
+    assert not yt.STAGED.search("Lindy 3.0: Build AI Agents with Just Text Prompts")       # a story about AI
+    assert yt.STAGED.search("Prezydent w TK — film wygenerowany, AI-generated")
 
 
 def test_a_world_story_may_hold_four_theses():
