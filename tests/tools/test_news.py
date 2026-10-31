@@ -927,3 +927,12 @@ def test_youtube_captions_give_the_moment_the_words_are_said():
     m = yt.moments(words, "перекрёсток красный проехала")
     assert m[0]["from"] == 11.0 and m[0]["score"] == 3 and "перекрёстке" in m[0]["text"]   # the best place first
     assert yt.url_of("CgMpcYcJqZM") == "https://www.youtube.com/watch?v=CgMpcYcJqZM"
+
+
+def test_every_text_keeps_the_safe_zone(tmp_path: Path):
+    assert f"padding: {build.SAFE_TOP}px {build.SAFE_X}px" in build.HOOK_CSS          # the hook under the app's top
+    assert f"padding: 240px {build.SAFE_X}px" in build.THESIS_CSS                       # theses off the cropped sides
+    clip = tmp_path / "phone.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=30:duration=1",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)
+    assert build.thesis_bottom({"path": clip, "fit": True}) <= build.SAFE_BOTTOM - build.CAP_ROOM  # above the captions

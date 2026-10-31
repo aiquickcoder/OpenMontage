@@ -62,6 +62,12 @@ PAN_Z = 1.12           # a still's sideways move (owner 2026-10-30: «движе
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
 BOX_Y = 930            # centre line of the picture box (the plate sits above it, captions below)
 BOX_MIN, BOX_MAX = 760, 1000
+# The safe zone (owner 2026-10-31: «safe area не используется при рендере что ли?»). The picture fills the whole 9:16
+# frame, and text stays inside: a phone taller than 9:16 (19.5:9) shows the film zoomed to its height and loses
+# 50–100 px a side, the app covers the top (status bar, tabs, search) and the bottom (name, caption, sound), its
+# buttons stand in a column on the right. The strictest of TikTok / Reels / Shorts:
+SAFE_X, SAFE_TOP, SAFE_BOTTOM = 120, 230, 1500  # text 120 px from the sides, from 230 px down to 1500 px
+CAP_ROOM = 180         # the captions grow up from SAFE_BOTTOM (two lines at most); a thesis ends above them
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv"}
 PIPER_MODELS = Path(os.environ.get("PIPER_MODELS", Path.home() / ".piper" / "models"))
 TAG = re.compile(r"\[[^\]]*\]")    # delivery cues ([тревожно], [pause]): spoken by the voice, never captioned
@@ -744,10 +750,7 @@ def box_h(w: int, h: int) -> int:
     return int(min(BOX_MAX, max(BOX_MIN, W * h / w)))
 
 
-# TikTok's safe zone (owner 2026-10-31, a hook cut at the edges and under the search bar): a phone taller than 9:16
-# shows the film zoomed to its height — ~100 px of each side are off screen — and the app's status bar and search
-# cover the top ~220 px. So every text keeps 120 px from the sides, the hook card starts at 230 px.
-FIT_TOP = 520  # a one-story film: a vertical picture starts under the hook card
+FIT_TOP = 520  # a one-story film: a vertical picture starts under the hook card (which starts at SAFE_TOP)
 
 
 def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
@@ -1019,7 +1022,7 @@ THESIS_MIN_S, THESIS_MAX_S = 4.0, 7.0  # a thesis stays at least two phrase-long
 # 2-х кадрах»), over the next cuts of its story if its own is short, and leaves a long clip after 7 s; "span": N cuts
 THESIS_CSS = """
     @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
-    .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 120px 44px;
+    .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px SAFE_Xpx 44px;
               background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.46) 45%, rgba(0,0,0,.74)); }
     .thesis .t { font-family: "PT Sans Narrow", sans-serif; font-weight: 700; font-size: 92px;
                  line-height: 1.04; text-transform: uppercase; letter-spacing: .5px; color: #fff;
@@ -1027,12 +1030,13 @@ THESIS_CSS = """
     .thesis em { font-style: normal; padding: 0 12px; border-radius: 6px; text-shadow: none;
                  background: linear-gradient(#e3001b, #e3001b) no-repeat 0 0 / 100% 100%;
                  -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
+THESIS_CSS = THESIS_CSS.replace("SAFE_X", str(SAFE_X))  # the safe zone's numbers
 
 
 HOOK_FONT = HERE / "fonts" / "PTMono-Bold.ttf"  # ParaType Free Font License
 HOOK_CSS = """
     @font-face { font-family: "PT Mono"; src: url("assets/PTMono-Bold.ttf"); font-weight: 700; }
-    #hook { position: absolute; left: 0; right: 0; top: 0; z-index: 6; padding: 230px 120px 34px;
+    #hook { position: absolute; left: 0; right: 0; top: 0; z-index: 6; padding: SAFE_TOPpx SAFE_Xpx 34px;
             background: linear-gradient(to bottom, rgba(10,10,12,.96) 82%, rgba(10,10,12,0)); text-align: left; }
     #hook .brand { text-align: center; margin-bottom: 22px; }
     #hook .brand span { display: inline-block; background: #e3001b; color: #fff; font: 900 30px "Arial Black",
@@ -1042,6 +1046,7 @@ HOOK_CSS = """
                letter-spacing: 0; text-transform: uppercase; color: #fff; }
     #hook .t em { font-style: normal; background: #e3001b; color: #fff; padding: 0 8px;
                   -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
+HOOK_CSS = HOOK_CSS.replace("SAFE_TOP", str(SAFE_TOP)).replace("SAFE_X", str(SAFE_X))
 
 
 def hook_html(story: dict, duration: float) -> tuple[str, str]:
@@ -1065,7 +1070,7 @@ def thesis_markup(text: str) -> str:
 def thesis_bottom(it: dict) -> int:
     """Where the picture of a cut ends on screen (segment's layout): the thesis sits on that edge."""
     _, bh, _, y, _ = frame_box(it)
-    return min(1480, y + bh)  # full frame: just above the captions (top 1500)
+    return min(SAFE_BOTTOM - CAP_ROOM, y + bh)  # never under the captions
 
 
 def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[str], list[tuple[float, float]]]:
@@ -1328,7 +1333,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .chip.label {{ right: 22px; font-size: 20px; font-weight: 400; color: rgba(255,255,255,.42);
                    text-shadow: 0 1px 2px rgba(0,0,0,.35); }}
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
-    .cap {{ position: absolute; left: 120px; right: 120px; top: 1500px; text-align: center; z-index: 7; }}
+    .cap {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; bottom: {H - SAFE_BOTTOM}px; text-align: center;
+            z-index: 7; }}
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
                  background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
                  text-shadow: 0 2px 6px rgba(0,0,0,.6); }}
@@ -1385,7 +1391,13 @@ def qa(proj: Path, video: Path, items: list[dict]) -> dict:
         f"tile={cols}x{math.ceil(len(items) / cols)}", "-frames:v", "1", str(proj / "qa" / "contact.jpg")])
     info = json.loads(sh(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height:format=duration",
                           "-of", "json", str(video)]))
-    report = {"probe": info, "cuts": len(items), "contact": str(proj / "qa" / "contact.jpg")}
+    # the safe zone over the first frame (the hook) and the middle one: every text must sit inside the red box
+    zone = f"drawbox=x={SAFE_X}:y={SAFE_TOP}:w={W - 2 * SAFE_X}:h={SAFE_BOTTOM - SAFE_TOP}:color=red@0.8:t=5,scale=540:960"
+    mid = float(info.get("format", {}).get("duration", 2)) / 2
+    sh(["ffmpeg", "-v", "error", "-y", "-ss", "0.5", "-i", str(video), "-ss", f"{mid:.2f}", "-i", str(video),
+        "-filter_complex", f"[0:v]{zone}[a];[1:v]{zone}[b];[a][b]hstack", "-frames:v", "1", str(proj / "qa" / "safe.jpg")])
+    report = {"probe": info, "cuts": len(items), "contact": str(proj / "qa" / "contact.jpg"),
+              "safe": str(proj / "qa" / "safe.jpg")}
     (proj / "qa" / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
     return report
 
