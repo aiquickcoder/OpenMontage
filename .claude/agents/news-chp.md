@@ -28,6 +28,13 @@ is known («Ему грозит до пятнадцати лет», sanction che
 что происходит в городе.». Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
 
+A big political or world story (owner 2026-10-31, README «Большая история»): build a dossier first —
+`tg_client.py search "<stem>" --hours 48 --json projects/<slug>/dossier.json` over all our channels, the country's
+own media in its language, `yt_footage.py scout … --lang <xx>`; a loaded word («госпереворот», «штурм») only with its
+author and the other side's words next to it; a 40–60 s connected story (what, timeline, why, who says what, latest,
+next date) ending «Как думаете, чем это закончится? Пишите в комментариях. И подписывайтесь, чтобы первыми знать,
+что происходит.». Every text keeps TikTok's safe zone (120 px from the sides, the hook card from 230 px).
+
 ## Defaults (owner's choices, 2026-10-24)
 - About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.
 - Kazan has its own agent, `news-chp-kazan` — same pipeline, other channels and anchor (README «Города»).

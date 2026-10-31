@@ -4,10 +4,11 @@
 video is downloaded: the words from YouTube's own transcript, the picture from its storyboard.
 
     .venv/bin/python addons/news/yt_footage.py scout "ДТП Лево-Булачная Казань" "перекрёсток красный" [--n 8] [--fresh]
+        [--lang pl]
         search + every candidate's transcript (no video downloaded): ranked by where the words are said
     .venv/bin/python addons/news/yt_footage.py search "<query>" [--n 8] [--fresh]
         candidates only: id, length, channel, title (--fresh: the newest first)
-    .venv/bin/python addons/news/yt_footage.py find <id|url> "перекрёсток красный" [--n 5] [--listen]
+    .venv/bin/python addons/news/yt_footage.py find <id|url> "перекрёсток красный" [--n 5] [--listen] [--lang pl]
         one video's transcript, the moments where those words are said (--listen: no captions — its sound, transcribed)
     .venv/bin/python addons/news/yt_footage.py peek <id|url> <from> <to> <sheet.jpg>
         what is on screen then: YouTube's storyboard (the scrubbing previews, ≈1 a second) as a contact sheet
@@ -97,10 +98,11 @@ def moments(words: list[tuple[str, float]], query: str, window: float = 8.0, n: 
     return best[:n]
 
 
-def captions(ref: str) -> list[tuple[str, float]]:
-    """YouTube's own transcript, nothing else downloaded: the channel's Russian captions, else the automatic ones."""
+def captions(ref: str, lang: str = "ru") -> list[tuple[str, float]]:
+    """YouTube's own transcript, nothing else downloaded: the channel's captions in that language (a foreign story —
+    its country's TV in its own: "pl" for Poland), else the automatic ones."""
     with tempfile.TemporaryDirectory() as d:
-        subprocess.run([*YTDLP, "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", "ru.*,ru",
+        subprocess.run([*YTDLP, "--skip-download", "--write-subs", "--write-auto-subs", "--sub-langs", f"{lang}.*,{lang}",
                         "--sub-format", "json3", "-o", f"{d}/v", url_of(ref)], capture_output=True, timeout=180)
         subs = sorted(Path(d).glob("v*.json3"), key=lambda f: ("orig" not in f.name, f.name))
         return words_of(json.loads(subs[0].read_text(encoding="utf-8"))) if subs else []
@@ -191,11 +193,11 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
     return dst
 
 
-def scout(query: str, words: str, n: int = 8, fresh: bool = False) -> list[dict]:
+def scout(query: str, words: str, n: int = 8, fresh: bool = False, lang: str = "ru") -> list[dict]:
     """Candidates ranked by their transcripts — which video says those words, where — before downloading any."""
     out = []
     for v in search(query, n, fresh):
-        heard = captions(v["id"])
+        heard = captions(v["id"], lang)
         best = moments(heard, words, n=1) if heard else []
         out.append({**v, "captions": bool(heard), "moment": best[0] if best else None})
     return sorted(out, key=lambda v: -(v["moment"]["score"] if v["moment"] else -1 if not v["captions"] else 0))
@@ -209,6 +211,7 @@ def main() -> None:
     o_.add_argument("words")
     o_.add_argument("--n", type=int, default=8)
     o_.add_argument("--fresh", action="store_true")
+    o_.add_argument("--lang", default="ru")
     s_ = sub.add_parser("search")
     s_.add_argument("query")
     s_.add_argument("--n", type=int, default=8)
@@ -218,6 +221,7 @@ def main() -> None:
     f_.add_argument("query")
     f_.add_argument("--n", type=int, default=5)
     f_.add_argument("--listen", action="store_true")
+    f_.add_argument("--lang", default="ru")
     p_ = sub.add_parser("peek")
     p_.add_argument("ref")
     p_.add_argument("t0", type=float)
@@ -231,7 +235,7 @@ def main() -> None:
     c_.add_argument("--tags", default="")
     a = ap.parse_args()
     if a.cmd == "scout":
-        for v in scout(a.query, a.words, a.n, a.fresh):
+        for v in scout(a.query, a.words, a.n, a.fresh, a.lang):
             m = v["moment"]
             where = (f'{m["from"]:.0f}–{m["to"]:.0f}s [{m["score"]}] {m["text"][:110]}' if m else
                      "слова не звучат" if v["captions"] else "нет субтитров (find --listen)")
@@ -240,7 +244,7 @@ def main() -> None:
         for v in search(a.query, a.n, a.fresh):
             print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"]}')
     elif a.cmd == "find":
-        words = captions(a.ref) or (listen(a.ref) if a.listen else [])
+        words = captions(a.ref, a.lang) or (listen(a.ref) if a.listen and a.lang == "ru" else [])
         if not words:
             sys.exit("no captions for this video (--listen transcribes its sound)")
         for m in moments(words, a.query, n=a.n):
