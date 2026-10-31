@@ -2,6 +2,7 @@
 2026-10-30 two one-story films a run (projects/<slug>-1, -2), no digest.
 
     .venv/bin/python addons/news/morning.py [--city russia] [--deadline 08:45]      # today's two films
+    .venv/bin/python addons/news/morning.py --city world [--deadline 13:30]          # the day's big story abroad
     .venv/bin/python addons/news/morning.py --project projects/<slug> [--deadline HH:MM]  # finish a started one
 
 Timers (all MSK): news-morning-ru 06:00 (in the bot by 9:00); news-evening-kazan 17:30, -moscow 17:50, -spb 18:10
@@ -25,9 +26,20 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 MSK = timezone(timedelta(hours=3))
-AGENTS = {"russia": "news-chp-russia", "moscow": "news-chp", "kazan": "news-chp-kazan", "spb": "news-chp-spb"}
-SLUG = {"russia": "news-ru-{d}", "moscow": "news-msk-{d}", "kazan": "news-kzn-{d}", "spb": "news-spb-{d}"}
+AGENTS = {"russia": "news-chp-russia", "moscow": "news-chp", "kazan": "news-chp-kazan", "spb": "news-chp-spb",
+          "world": "news-world"}
+SLUG = {"russia": "news-ru-{d}", "moscow": "news-msk-{d}", "kazan": "news-kzn-{d}", "spb": "news-spb-{d}",
+        "world": "news-world-{d}"}
 VIDEOS = 2  # one story, one film (owner 2026-10-30: «1 ролик на 1 новость», «2 лучших новости» a run)
+# the day's big story abroad (owner 2026-10-31, after Poland: «далее нужно нам начать собирать такие ролики»): one
+# connected 40–70 s film a run, its facts checked on the web — the only agent here with WebSearch / WebFetch
+WORLD_TASK = ("Make today's big-story film (README «Большая история», the agent instructions below): run world.py "
+              "--hours 24, take the biggest story abroad (#1 unless there is a reason — say it), build its dossier "
+              "with dossier.py (--fetch, --yt in the country's language), check every figure and quote in the "
+              "country's own media and the agencies (WebSearch / WebFetch, two sources each), write story.json "
+              "(\"kind\": \"world\", \"country\") and caption.txt, voice it (build.py --voice-only), one shot per "
+              "phrase from our footage, clean_footage.py --plan + media/wm.json, then produce.py --send --kinescope. "
+              "Project: projects/{film}.")
 RESULT = re.compile(r"^MORNING_RESULT:\s*(READY|FAILED)\s*(.*)$", re.M)
 
 
@@ -53,7 +65,8 @@ def main() -> None:
         stop += timedelta(days=1)
     slug = a.project.name if a.project else a.slug or SLUG[a.city].format(
         d=now.strftime("%d-%m") + ("" if now.hour < 12 else "-vecher"))
-    films = [slug] if a.project else [f"{slug}-{n}" for n in range(1, VIDEOS + 1)]
+    videos = 1 if a.city == "world" else VIDEOS
+    films = [slug] if a.project else [f"{slug}-{n}" for n in range(1, videos + 1)]
     if a.slug and any((REPO / "projects" / f / "story.json").is_file() for f in films):
         sys.exit(f"projects/{slug}-… exists: an extra run needs a new name")
     proj = REPO / "projects" / films[0]  # the run's log lives with its first film
@@ -68,7 +81,7 @@ def main() -> None:
          "build.py --voice-only lists (assets/beats.json), write illustrations for what has no footage, run "
          "clean_footage.py --plan and open every qa/wm_*.jpg, give each NEEDS A LOOK file its media/wm.json "
          "decision, then produce.py."
-         if a.project else
+         if a.project else WORLD_TASK.format(film=films[0]) if a.city == "world" else
          f"Make today's {VIDEOS} films — one story each (owner 2026-10-30: one story, one film; no digest, no cat, "
          f"no AI pictures): the {VIDEOS} best stories pick.py offers that have real pictures, in the one-story "
          f"format of the README «Формат с 2026-10-30» (a hook, the story's own footage, a loop). Projects: "
@@ -100,8 +113,9 @@ def main() -> None:
         env["HTTPS_PROXY"] = env["HTTP_PROXY"] = proxy
         env["NO_PROXY"] = ",".join(filter(None, [env.get("NO_PROXY"), "localhost", "127.0.0.1", ".google.com",
                                                  ".googleusercontent.com", ".gstatic.com", ".googleapis.com"]))
+    tools = "Bash Read Write Edit Glob Grep" + (" WebSearch WebFetch" if a.city == "world" else "")
     cmd = [env.get("FACTORY_CLAUDE_BIN", "claude"), "-p", prompt, "--permission-mode", "acceptEdits",
-           "--allowedTools", "Bash Read Write Edit Glob Grep", "--max-turns", "400", "--output-format", "text"]
+           "--allowedTools", tools, "--max-turns", "400", "--output-format", "text"]
     started = time.time()
     try:
         p = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,

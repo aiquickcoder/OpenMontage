@@ -28,7 +28,7 @@ is known («Ему грозит до пятнадцати лет», sanction che
 что происходит в городе.». Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
 
-A big political or world story (owner 2026-10-31, README «Большая история»): build a dossier first —
+A big political or world story (owner 2026-10-31, README «Большая история») is the `news-world` agent's (`.claude/agents/news-world.md`: world.py, dossier.py); in short: build a dossier first —
 `tg_client.py search "<stem>" --hours 48 --json projects/<slug>/dossier.json` over all our channels, the country's
 own media in its language, `yt_footage.py scout … --lang <xx>`; a loaded word («госпереворот», «штурм») only with its
 author and the other side's words next to it; a connected story of about 40–60 s (what, timeline, why, who says what,

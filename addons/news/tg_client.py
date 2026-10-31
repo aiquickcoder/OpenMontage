@@ -91,10 +91,11 @@ async def fetch(channel: str, post: int, dst: Path) -> int:
         await c.disconnect()
 
 
-async def search(query: str, channels: list[str], hours: float = 48, per: int = 30) -> list[dict]:
+async def search(query: str | None, channels: list[str], hours: float = 48, per: int = 30) -> list[dict]:
     """Every post of these public channels that says the query, newer than `hours`, oldest first — the material of a
     big story (owner 2026-10-31: «через тг поискать … чтобы потом проще было реализовать такие новости на сервере»).
-    A post of an album lists the album's media ("album": post ids), so its photos and videos can be fetched too."""
+    A post of an album lists the album's media ("album": post ids), so its photos and videos can be fetched too.
+    No query: every post of those hours (world.py reads the day this way), up to `per` a channel."""
     from datetime import datetime, timedelta, timezone
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -106,10 +107,12 @@ async def search(query: str, channels: list[str], hours: float = 48, per: int = 
             sys.exit("no Telegram session yet — the owner runs tg_client.py login once")
         for ch in channels:
             try:
-                async for m in c.iter_messages(ch, search=query, limit=per):
+                async for m in c.iter_messages(ch, search=query or None, limit=per):
                     if m.date < since:
                         break
                     album = [m.id]
+                    if m.grouped_id and query is None and not m.message:
+                        continue  # a day's read: an album comes once, with its text (its other items have none)
                     if m.grouped_id:
                         near = await c.get_messages(ch, ids=list(range(m.id - 9, m.id + 10)))
                         album = [x.id for x in near if x and x.grouped_id == m.grouped_id]

@@ -936,3 +936,54 @@ def test_every_text_keeps_the_safe_zone(tmp_path: Path):
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=30:duration=1",
                     "-pix_fmt", "yuv420p", str(clip)], check=True)
     assert build.thesis_bottom({"path": clip, "fit": True}) <= build.SAFE_BOTTOM - build.CAP_ROOM  # above the captions
+
+
+def test_world_finds_the_story_abroad_and_leaves_out_the_war():
+    from addons.news import world
+
+    def post(ch, n, views, text):
+        return {"channel": ch, "post": n, "date": f"2026-10-30T20:{n:02d}:00+00:00", "views": views, "media": "video",
+                "album": [n], "ref": f"tg:{ch}/{n}", "text": text}
+
+    posts = [post("toporlive", 1, 926134, "В Польше происходит государственный переворот, — Конституционный трибунал. "
+                                          "Правительство Туска воспользовалось отсутствием президента Навроцкого"),
+             post("mash", 2, 263263, "Госпереворот в Польше, — Муларчик. Президент Навроцкий возвращается в Варшаву, "
+                                     "Конституционный трибунал оцеплен"),
+             post("rian_ru", 3, 146540, "Толпа окружила Конституционный трибунал Польши, полиция заняла оборону"),
+             post("bbbreaking", 4, 210724, "Польша передаст Украине два истребителя МиГ-29"),              # the war
+             post("tass_agency", 5, 9780, "Дмитриев прокомментировал протесты в Польше"),                  # Moscow's comment
+             post("shot_shot", 6, 50000, "В Таиланде туристку укусила обезьяна")]                         # one channel only
+    found = world.stories(posts)
+    assert [s["country"] for s in found] == ["pl"]
+    assert [p["ref"] for p in found[0]["posts"]] == ["tg:toporlive/1", "tg:mash/2", "tg:rian_ru/3"]
+    assert found[0]["reach"] == round((926134 + 263263 + 146540) * 2.0)
+    assert any(s.startswith("Навроцк") for s in found[0]["stems"])
+
+
+def test_a_post_screenshot_becomes_a_card_that_keeps_its_text(tmp_path: Path):
+    from PIL import Image
+
+    from addons.news import build, dossier
+
+    shot = tmp_path / "post.jpg"
+    Image.new("RGB", (596, 172), "white").save(shot)
+    out = dossier.card(shot, tmp_path / "card.jpg")
+    im = Image.open(out)
+    assert im.size == (1080, 760) and im.getpixel((5, 5))[0] > 240                        # its own background
+    assert dossier.CARD_TEXT_W <= 1080 / build.PAN_Z                                      # a pan never cuts the text
+    w, h, x, y, cover = build.frame_box({"path": out, "fit": True})
+    assert (w, h) == (1080, 760) and cover                                                # the box shows it whole
+
+
+def test_a_staged_youtube_video_is_never_footage():
+    from addons.news import yt_footage as yt
+
+    assert yt.STAGED.search("Powrót Samolotu… Inscenizacja X-Plane 12 by Artanis")
+    assert yt.STAGED.search("POLISH PRESIDENT'S PLANE U-TURN — AI animation")
+    assert not yt.STAGED.search("Szarpanina w TK z udziałem Nawrockiego. Berek: prezydent wszedł")
+
+
+def test_a_world_story_may_hold_four_theses():
+    shots = [{"src": "a.mp4", "thesis": f"*{i}* тезис"} for i in range(4)]
+    assert not [w for w in build.thesis_warnings({"kind": "world", "shots": shots}) if "theses" in w]
+    assert [w for w in build.thesis_warnings({"shots": shots}) if "theses" in w]

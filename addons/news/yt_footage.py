@@ -217,13 +217,29 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
     return dst
 
 
+# a staged or generated picture is never a story's footage (31.10: «Lądowanie w Warszawie 30.10.2026» was X-Plane 12,
+# «…makes a sudden U-turn over Spain» a content farm's animated map)
+STAGED = re.compile(r"inscenizac|symulac|symulator|x-?plane|msfs|flight ?sim|simulat|reconstruct|rekonstrukc|"
+                    r"\bA\.?I\.?\b|sztuczn\w* inteligenc|нейросет|симуляц|реконструкц|сгенерирова|animation|animacj",
+                    re.I)
+
+
+def staged(ref: str) -> bool:
+    """The title or description says it is a simulation, a reconstruction or generated."""
+    try:
+        d = info(ref)
+    except subprocess.SubprocessError:
+        return False
+    return bool(STAGED.search(f"{d.get('title', '')}\n{d.get('description', '')}"))
+
+
 def scout(query: str, words: str, n: int = 8, fresh: bool = False, lang: str = "ru") -> list[dict]:
     """Candidates ranked by their transcripts — which video says those words, where — before downloading any."""
     out = []
     for v in search(query, n, fresh):
         heard = captions(v["id"], lang)
         best = moments(heard, words, n=1) if heard else []
-        out.append({**v, "captions": bool(heard), "moment": best[0] if best else None})
+        out.append({**v, "captions": bool(heard), "moment": best[0] if best else None, "staged": staged(v["id"])})
     return sorted(out, key=lambda v: -(v["moment"]["score"] if v["moment"] else -1 if not v["captions"] else 0))
 
 
@@ -263,7 +279,8 @@ def main() -> None:
             m = v["moment"]
             where = (f'{m["from"]:.0f}–{m["to"]:.0f}s [{m["score"]}] {m["text"][:110]}' if m else
                      "слова не звучат" if v["captions"] else "нет субтитров (find --listen)")
-            print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"][:70]}\n    {where}')
+            flag = "  ✗ ИНСЦЕНИРОВКА / ИИ — не брать" if v["staged"] else ""
+            print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"][:70]}{flag}\n    {where}')
     elif a.cmd == "search":
         for v in search(a.query, a.n, a.fresh):
             print(f'{v["id"]}  {v["duration"]}s  {v["channel"]} | {v["title"]}')
