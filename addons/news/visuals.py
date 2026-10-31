@@ -2,6 +2,7 @@
 
 A shot in story.json can be, instead of a file:
   {"map": {"street": "улица Баумана", "city": "Казань", "label": "ул. Баумана"}, "beat": "..."}   # or "query": "..."
+  abroad: "country": "sn" (ISO code; "" = anywhere) and a country's zoom, "from": 3, "to": 5.5 (a street: 11.5 → 16)
 build.py calls resolve() first: the clip is made once (assets/visuals/, named by a hash of the spec) and the shot's
 "src" points at it. A digest without the cat may put a map under a story's lead: "lead_shot": {"map": {...}}.
 (Fact cards over the picture were tried and dropped by the owner the same day.)
@@ -64,10 +65,11 @@ def _get(url: str) -> bytes:
 def geocode(spec: dict) -> tuple[float, float]:
     if "lat" in spec and "lon" in spec:
         return float(spec["lat"]), float(spec["lon"])
+    cc = {"countrycodes": spec.get("country", "ru")} if spec.get("country", "ru") else {}  # "" = anywhere (a world story)
     if spec.get("street"):
-        q = {"street": spec["street"], "city": spec.get("city", ""), "countrycodes": "ru"}
+        q = {"street": spec["street"], "city": spec.get("city", ""), **cc}
     else:
-        q = {"q": spec["query"], "countrycodes": "ru"}
+        q = {"q": spec["query"], **cc}
     key = json.dumps(q, ensure_ascii=False, sort_keys=True)
     cache = CACHE / "geocode.json"
     known = json.loads(cache.read_text(encoding="utf-8")) if cache.is_file() else {}
