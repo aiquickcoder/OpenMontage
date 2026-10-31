@@ -907,8 +907,13 @@ def test_a_one_story_film_never_crops_a_picture(tmp_path: Path):
     wide, square, tall, phone = clip("wide", "1280x720"), clip("square", "640x640"), clip("tall", "976x1266"), clip("phone", "720x1280")
     assert build.frame_box({"path": wide, "fit": True}) == (1080, 760, 0, 550, True)      # 16:9: the box, sides trimmed
     assert build.frame_box({"path": square, "fit": True}) == (1080, 1080, 0, 520, False)  # whole, no side margins
-    assert build.frame_box({"path": tall, "fit": True}) == (1078, 1400, 1, 520, False)    # whole, (nearly) full width
-    assert build.frame_box({"path": phone, "fit": True}) == (788, 1400, 146, 520, False)  # whole, down to the bottom
+    assert build.frame_box({"path": tall, "fit": True}) == (1080, 1920, 0, 0, True)       # a vertical video: full screen
+    assert build.frame_box({"path": phone, "fit": True}) == (1080, 1920, 0, 0, True)      # «на весь экран» (31.10)
+    from PIL import Image
+    for name, size in (("tall_photo", (976, 1266)), ("phone_photo", (720, 1280))):
+        Image.new("RGB", size, "gray").save(tmp_path / f"{name}.jpg")
+    assert build.frame_box({"path": tmp_path / "tall_photo.jpg", "fit": True}) == (1078, 1400, 1, 520, False)  # whole
+    assert build.frame_box({"path": tmp_path / "phone_photo.jpg", "fit": True}) == (1080, 1920, 0, 0, True)    # nothing lost
     assert build.frame_box({"path": wide})[4] is True                                    # digests: the old box
     out = tmp_path / "s.mp4"
     build.segment({"path": phone, "dur": 0.5, "video": True, "in": 0.0, "fit": True}, out)

@@ -751,6 +751,9 @@ def box_h(w: int, h: int) -> int:
 
 
 FIT_TOP = 520  # a one-story film: a vertical picture starts under the hook card (which starts at SAFE_TOP)
+# a one-story film: a video from 4:5 up fills the screen (a 4:5 clip loses its sides, a 9:16 one nothing); a photo only
+# when it is about as tall as the screen — a taller-than-square photo is otherwise shown whole (owner 2026-10-30)
+FULL_VIDEO, FULL_PHOTO = 1.25, 1.7
 
 
 def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
@@ -758,11 +761,16 @@ def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
     its sides trimmed (owner 2026-10-30: a 16:9 shown whole looked «сплюснуто»). In a one-story film ("fit") a vertical
     or square one is shown whole, never cropped («если фото вертикальное, то не нужно его обрезать»): the full width
     from under the hook card («границы слева и справа убери»), or — taller than the frame has room for — the whole
-    height down to the bottom, narrower; a blurred copy around. Outside one-story films a portrait source covers the
-    whole frame."""
+    height down to the bottom, narrower; a blurred copy around. A vertical video fills the whole screen (owner
+    2026-10-31: «вертикальные видео пусть будут на весь экран» — a 9:16 clip in a narrow box between blurred sides),
+    and so does a photo as tall as the screen (nothing of it is lost). Outside one-story films a portrait source covers
+    the whole frame."""
     w, h, _ = probe(item["path"])
     if item.get("crop"):
         w, h = item["crop"][2], item["crop"][3]
+    video = item.get("video", Path(item["path"]).suffix.lower() in VIDEO_EXT)
+    if item.get("fit") and h / w >= (FULL_VIDEO if video else FULL_PHOTO):
+        return W, H, 0, 0, True
     if item.get("fit") and h >= w:
         bw, bh = W, round(W * h / w)
         if bh > H - FIT_TOP:
