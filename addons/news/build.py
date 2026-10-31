@@ -1038,6 +1038,11 @@ THESIS_CSS = """
     .thesis em { font-style: normal; padding: 0 12px; border-radius: 6px; text-shadow: none;
                  background: linear-gradient(#e3001b, #e3001b) no-repeat 0 0 / 100% 100%;
                  -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
+THESIS_FADE = 120  # px the band of a thesis over a picture that goes on below fades out under the text
+THESIS_CSS += f"""
+    .thesis.over {{ padding-bottom: {44 + THESIS_FADE}px;
+                   background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.46) 38%, rgba(0,0,0,.6) 68%,
+                                               rgba(0,0,0,0)); }}"""
 THESIS_CSS = THESIS_CSS.replace("SAFE_X", str(SAFE_X))  # the safe zone's numbers
 
 
@@ -1081,6 +1086,14 @@ def thesis_bottom(it: dict) -> int:
     return min(SAFE_BOTTOM - CAP_ROOM, y + bh)  # never under the captions
 
 
+def thesis_over(it: dict) -> bool:
+    """The picture goes on below the thesis (a vertical clip on the whole screen, a tall photo shown whole): its dark
+    band then fades out under the text instead of ending in a hard edge across the picture (owner 2026-10-31: «тень
+    выглядит оторванной»)."""
+    _, bh, _, y, _ = frame_box(it)
+    return y + bh > thesis_bottom(it) + 8
+
+
 def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[str], list[tuple[float, float]]]:
     """HTML, timeline and the spans they hold the screen for. A thesis starts on its cut and stays over the next ones
     of its story ("span", 2 by default) in one place — on the edge of its first picture, so it does not jump at the
@@ -1097,8 +1110,11 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
             end = next((x["start"] + x["dur"] for x in story if x["start"] + x["dur"] - a >= THESIS_MIN_S),
                        story[-1]["start"] + story[-1]["dur"])
             d = round(min(end - a, THESIS_MAX_S), 3)
-        html.append(f'    <div id="th{k}" class="clip thesis" data-start="{a}" data-duration="{d}" data-track-index="4" '
-                    f'style="bottom:{H - thesis_bottom(it)}px"><div class="t">{thesis_markup(it["thesis"])}</div></div>')
+        tb, over = thesis_bottom(it), thesis_over(it)
+        cls = "clip thesis over" if over else "clip thesis"
+        html.append(f'    <div id="th{k}" class="{cls}" data-start="{a}" data-duration="{d}" '
+                    f'data-track-index="4" style="bottom:{H - tb - (THESIS_FADE if over else 0)}px">'
+                    f'<div class="t">{thesis_markup(it["thesis"])}</div></div>')
         if a < 0.05:  # on the very first frame (a short's cover, its hook): there at once, no entrance
             spans.append((a, round(a + d, 3)))
             continue

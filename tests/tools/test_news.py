@@ -994,3 +994,16 @@ def test_a_world_story_may_hold_four_theses():
     shots = [{"src": "a.mp4", "thesis": f"*{i}* тезис"} for i in range(4)]
     assert not [w for w in build.thesis_warnings({"kind": "world", "shots": shots}) if "theses" in w]
     assert [w for w in build.thesis_warnings({"shots": shots}) if "theses" in w]
+
+
+def test_a_thesis_over_a_picture_that_goes_on_below_fades_out(tmp_path: Path):
+    from PIL import Image
+
+    wide, tall = tmp_path / "wide.jpg", tmp_path / "tall.jpg"
+    Image.new("RGB", (1280, 720), "gray").save(wide)
+    Image.new("RGB", (960, 1280), "gray").save(tall)          # shown whole from y=520 down to the bottom
+    assert not build.thesis_over({"path": wide, "fit": True})  # the band ends on the picture's own edge
+    assert build.thesis_over({"path": tall, "fit": True})      # «тень выглядит оторванной» (31.10)
+    items = [{"path": tall, "fit": True, "start": 0.0, "dur": 5.0, "thesis": "*Награда* от МЧС", "w": 0}]
+    html, _, _ = build.theses(items, not_before=0.0)
+    assert 'class="clip thesis over"' in html[0] and ".thesis.over" in build.THESIS_CSS
