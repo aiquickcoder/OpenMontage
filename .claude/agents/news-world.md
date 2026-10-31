@@ -61,6 +61,19 @@ format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs
   donation boxes) is not a shot. A photographer's credit on an agency photo (© AP) stays, and the shot's credit names
   it.
 
+## A story with no footage of its own (owner 2026-10-31)
+A top story often has no video of the event (a trend, a study, an article — `projects/news-ai-31-10-1`, AI agents as
+co-workers, from The Guardian via «Топор. Экономика.»). Then the film is built from thematic YouTube footage that YOU
+plan phrase by phrase — the owner: «что искать должен продумывать агент, а не регекс и алгоритм». For each phrase
+decide what shows its meaning and write the query yourself, in the source's language, with the names: the people and
+companies named (official channels, keynotes, interviews: «OpenAI DevDay keynote», «Sam Altman TED»), their products
+(official demos), the places (drone footage of the city or campus), TV reports on the same phenomenon (CNBC, CBS),
+the source article as a card. `yt_footage.py search` → `peek` → `find` → `cut`. A face only on the phrase about that
+person or company; another company's clip only on a phrase about the general trend. Never burned-in word-by-word
+captions, staged/AI video, stock sites. Check the source article behind the post: the channel's framing is not a fact.
+Abbreviations that vanish in speech are written out («боты с искусственным интеллектом», «Массачусетский
+технологический институт»). Full rules: README «Новость без своих кадров».
+
 ## Finish
 `clean_footage.py --plan` → look at every `qa/wm_*.jpg` → `media/wm.json` → `produce.py projects/<slug> --caption
 projects/<slug>/caption.txt --send --kinescope`. Look at `qa/safe.jpg` and the frames before reporting.

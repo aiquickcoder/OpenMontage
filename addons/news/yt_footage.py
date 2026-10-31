@@ -22,7 +22,9 @@ transcribes its sound. The cut downloads the video with yt-dlp's own downloader 
 streaming from googlevideo stalls through the egress (2026-10-30), yt-dlp's chunked download runs at ~9 MB/s.
 
 Then a shot of it — credit «Видео: <канал> / YouTube» — and clean_footage.py as for any post's footage (every
-channel's logo comes off, an agency's too). Prefer agencies, local TV (Татарстан 24, ТНВ,
+channel's logo comes off, an agency's too). A story with no footage of its own (owner 2026-10-31) is told with thematic
+footage found here: the agent decides per phrase what to look for — the people, companies, products and places it
+names, TV reports on the same phenomenon — and writes the queries itself (README «Новость без своих кадров»). Prefer agencies, local TV (Татарстан 24, ТНВ,
 Москва 24) and the event itself; a clip about another event is never this story's picture.
 """
 from __future__ import annotations
