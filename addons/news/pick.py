@@ -170,7 +170,7 @@ def footage(e: dict) -> tuple[float, int]:
 
 def describe(c: dict) -> str:
     parts = ([f"видео {c['video_s']:.0f} с"] if c.get("video_s") else []) + ([f"{c['photos']} фото"] if c.get("photos") else [])
-    return (" + ".join(parts) or "без медиа") + (" ведомства, без очистки" if c.get("official") else "")
+    return (" + ".join(parts) or "без медиа") + (" ведомства" if c.get("official") else "")
 
 
 def main() -> None:

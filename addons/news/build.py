@@ -744,7 +744,10 @@ def box_h(w: int, h: int) -> int:
     return int(min(BOX_MAX, max(BOX_MIN, W * h / w)))
 
 
-FIT_TOP = 440  # a one-story film: a vertical picture starts under the hook card
+# TikTok's safe zone (owner 2026-10-31, a hook cut at the edges and under the search bar): a phone taller than 9:16
+# shows the film zoomed to its height — ~100 px of each side are off screen — and the app's status bar and search
+# cover the top ~220 px. So every text keeps 120 px from the sides, the hook card starts at 230 px.
+FIT_TOP = 520  # a one-story film: a vertical picture starts under the hook card
 
 
 def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
@@ -1016,7 +1019,7 @@ THESIS_MIN_S, THESIS_MAX_S = 4.0, 7.0  # a thesis stays at least two phrase-long
 # 2-х кадрах»), over the next cuts of its story if its own is short, and leaves a long clip after 7 s; "span": N cuts
 THESIS_CSS = """
     @font-face { font-family: "PT Sans Narrow"; src: url("assets/PTSansNarrow-Bold.ttf"); font-weight: 700; }
-    .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 56px 44px;
+    .thesis { position: absolute; left: 0; right: 0; z-index: 5; padding: 240px 120px 44px;
               background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.46) 45%, rgba(0,0,0,.74)); }
     .thesis .t { font-family: "PT Sans Narrow", sans-serif; font-weight: 700; font-size: 92px;
                  line-height: 1.04; text-transform: uppercase; letter-spacing: .5px; color: #fff;
@@ -1029,14 +1032,14 @@ THESIS_CSS = """
 HOOK_FONT = HERE / "fonts" / "PTMono-Bold.ttf"  # ParaType Free Font License
 HOOK_CSS = """
     @font-face { font-family: "PT Mono"; src: url("assets/PTMono-Bold.ttf"); font-weight: 700; }
-    #hook { position: absolute; left: 0; right: 0; top: 0; z-index: 6; padding: 70px 46px 30px;
+    #hook { position: absolute; left: 0; right: 0; top: 0; z-index: 6; padding: 230px 120px 34px;
             background: linear-gradient(to bottom, rgba(10,10,12,.96) 82%, rgba(10,10,12,0)); text-align: left; }
     #hook .brand { text-align: center; margin-bottom: 22px; }
     #hook .brand span { display: inline-block; background: #e3001b; color: #fff; font: 900 30px "Arial Black",
                         "DejaVu Sans", sans-serif; letter-spacing: 3px; padding: 6px 16px 5px; border-radius: 6px; }
     #hook .brand i { font-style: normal; color: #bbb; font: 700 26px "PT Mono", monospace; margin-left: 12px; }
-    #hook .t { font-family: "PT Mono", monospace; font-weight: 700; font-size: 50px; line-height: 1.32;
-               letter-spacing: 1.5px; text-transform: uppercase; color: #fff; }
+    #hook .t { font-family: "PT Mono", monospace; font-weight: 700; font-size: 46px; line-height: 1.3;
+               letter-spacing: 0; text-transform: uppercase; color: #fff; }
     #hook .t em { font-style: normal; background: #e3001b; color: #fff; padding: 0 8px;
                   -webkit-box-decoration-break: clone; box-decoration-break: clone; }"""
 
@@ -1325,7 +1328,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .chip.label {{ right: 22px; font-size: 20px; font-weight: 400; color: rgba(255,255,255,.42);
                    text-shadow: 0 1px 2px rgba(0,0,0,.35); }}
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
-    .cap {{ position: absolute; left: 50px; right: 50px; top: 1500px; text-align: center; z-index: 7; }}
+    .cap {{ position: absolute; left: 120px; right: 120px; top: 1500px; text-align: center; z-index: 7; }}
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
                  background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
                  text-shadow: 0 2px 6px rgba(0,0,0,.6); }}

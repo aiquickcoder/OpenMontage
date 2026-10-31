@@ -7,10 +7,10 @@ harvesters (harvest.py for the cities, harvest_top.py for «Россия»).
                                                     (article_video.py: the Rutube player in it); sledcom.ru/news too
 
 cities.json "sources": [[kind, ref, city_only, official], ...]. city_only = the source covers only this city (no geo
-check); official = the agency's own footage, shown as published (owner: «с этих каналов очистку не делай, но важно
-подбирать ролики правильно») — the post carries "official": true, the agent puts "clean": "none" on its shots and
-takes the facts from the agency's text; pick.py lets an official source's security news through (НАК: agents,
-sabotage), which the Telegram channels' war/politics filter drops.
+check); official = the agency's own footage («важно подбирать ролики правильно») — the post carries "official":
+true, the agent takes the facts from the agency's text; its logo is cleaned like any other's (owner 2026-10-31:
+«очистку оставим всё-таки для ведомств тоже»; on 10-30 it went in as published); pick.py lets an official source's
+security news through (НАК: agents, sabotage), which the Telegram channels' war/politics filter drops.
 
 A post is the harvesters' shape: {"ch", "text", "dt", "link", "photo", "photos", "mp4", "mp4s", "official"}; its "mp4"
 is "rutube:<id>" / "youtube:<id>" / a direct link, fetched by fetch_video() only for the posts the filters keep.

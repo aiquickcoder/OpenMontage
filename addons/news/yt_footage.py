@@ -20,8 +20,8 @@ a small json3 file. Short news clips often have none — find --listen then down
 transcribes its sound. The cut downloads the video with yt-dlp's own downloader into a cache and cuts locally: ffmpeg
 streaming from googlevideo stalls through the egress (2026-10-30), yt-dlp's chunked download runs at ~9 MB/s.
 
-Then a shot of it — credit «Видео: <канал> / YouTube» — and clean_footage.py as for any post's footage (other
-channels' logos come off; an agency's own channel — "clean": "none"). Prefer agencies, local TV (Татарстан 24, ТНВ,
+Then a shot of it — credit «Видео: <канал> / YouTube» — and clean_footage.py as for any post's footage (every
+channel's logo comes off, an agency's too). Prefer agencies, local TV (Татарстан 24, ТНВ,
 Москва 24) and the event itself; a clip about another event is never this story's picture.
 """
 from __future__ import annotations
