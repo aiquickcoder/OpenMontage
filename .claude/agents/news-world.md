@@ -71,7 +71,7 @@ companies named (official channels, keynotes, interviews: «OpenAI DevDay keynot
 the source article as a card. `yt_footage.py search` → `peek` → `find` → `cut`. A face only on the phrase about that
 person or company; another company's clip only on a phrase about the general trend. Never burned-in word-by-word
 captions, staged/AI video, stock sites. Check the source article behind the post: the channel's framing is not a fact.
-Abbreviations that vanish in speech are written out («боты с искусственным интеллектом», «Массачусетский
+Lessons of 31.10 (the owner: «футажи плохо выбраны… например блогера», «и что? Суть новости то в чём?»): the text first states why it matters (the stake: people replaced, gains unseen), not a bare number; per phrase write what the viewer must SEE, then search for that; pick the moment by the picture (peek at ~1 s steps), not by the transcript (footage is muted); no talking heads except a known person on the phrase about them (at most one a film), never tutorial/podcast hosts; check every cut's first/middle/last frame at full size; at most two shots from one source; build.py --storyboard before the render; no thesis over a text card. Abbreviations that vanish in speech are written out («боты с искусственным интеллектом», «Массачусетский
 технологический институт»). Full rules: README «Новость без своих кадров».
 
 ## Finish
