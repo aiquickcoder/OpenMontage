@@ -67,7 +67,9 @@ def _egress_up() -> bool:
 # without the egress (the Mac) nothing changes
 if "https_proxy" not in os.environ and _egress_up():
     os.environ["https_proxy"] = EGRESS
-FORMAT = "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]"
+# a silent upload (drone footage often has no sound) has no audio to merge: then the picture alone — footage is muted
+FORMAT = ("bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]"
+          "/bv*[height<=720][vcodec^=avc1]/bv*[height<=720]")
 
 
 def url_of(ref: str) -> str:
