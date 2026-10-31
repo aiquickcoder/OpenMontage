@@ -30,11 +30,13 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 from functools import lru_cache
 from pathlib import Path
@@ -44,6 +46,25 @@ _VENV = HERE.parents[1] / ".venv" / "bin" / "yt-dlp"
 YTDLP = [str(_VENV) if _VENV.is_file() else "yt-dlp", "--quiet", "--no-warnings"]
 CACHE = Path.home() / ".cache" / "openmontage" / "youtube"
 CACHE_DAYS = 3
+EGRESS = os.environ.get("YT_PROXY", "http://127.0.0.1:10809")
+
+
+def _egress_up() -> bool:
+    import socket
+
+    host, port = EGRESS.rsplit("://", 1)[-1].rsplit(":", 1)
+    try:
+        socket.create_connection((host, int(port)), timeout=1).close()
+        return True
+    except OSError:
+        return False
+
+
+# YouTube does not answer the server directly: yt-dlp and the storyboard fetches go through the factory's egress
+# unless the caller set a proxy (31.10: run with only the .env, every search failed on an SSL EOF); on a machine
+# without the egress (the Mac) nothing changes
+if "https_proxy" not in os.environ and _egress_up():
+    os.environ["https_proxy"] = EGRESS
 FORMAT = "bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]"
 
 
@@ -52,7 +73,10 @@ def url_of(ref: str) -> str:
 
 
 def search(query: str, n: int = 8, fresh: bool = False) -> list[dict]:
-    out = subprocess.run([*YTDLP, "--flat-playlist", "-J", f"{'ytsearchdate' if fresh else 'ytsearch'}{n}:{query}"],
+    # the newest first: YouTube's own results page sorted by upload date (yt-dlp 2026.10.26's ytsearchdate gives null)
+    src = (f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}&sp=CAI%253D" if fresh
+           else f"ytsearch{n}:{query}")
+    out = subprocess.run([*YTDLP, "--flat-playlist", "-J", "--playlist-end", str(n), src],
                          capture_output=True, text=True, timeout=120, check=True).stdout
     return [{"id": e["id"], "duration": e.get("duration"), "channel": e.get("channel") or e.get("uploader") or "",
              "title": e.get("title") or ""} for e in json.loads(out).get("entries") or []]

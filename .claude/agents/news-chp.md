@@ -31,9 +31,9 @@ below about the cat, digests and illustrations are history.
 A big political or world story (owner 2026-10-31, README «Большая история»): build a dossier first —
 `tg_client.py search "<stem>" --hours 48 --json projects/<slug>/dossier.json` over all our channels, the country's
 own media in its language, `yt_footage.py scout … --lang <xx>`; a loaded word («госпереворот», «штурм») only with its
-author and the other side's words next to it; a 40–60 s connected story (what, timeline, why, who says what, latest,
-next date) ending «Как думаете, чем это закончится? Пишите в комментариях. И подписывайтесь, чтобы первыми знать,
-что происходит.». Every text keeps TikTok's safe zone (120 px from the sides, the hook card from 230 px).
+author and the other side's words next to it; a connected story of about 40–60 s (what, timeline, why, who says what,
+latest, next date) ending «Как думаете, чем это закончится? Пишите в комментариях. И подписывайтесь, чтобы первыми знать,
+что происходит.». Length is a guide, never a limit (owner 2026-10-31: «Обрезай, только если можешь укоротить, не теряя смысл, не теряй ничего важного и не старайся любым способом уместиться в рамки»): shorten only what can be said shorter with the same meaning; never drop a fact, either side's quote, the background, the latest event or the next date to save seconds — a full 70 s story beats a 55 s stump; note the overrun in `"notes"`. Every text keeps TikTok's safe zone (120 px from the sides, the hook card from 230 px).
 
 ## Defaults (owner's choices, 2026-10-24)
 - About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.
