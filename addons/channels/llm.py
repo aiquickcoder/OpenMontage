@@ -110,8 +110,8 @@ def _chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: i
                 text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
             if not text.strip():
                 raise LLMError("empty answer")
-            if (data.get("choices") or [{}])[0].get("finish_reason") in ("error",):
-                raise LLMError("the answer was cut by a provider error")
+            if (data.get("choices") or [{}])[0].get("finish_reason") in ("error", "content_filter"):
+                raise LLMError("the answer was cut (provider error or content filter)")
             return text
         except urllib.error.HTTPError as e:
             body = e.read()[:300]
@@ -183,12 +183,12 @@ def json_of(text: str) -> Any:
 
 
 def chat_json(db, purpose: str, model: str, system: str, user: Any, **kw) -> Any:
-    last: Exception | None = None
-    for _ in range(2):
-        try:
-            return json_of(chat(db, purpose, model, system, user, **kw))
-        except LLMError as e:
-            if "no JSON" not in str(e):
-                raise
-            last = e
-    raise LLMError(str(last))
+    """A JSON answer; a reply that is no JSON (cut off mid-way — some providers stop on crime stories) is asked
+    once more from the fallback model."""
+    try:
+        return json_of(chat(db, purpose, model, system, user, **kw))
+    except LLMError as e:
+        if "no JSON" not in str(e):
+            raise
+        alt = config.setting(db, "model_fallback") or model
+        return json_of(chat(db, purpose, alt, system, user, **kw))
