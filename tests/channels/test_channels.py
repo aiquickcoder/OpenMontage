@@ -393,3 +393,11 @@ def test_json_of_takes_the_whole_array_and_salvages_a_cut_one():
 def test_problems_catch_talk_about_sources():
     h = rewrite.render(_post(paragraphs=["Точного прогноза в источнике нет."]), NEWS)
     assert any("источник" in p for p in rewrite.problems(h, NEWS))
+
+
+def test_a_channel_switched_on_midday_owes_only_from_then():
+    now = _msk(18)
+    full = schedule.owed(now, 31, CH["hours"])
+    since = _msk(17).timestamp()
+    part = schedule.owed(now, 31, CH["hours"], since=since)
+    assert full > 15 and 0 < part <= 3

@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS channels(
   per_day REAL DEFAULT 20, hours TEXT DEFAULT '[]', quiet_from INTEGER DEFAULT 1, quiet_to INTEGER DEFAULT 7,
   min_gap_min INTEGER DEFAULT 10, paused INTEGER DEFAULT 0, mode TEXT DEFAULT 'trial', bot_env TEXT DEFAULT 'TG_TOKEN',
   live_since REAL DEFAULT 0, ramp REAL DEFAULT 0.5, cta TEXT DEFAULT '', style TEXT DEFAULT '',
-  min_score REAL DEFAULT 6.0, max_age_h REAL DEFAULT 8, note TEXT DEFAULT '');
+  min_score REAL DEFAULT 6.0, max_age_h REAL DEFAULT 8, note TEXT DEFAULT '', since REAL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS posts(
   id INTEGER PRIMARY KEY, story_id INTEGER, channel TEXT, created REAL, status TEXT DEFAULT 'draft', html TEXT,
   score REAL DEFAULT 0, media TEXT DEFAULT '[]', media_note TEXT DEFAULT '', sources TEXT DEFAULT '[]',
@@ -79,6 +79,13 @@ class DB:
         self.con.execute("PRAGMA journal_mode=WAL")
         self.con.execute("PRAGMA busy_timeout=30000")
         self.con.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Columns added after the first deploy (CREATE TABLE IF NOT EXISTS does not add them)."""
+        have = {r[1] for r in self.con.execute("PRAGMA table_info(channels)")}
+        if "since" not in have:
+            self.con.execute("ALTER TABLE channels ADD COLUMN since REAL DEFAULT 0")
 
     # -- generic ---------------------------------------------------------------------------------------------------
     @staticmethod

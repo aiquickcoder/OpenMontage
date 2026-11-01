@@ -22,7 +22,7 @@ def status(db) -> None:
         start = schedule.day_start(now).timestamp()
         counts = {r["status"]: r["n"] for r in db.q("SELECT status, COUNT(*) n FROM posts WHERE channel=? AND "
                                                      "updated>=? GROUP BY status", (ch["key"], start))}
-        owed = schedule.owed(now, ch["per_day"], ch["hours"], ch["live_since"] or 0, ch["ramp"] or 0.5)
+        owed = schedule.owed(now, ch["per_day"], ch["hours"], ch["live_since"] or 0, ch["ramp"] or 0.5, ch["since"] or 0)
         print(f"@{ch['username']:<16} {ch['mode']:<5} {'ПАУЗА ' if ch['paused'] else ''}{ch['per_day']:g}/день, "
               f"к этому часу {owed}; сегодня: {json.dumps(counts, ensure_ascii=False)}")
     for k in ("collector_alive", "engine_alive", "media_alive", "publisher_alive"):
@@ -59,7 +59,8 @@ def main() -> None:
             r = publish.check_rights(ch)
             if not r.get("ok"):
                 raise SystemExit(f"бот не может публиковать в @{ch['username']}: {r}")
-            db.update("channels", "key", key, mode="live", chat_id=r["chat_id"], live_since=time.time(), note="")
+            db.update("channels", "key", key, mode="live", chat_id=r["chat_id"], live_since=time.time(), since=time.time(),
+                      note="")
         else:
             db.update("channels", "key", key, mode="trial")
         print(key, "→", mode)

@@ -106,6 +106,9 @@ def tick(db, now: datetime | None = None) -> list[str]:
     out = []
     for ch in db.channels():
         expire(db, ch)
+        if not ch.get("since"):  # the first run: the schedule counts from now, not from midnight
+            db.update("channels", "key", ch["key"], since=time.time())
+            ch["since"] = time.time()
         if ch.get("paused"):
             continue
         ready = db.q("SELECT p.*, s.first_ts FROM posts p JOIN stories s ON s.id=p.story_id WHERE p.channel=? AND "

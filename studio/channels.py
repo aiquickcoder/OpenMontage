@@ -96,7 +96,8 @@ def overview() -> dict:
                       (ch["key"],))["n"]
         out_today = d.one("SELECT COUNT(*) n FROM posts WHERE channel=? AND status IN ('published','previewed',"
                           "'deleted') AND published_at>=?", (ch["key"], start))["n"]
-        owed = schedule.owed(now, ch["per_day"], ch["hours"] or [], ch["live_since"] or 0, ch["ramp"] or 0.5)
+        owed = schedule.owed(now, ch["per_day"], ch["hours"] or [], ch["live_since"] or 0, ch["ramp"] or 0.5,
+                             ch["since"] or 0)
         chans.append({**ch, "today": counts, "queue": queue, "out_today": out_today, "owed_now": owed,
                       "rights": d.setting(f"rights:{ch['key']}") or {}})
     day = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3 * 3600))
@@ -125,7 +126,7 @@ def patch_channel(key: str, body: ChannelPatch) -> dict:
         d.set_setting(f"rights:{key}", {**r, "ts": time.time()})
         if not r.get("ok"):
             raise HTTPException(409, f"бот не может публиковать в @{ch['username']}: {r.get('detail') or r.get('status')}")
-        fields.update(chat_id=r["chat_id"], live_since=time.time(), note="")
+        fields.update(chat_id=r["chat_id"], live_since=time.time(), since=time.time(), note="")
     d.update("channels", "key", key, **fields)
     d.event("control", f"{key}: {', '.join(f'{k}={v}' for k, v in fields.items() if k not in ('style', 'hours'))} (веб)"[:300])
     return d.channel(key)

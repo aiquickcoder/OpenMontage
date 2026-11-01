@@ -44,8 +44,14 @@ def factor(now: datetime, live_since: float, ramp: float) -> float:
     return 1.0
 
 
-def owed(now: datetime, per_day: float, profile: list[float], live_since: float = 0, ramp: float = 0.5) -> int:
-    return int(per_day * factor(now, live_since, ramp) * day_share(now, profile) + 0.5)
+def owed(now: datetime, per_day: float, profile: list[float], live_since: float = 0, ramp: float = 0.5,
+         since: float = 0) -> int:
+    """Posts due by `now` today. A channel switched on (or to live) during the day owes only from then on — no burst
+    of the morning's posts at once."""
+    share = day_share(now, profile)
+    if since and since > day_start(now).timestamp():
+        share -= day_share(datetime.fromtimestamp(since, MSK), profile)
+    return int(per_day * factor(now, live_since, ramp) * max(0.0, share) + 0.5)
 
 
 def day_start(now: datetime) -> datetime:
@@ -70,7 +76,7 @@ def may_post(now: datetime, ch: dict, published_today: int, last_post_ts: float 
     if gap_min < float(ch.get("min_gap_min", 10)):
         return False, f"интервал {ch.get('min_gap_min')} мин"
     need = owed(now, float(ch.get("per_day", 20)), ch.get("hours") or flat_profile(), float(ch.get("live_since") or 0),
-                float(ch.get("ramp") or 0.5))
+                float(ch.get("ramp") or 0.5), float(ch.get("since") or 0))
     if published_today >= need + burst:
         return False, f"по графику: {published_today} из {need} к этому часу"
     if published_today >= need:
