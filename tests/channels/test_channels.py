@@ -361,3 +361,20 @@ def test_a_chain_does_not_glue_another_event_to_a_story():
     for s in (seed, bridge, new):
         idx.add(s)
     assert cluster.best_story(new, [(1, seed), (1, bridge)], idx, seeds={1: seed}) is None
+
+
+def test_fresh_strong_story_may_run_ahead_of_schedule_but_not_inside_the_gap():
+    now = _msk(12)
+    need = schedule.owed(now, 31, CH["hours"])
+    assert not schedule.may_post(now, CH, need, now.timestamp() - 3600)[0]
+    ok, why = schedule.may_post(now, CH, need, now.timestamp() - 3600, burst=2)
+    assert ok and "раньше графика" in why
+    assert not schedule.may_post(now, CH, need + 2, now.timestamp() - 3600, burst=2)[0]
+    assert not schedule.may_post(now, CH, need, now.timestamp() - 60, burst=2)[0]
+
+
+def test_primary_source_bonus_is_soft_and_configurable():
+    v = {"relevance": 3, "significance": 2, "virality": 1}  # a dull agency report
+    with_primary = judge.score(v, {**SIG, "channels": 1, "reach": 3000, "video": False})
+    assert with_primary < 6.0  # still under the main channel's bar
+    assert judge.score(v, {**SIG, "channels": 1}, primary_bonus=2.0) > judge.score(v, {**SIG, "channels": 1}, primary_bonus=0)

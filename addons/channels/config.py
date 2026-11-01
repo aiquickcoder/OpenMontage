@@ -45,6 +45,9 @@ DEFAULTS: dict[str, object] = {
     "join_enabled": True,              # owner 2026-11-01: «Да разрешаю» — join the public source channels
     "join_every_s": 180,               # one join every ~3 minutes
     "max_channels": 480,               # the account's channel count stays under Telegram's 500
+    "primary_bonus": 0.8,              # score bonus of a story that has a first-hand source (soft priority)
+    "fresh_burst": 2,                  # a fresh strong story may run this many posts ahead of the schedule
+    "fresh_min": 20,                   # «fresh» = first seen this many minutes ago at most
 }
 
 # Measured 2026-11-01 through Telethon (research.py freq, 14 full days 18–31.10, ads and reposts left out):

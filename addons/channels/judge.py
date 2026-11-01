@@ -97,15 +97,16 @@ def signals(posts: list[dict], trust: dict[str, float] | None = None) -> dict[st
             "primary": primary, "trust": t}
 
 
-def score(v: dict, sig: dict[str, float]) -> float:
-    """0..~12: the AI's three marks plus the feed's signals."""
+def score(v: dict, sig: dict[str, float], primary_bonus: float = 0.8) -> float:
+    """0..~12: the AI's three marks plus the feed's signals. A first-hand source adds primary_bonus (setting; owner
+    2026-11-01: a priority, but a soft one — it never lifts a dull agency report over the bar on its own)."""
     if any(v.get(k) for k in ("war", "ad", "propaganda", "politics", "risky")):
         return 0.0
     ai = 0.3 * float(v.get("relevance", 0)) + 0.35 * float(v.get("significance", 0)) + 0.35 * float(v.get("virality", 0))
     cross = min(1.0, (sig["channels"] - 1) * 0.35) * 1.5
     reach = max(0.0, min(1.2, math.log10(max(1, sig["reach"]) / 20000) * 0.6)) if sig["reach"] else 0.0
     media = 0.5 if sig["video"] else 0.3 if sig["photo"] else 0.0
-    first_hand = 0.4 if sig["primary"] else 0.0
+    first_hand = primary_bonus if sig["primary"] else 0.0
     trust = (sig["trust"] - 0.6) * 1.0
     fresh = max(0.5, 1 - sig["age_h"] / 36)  # the judge's relevance already weighs age; this only fades
     return round((ai + cross + reach + media + first_hand + trust) * fresh, 2)

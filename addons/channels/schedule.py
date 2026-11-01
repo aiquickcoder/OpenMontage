@@ -53,8 +53,10 @@ def day_start(now: datetime) -> datetime:
     return t.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def may_post(now: datetime, ch: dict, published_today: int, last_post_ts: float | None, urgent: bool = False) -> tuple[bool, str]:
-    """(yes/no, why) for the channel row `ch` at `now`."""
+def may_post(now: datetime, ch: dict, published_today: int, last_post_ts: float | None, urgent: bool = False,
+             burst: int = 0) -> tuple[bool, str]:
+    """(yes/no, why) for the channel row `ch` at `now`. burst: a fresh strong story may run that many posts ahead
+    of the owed count (to be out before the others), the gap still holds."""
     if ch.get("paused"):
         return False, "канал на паузе"
     gap_min = (now.timestamp() - last_post_ts) / 60 if last_post_ts else 1e9
@@ -69,8 +71,10 @@ def may_post(now: datetime, ch: dict, published_today: int, last_post_ts: float 
         return False, f"интервал {ch.get('min_gap_min')} мин"
     need = owed(now, float(ch.get("per_day", 20)), ch.get("hours") or flat_profile(), float(ch.get("live_since") or 0),
                 float(ch.get("ramp") or 0.5))
-    if published_today >= need:
+    if published_today >= need + burst:
         return False, f"по графику: {published_today} из {need} к этому часу"
+    if published_today >= need:
+        return True, f"свежее раньше графика: {published_today} из {need}+{burst}"
     return True, f"по графику: {published_today} из {need}"
 
 

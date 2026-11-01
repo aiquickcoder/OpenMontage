@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
       { to: "/advertisers", label: "Рекламодатели" },
     ],
   },
+  { to: "/channels", label: "Каналы" },
   { to: "/publications", label: "Публикации" },
   { to: "/devices", label: "Устройства" },
   { to: "/accounts", label: "Аккаунты" },

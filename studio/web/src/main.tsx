@@ -23,6 +23,7 @@ import { CampaignPage } from "./pages/Campaign";
 import { PublicationsPage } from "./pages/Publications";
 import { DevicesPage } from "./pages/Devices";
 import { AccountsPage } from "./pages/Accounts";
+import { ChannelsPage } from "./pages/Channels";
 import { useServerEvents } from "./useEvents";
 import "./styles.css";
 
@@ -87,6 +88,7 @@ function App() {
         <Route path="publications" element={<PublicationsPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="accounts" element={<AccountsPage />} />
+        <Route path="channels" element={<ChannelsPage />} />
         <Route path="*" element={<OverviewPage />} />
       </Route>
     </Routes>

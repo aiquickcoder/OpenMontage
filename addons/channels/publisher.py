@@ -108,19 +108,25 @@ def tick(db, now: datetime | None = None) -> list[str]:
         expire(db, ch)
         if ch.get("paused"):
             continue
-        ready = db.q("SELECT * FROM posts WHERE channel=? AND status='ready' ORDER BY urgent DESC, score DESC, id",
-                     (ch["key"],))
+        ready = db.q("SELECT p.*, s.first_ts FROM posts p JOIN stories s ON s.id=p.story_id WHERE p.channel=? AND "
+                     "p.status='ready'", (ch["key"],))
         if not ready:
             continue
+        fresh_s = 60 * float(config.setting(db, "fresh_min"))
+        ready.sort(key=lambda p: (-int(p["urgent"] or 0), -(p["score"] + (0.7 if time.time() - p["first_ts"] < fresh_s
+                                                                             else 0)), p["id"]))
         n, last = published_today(db, ch["key"], now)
         top = ready[0]
-        ok, why = schedule.may_post(now, ch, n, last, urgent=bool(top.get("urgent")))
+        strong = top["score"] >= float(ch.get("min_score") or 6) + 1.5 and time.time() - top["first_ts"] < fresh_s
+        burst = int(config.setting(db, "fresh_burst")) if strong else 0
+        ok, why = schedule.may_post(now, ch, n, last, urgent=bool(top.get("urgent")), burst=burst)
         if not ok:
             continue
         ch = rights_gate(db, ch)
         fresh = db.channel(ch["key"])  # the pause button may have been pressed a second ago
         if not fresh or fresh.get("paused"):
             continue
+        top.pop("first_ts", None)
         publish_one(db, {**fresh, "mode": ch["mode"]}, top)
         out.append(f"{ch['key']}: {why}")
     return out

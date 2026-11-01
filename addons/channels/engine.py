@@ -165,7 +165,7 @@ def judge_pending(db, batch: int = 10) -> int:
                                 db.update("stories", "id", target, status="grown")
                         continue
             sig = judge.signals(posts, trust)
-            sc = judge.score(v, sig)
+            sc = judge.score(v, sig, float(config.setting(db, "primary_bonus")))
             flags = [k for k in ("war", "ad", "propaganda", "politics", "risky") if v.get(k)]
             fields = {"judge": v, "score": sc, "region": v.get("region") or "", "category": v.get("category") or "",
                       "title": (v.get("title") or "")[:200], "judged_at": time.time(), "judged_posts": len(posts)}
