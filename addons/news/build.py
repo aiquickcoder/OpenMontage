@@ -1153,7 +1153,8 @@ def thesis_warnings(story: dict) -> list[str]:
             out.append(f"story {w + 1}: no thesis on its first shot — every story opens with one (owner 2026-10-30)")
         out += [f"story {w + 1}: thesis «{t}» is {len(t.replace('*', '').replace('|', ''))} characters — at most "
                 f"{THESIS_MAX}" for t in ts if len(t.replace("*", "").replace("|", "")) > THESIS_MAX]
-        most = 4 if st.get("kind") == "world" else 2  # a big story runs 40–70 s: a thesis per turn of it (31.10)
+        # a big story (and a viral «почему это произошло» film) runs 40–70 s: a thesis per turn of it (31.10)
+        most = 4 if st.get("kind") in ("world", "viral") else 2
         if len(ts) > most:
             out.append(f"story {w + 1}: {len(ts)} theses — at most {most} per story, on its strongest facts")
     return out

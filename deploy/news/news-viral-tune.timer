@@ -1,0 +1,9 @@
+[Unit]
+Description=Viral TikTok pick: weights tuned every Monday at 10:00 MSK
+
+[Timer]
+OnCalendar=Mon *-*-* 07:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

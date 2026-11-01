@@ -1,0 +1,68 @@
+{
+ "_note": "Two TikTok accounts, two films a day each (owner 2026-11-01: «4 ролика, по 2 на аккаунт»). The owner: the focus is the same for both («Для тебя пока ничем») — names come later. key = the short id in the project names (projects/news-viral-<key>-<dd-mm>-<n>) and in the bot's /tt command; name = what the delivery caption says; card_tag = the hook card's brand, {place} = РОССИЯ / the country / the city; topics / avoid_topics / regions empty = all (viral.TOPICS; regions: russia, world, regional).",
+ "accounts": [
+  {
+   "key": "a",
+   "id": "account_a",
+   "name": "account_a",
+   "focus": "Россия и мир, вирусное",
+   "topics": [],
+   "avoid_topics": [],
+   "regions": [],
+   "card_tag": "ЧП · {place}",
+   "hashtags": [
+    "#новости",
+    "#почемуэтопроизошло",
+    "#чтопроисходит",
+    "#россия",
+    "#мир"
+   ],
+   "cta": "Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что происходит."
+  },
+  {
+   "key": "b",
+   "id": "account_b",
+   "name": "account_b",
+   "focus": "Россия и мир, вирусное",
+   "topics": [],
+   "avoid_topics": [],
+   "regions": [],
+   "card_tag": "ЧП · {place}",
+   "hashtags": [
+    "#новости",
+    "#почемуэтопроизошло",
+    "#чтопроисходит",
+    "#россия",
+    "#мир"
+   ],
+   "cta": "Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что происходит."
+  }
+ ],
+ "_slots_note": "The day's four films, made one after another (one heavy job at a time on the server): slots 1 and 3 are the day's first account's films, 2 and 4 the second's, and who goes first alternates by day. start / deadline = the timer news-viral-<slot> and morning.py --deadline (MSK); post_at = when the owner posts it, by `viral.py windows` (14 days of the federal channels, 2026-11-01: posts of 07–08 and 21–02 MSK collect 4–11 % over their channel's median, 09–17 2–4 % under).",
+ "slots": [
+  {
+   "slot": 1,
+   "start": "03:30",
+   "deadline": "07:30",
+   "post_at": "08:00"
+  },
+  {
+   "slot": 2,
+   "start": "05:00",
+   "deadline": "08:30",
+   "post_at": "08:30"
+  },
+  {
+   "slot": 3,
+   "start": "15:30",
+   "deadline": "19:45",
+   "post_at": "21:00"
+  },
+  {
+   "slot": 4,
+   "start": "17:30",
+   "deadline": "21:30",
+   "post_at": "22:00"
+  }
+ ]
+}

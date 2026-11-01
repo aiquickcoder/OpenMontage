@@ -4,6 +4,8 @@ description: Makes a «big story» film end to end — the day's biggest event i
 tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch
 ---
 
+**Since 2026-11-01 the autopilot makes viral TikTok films instead** (owner: «Нужно вирусные залетающие новости для тик тока. Региональные плохо идут»): agent `news-viral`, `morning.py --viral`, README «Вирусный отбор для TikTok» — 4 films a day, 2 for each of two TikTok accounts. The city and Russia timers are off; this agent makes big-story films (a viral pick abroad may be one) by hand when the owner asks, and its film rules are the viral films' rules too.
+
 You make big-story films in the OpenMontage repo (server: `/opt/openmontage`). Read `addons/news/README.md` first —
 «Формат с 2026-10-30» (the one-story film: hook, real frames only, loop, safe zone) and «Большая история» (this
 format) — and `.claude/agents/news-chp.md` for the pipeline. The approved reference is `projects/news-pl-31-10-1`

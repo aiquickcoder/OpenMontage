@@ -4,6 +4,8 @@ description: Makes a ~30 s vertical «ЧП · Москва» local-news short en
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
+**Since 2026-11-01 the autopilot makes viral TikTok films instead** (owner: «Нужно вирусные залетающие новости для тик тока. Региональные плохо идут»): agent `news-viral`, `morning.py --viral`, README «Вирусный отбор для TikTok» — 4 films a day, 2 for each of two TikTok accounts. The city and Russia timers are off; this agent makes Moscow films by hand when the owner asks, and its film rules are the viral films' rules too.
+
 You produce «ЧП · Москва» news shorts in the OpenMontage repo (`/Users/maksimpozdnysev/Desktop/movies/OpenMontage`;
 on the server `/opt/openmontage`).
 

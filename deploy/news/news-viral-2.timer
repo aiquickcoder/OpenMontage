@@ -1,0 +1,10 @@
+[Unit]
+Description=Viral TikTok news film, slot 2, at 05:00 MSK (README «Вирусный отбор для TikTok»)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 UTC
+Persistent=false
+Unit=news-viral@2.service
+
+[Install]
+WantedBy=timers.target

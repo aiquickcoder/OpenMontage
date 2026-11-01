@@ -82,6 +82,8 @@ def main() -> None:
         print(f"already on Kinescope: {old['id']} {old.get('play_link', '')} (use --replace after a rebuild)")
         return
     show = CITIES.get(story.get("city", ""), {}).get("show") or story.get("tag", "ЧП")
+    if (story.get("viral") or {}).get("account"):  # a viral film: the TikTok account it is for, first
+        show = f"TikTok {story['viral']['account']} · {show}"
     title = a.title or f"{show} · {story.get('date', '')} — {story.get('headline', '')}".strip(" ·—")
     desc = "\n".join(f"{i}. {s.get('headline', '')} ({s.get('date', '')})" for i, s in enumerate(story.get("stories", []), 1))
     headers = {"Authorization": f"Bearer {token}", "X-Parent-ID": parent, "Content-Type": "video/mp4",

@@ -231,9 +231,27 @@ def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: d
             actions.retry(store, brief_id, notify=tg.send)
         except (actions.ActionError, InvalidTransition, KeyError) as exc:
             tg.send(f"⚠️ {exc}")
+    elif re.match(r"/tt(?:@\w+)?(?:\s|$)", text):
+        tg.send(tiktok_stats(text))
     elif text.startswith(("/start", "/help")):
         tg.send("/brief <текст> — новый ролик (строки bait:/product:/duration: в начале — опции)\n"
-                "/status — последние брифы\n/retry <id> — перезапустить failed/budget")
+                "/status — последние брифы\n/retry <id> — перезапустить failed/budget\n"
+                "/tt <ролик> <просмотры> <досмотры %> <комментарии> <репосты> — цифры TikTok вирусных роликов")
+
+
+def tiktok_stats(text: str) -> str:
+    """The owner's TikTok numbers of a viral news film (addons/news/viral_stats.py, in its own process so the news
+    modules never load into the bot)."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[1]
+    try:
+        p = subprocess.run([sys.executable, str(repo / "addons" / "news" / "viral_stats.py"), "bot", text], cwd=repo,
+                           capture_output=True, text=True, timeout=60)
+        return (p.stdout.strip() or f"⚠️ /tt: {p.stderr.strip()[-300:]}")[:4000]
+    except Exception as exc:  # noqa: BLE001 — a command must never take the bot down
+        return f"⚠️ /tt: {exc}"
 
 
 def bot_loop(settings: Settings) -> None:

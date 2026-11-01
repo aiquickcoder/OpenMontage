@@ -1044,3 +1044,209 @@ def test_a_4k_phone_clip_goes_to_the_cleaner_at_most_1920_on_the_long_side(tmp_p
         got = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
                               "-of", "csv=p=0:s=x", str(out)], capture_output=True, text=True).stdout.strip()
         assert got == want
+
+
+# -- viral pick for TikTok (owner 2026-11-01) ---------------------------------------------------------------------------
+def _vpost(ch, n, views, text, age_h, now, **kw):
+    return {"channel": ch, "post": n, "ts": now - age_h * 3600, "views": views, "forwards": 0, "replies": 0,
+            "reactions": 0, "text": text, "video_s": 0.0, "photos": 0, "group": 0, "fwd": False,
+            "link": f"https://t.me/{ch}/{n}", "ref": f"tg:{ch}/{n}", "src": "tg", **kw}
+
+
+def _filler(n):
+    """Posts of unrelated made-up words: the corpus that makes an event's shared words rare, as in a day's feed."""
+    abc = "абвгдежзиклмнопрстуфхцчшщэюя"
+    words = lambda i, j: "".join(abc[(i * 7 + j * 3 + k * 5) % len(abc)] for k in range(7))  # noqa: E731
+    return [" ".join(f"{words(i, j)}" for j in range(8)) + " событие обычное" for i in range(n)]
+
+
+def test_viral_boundaries_keep_the_war_and_russian_politics_out_but_protests_abroad_and_laws_in():
+    from addons.news import viral
+
+    assert "война/СВО" in viral.boundaries("ВСУ атаковали Белгород беспилотниками")
+    assert "протесты в России" in viral.boundaries("В Москве прошёл митинг против повышения тарифов ЖКХ")
+    assert viral.boundaries("В Германии тысячи зумеров вышли на протест против военного бюджета") == []
+    assert viral.boundaries("Госдума приняла закон о штрафах за громкую музыку в квартирах") == []
+    assert "заявления власти" in viral.boundaries("Песков заявил, что цены на бензин стабильны")
+    assert "политика РФ" in viral.boundaries("Кандидаты в губернаторы начали предвыборную кампанию, оппозиция против")
+    assert viral.boundaries("Выборы в Чехии: оппозиция Бабиша победила") == []     # another country's politics
+    assert "политика РФ" in viral.boundaries("Суд признал иноагентом блогера")
+    assert "дети-жертвы" in viral.boundaries("Школьник погиб, упав с крыши гаража")
+    assert "реклама" in viral.boundaries("Розыгрыш iPhone среди подписчиков, промокод внутри")
+
+
+def test_viral_velocity_is_against_the_channel_usual_at_that_age():
+    from addons.news import viral
+
+    now = 1_800_000_000.0
+    usual = [_vpost("mash", i, int(100_000 * viral.curve(a)), "обычный пост", a, now) for i, a in
+             enumerate([2, 3, 4, 5, 6, 8, 10, 12, 16, 20], 1)]
+    hot = _vpost("mash", 99, int(4 * 100_000 * viral.curve(1.0)), "горячий пост", 1.0, now)
+    norms = viral.channel_norms(usual + [hot], now)
+    assert abs(viral.velocity(hot, norms, now) - 4.0) < 0.2
+    assert viral.velocity(usual[5], norms, now) < 1.5
+    sig = viral.signals({"posts": [hot]}, norms, now)
+    feats = viral.signal_features(sig)
+    assert 0.8 < feats["velocity"] <= 1.0 and feats["pickup"] == 0.0
+    early = dict(usual[0], early=(0.5, int(5 * 100_000 * viral.curve(0.5))))  # the engine saw it at 30 min
+    assert viral.velocity(early, norms, now) >= 4.5
+
+
+def test_viral_score_weighs_the_topic_the_signals_and_fades_with_age():
+    from addons.news import viral
+
+    w = viral.WEIGHTS
+    assert abs(sum(w.values()) - 100) < 1e-6
+    full = {k: 10 for k in viral.AI_FEATURES}
+    sigf = {k: 1.0 for k in viral.SIGNALS}
+    assert viral.score(full, sigf, 0, w) == 100.0
+    dull = dict(full, everyone=2)
+    assert viral.score(dull, sigf, 0, w) < viral.score(full, sigf, 0, w)
+    assert viral.score(full, sigf, 24, w) == 70.0                     # a day old: × 0.7
+    assert viral.score(full, sigf, 0, w, regional=True) == 85.0       # a city story with a common hook
+
+
+def test_viral_groups_one_event_across_channels_and_skips_what_is_made_or_claimed():
+    from addons.news import viral
+
+    now = 1_800_000_000.0
+    posts = [_vpost("feed", i, 1000, t, 5, now) for i, t in enumerate(_filler(120), 1)]
+    ev = ["В Берлине 40 тысяч зумеров вышли против военного бюджета Мерца в 108 миллиардов евро",
+          "Зумеры Берлина протестуют: бюджет Мерца на армию 108 миллиардов евро, на улицах 40 тысяч",
+          "Протест зумеров в Берлине против 108 миллиардов евро на армию — правительство Мерца молчит"]
+    posts += [_vpost(ch, 500 + i, 300_000, t, 3 + i, now) for i, (ch, t) in enumerate(zip(["mash", "topor", "shot_shot"], ev))]
+    posts.append(_vpost("kazan", 900, 20_000, "В Казани открыли новый мост через Казанку для пешеходов и велосипедов", 2, now))
+    ranked = viral.rank(posts, now, viral.WEIGHTS, [], [], set(), set(), use_ai=False)
+    berlin = next(s for s in ranked if s["seed"]["channel"] in ("mash", "topor", "shot_shot"))
+    assert sorted(p["channel"] for p in berlin["posts"]) == ["mash", "shot_shot", "topor"]
+    assert berlin["region"] == "world" and berlin["place"] == "Германия" and not berlin["skip"]
+    assert berlin["signals"]["channels"] == 3 and berlin["signals"]["channels_3h"] == 3
+    # made: by a link, by the key, by a film of the same event; claimed by the other account's film
+    made = [{"film": "news-de-01-11-1", "text": ev[0], "key": None, "links": []}]
+    again = viral.rank(posts, now, viral.WEIGHTS, made, [], set(), set(), use_ai=False)
+    assert any("уже сделано" in r for s in again for r in s["skip"] if s["key"] == berlin["key"])
+    claims = [{"film": "news-viral-b-01-11-1", "key": "x", "links": ["https://t.me/topor/501"]}]
+    taken = viral.rank(posts, now, viral.WEIGHTS, [], claims, set(), set(), use_ai=False)
+    assert any("занято: news-viral-b-01-11-1" in r for s in taken for r in s["skip"] if s["key"] == berlin["key"])
+
+
+def test_viral_ai_flags_and_a_local_story_without_a_common_hook_are_dropped(monkeypatch):
+    from addons.news import viral
+
+    now = 1_800_000_000.0
+    posts = [_vpost("feed", i, 1000, t, 5, now) for i, t in enumerate(_filler(110), 1)]
+    posts += [_vpost("moscowach", 1, 50_000, "На Тверской подрались двое водителей самокатов, полиция разняла", 2, now),
+              _vpost("mash", 2, 400_000, "Цены на гречку выросли на 30 процентов за месяц: покупатели возмущены", 2, now),
+              _vpost("topor", 3, 300_000, "Учителям в школах Подмосковья урезали надбавки за классное руководство", 2, now)]
+
+    def fake_ai(stories, batch=8, workers=3):
+        for st in stories:
+            t = st["seed"]["text"]
+            st["ai"] = {"everyone": 9, "emotion": 8, "debate": 8, "visual": 5, "explain": 8, "war": False,
+                        "ru_politics": False, "risky": False, "ad": False, "local_only": "Тверской" in t,
+                        "common_hook": None, "topic": "цены", "ai": True}
+            if "Учителям" in t:
+                st["ai"].update(ru_politics=True)
+        return len(stories)
+
+    monkeypatch.setattr(viral, "ai_score", fake_ai)
+    ranked = viral.rank(posts, now, viral.WEIGHTS, [], [], set(), set(), ai=200)
+    by = {s["seed"]["channel"]: s for s in ranked if s["seed"]["channel"] in ("moscowach", "mash", "topor")}
+    assert by["moscowach"]["skip"] == ["только местное — в Telegram-канал города"]
+    assert by["topor"]["skip"] == ["ИИ: политика РФ"]
+    assert not by["mash"]["skip"] and ranked[0] is by["mash"]
+
+
+def test_viral_slots_share_the_best_stories_out_in_turn_without_repeats():
+    from datetime import date
+    from addons.news import viral
+
+    accs = [{"key": "a", "name": "account_a"}, {"key": "b", "name": "account_b"}]
+    d1, d2 = date(2026, 11, 2), date(2026, 11, 3)
+    order = [viral.slot_account(s, d1, accs)["key"] for s in (1, 2, 3, 4)]
+    assert order in (["a", "b", "a", "b"], ["b", "a", "b", "a"])         # 1, 3 one account's; 2, 4 the other's
+    assert viral.slot_account(1, d1, accs)["key"] != viral.slot_account(1, d2, accs)["key"]  # who goes first alternates
+    assert [viral.film_number(s) for s in (1, 2, 3, 4)] == [1, 1, 2, 2]
+
+    def st(key, sc, topic, region="russia", place="Россия"):
+        return {"key": key, "score": sc, "ai": {"topic": topic}, "region": region, "place": place, "skip": []}
+
+    stories = [st("s1", 95, "цены"), st("s2", 90, "цены"), st("s3", 85, "цены"), st("s4", 80, "жильё"),
+               st("s5", 70, "медицина"), st("s6", 60, "мир и общество", "world", "Германия")]
+    plan = viral.plan_day(stories, d1, 4, accs)
+    first, second = viral.slot_account(1, d1, accs)["key"], viral.slot_account(2, d1, accs)["key"]
+    assert [(slot, acc["key"], s["key"]) for slot, acc, s in plan] == [
+        (1, first, "s1"), (2, second, "s2"), (3, first, "s4"), (4, second, "s5")]  # s3: «цены» again for both
+    assert len({s["key"] for _, _, s in plan}) == 4                     # no story twice
+    assert viral.same_kind(st("x", 1, "мир и общество", "world", "Германия"), stories[5])  # one country abroad
+    assert viral.fit(st("x", 1, "цены"), {"avoid_topics": ["цены"]}) == 0.0
+
+
+def test_viral_stats_take_the_owner_numbers_and_tune_the_weights_with_a_log(tmp_path: Path, monkeypatch):
+    import random
+    from addons.news import viral_stats as vs
+
+    monkeypatch.setattr(vs.viral, "DATA", tmp_path / "data")
+    con = vs.db(tmp_path / "data" / "stats.db")
+    assert vs.parse(["15,4к", "41%", "230", "96"]) == {"views": 15400, "completion": 0.41, "comments": 230,
+                                                        "shares": 96, "likes": None}
+    assert vs.number("1.2м") == 1_200_000
+    rng = random.Random(7)
+    for i in range(1, 9):
+        proj = tmp_path / "projects" / f"news-viral-a-0{i}-11-1"
+        proj.mkdir(parents=True)
+        debate = rng.randint(2, 10)
+        (proj / "story.json").write_text(json.dumps({"headline": f"film {i}", "viral": {"account": "a", "key": f"k{i}"},
+                                                     "source": {"key": f"k{i}", "links": []}}), encoding="utf-8")
+        feats = {k: 5 for k in vs.viral.AI_FEATURES} | {"debate": debate}
+        (proj / "viral.json").write_text(json.dumps({"account": "a", "candidates": [
+            {"key": f"k{i}", "links": [], "score": 50, "features": feats,
+             "signal_features": {k: 0.5 for k in vs.viral.SIGNALS}}]}), encoding="utf-8")
+        views = int(2000 * 2 ** debate)                                   # the debate drives the views here
+        if i <= 5:
+            reply = vs.handle(f"/tt a-0{i}-11-1 {views} 40% 100 50", con, root=tmp_path)
+            assert reply.startswith("✅ a-0")
+    assert "нужно хотя бы" in vs.tune(con)                               # 5 films: nothing changes yet
+    assert not (tmp_path / "data" / "weights.json").exists()
+    for i in range(6, 9):
+        views = int(2000 * 2 ** json.loads((tmp_path / "projects" / f"news-viral-a-0{i}-11-1" / "viral.json")
+                                           .read_text())["candidates"][0]["features"]["debate"])
+        vs.handle(f"/tt news-viral-a-0{i}-11-1 {views} 0.4 100 50", con, root=tmp_path)
+    text = vs.tune(con)
+    w = json.loads((tmp_path / "data" / "weights.json").read_text())["weights"]
+    assert abs(sum(w.values()) - 100) < 0.05
+    assert w["debate"] > vs.viral.WEIGHTS["debate"] and "спор" in text and "↑" in text
+    for slug in ("news-viral-a-02-11-1", "news-viral-b-09-11-2"):           # delivered: with and without numbers
+        (tmp_path / "projects" / slug).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "projects" / slug / "kinescope.json").write_text("{}", encoding="utf-8")
+    assert vs.waiting(con, tmp_path) == ["b-09-11-2 (ещё нет суток)"]
+    assert "Не нашёл" in vs.handle("/tt z-01-01-9 100 10 1 1", con, root=tmp_path)
+
+
+def test_viral_one_event_told_two_ways_is_folded_by_meaning_and_a_taken_one_is_skipped(monkeypatch):
+    """«Рейв в Ленинке» came as two stories the words did not join (01.11): the AI's same-event pass folds them, and
+    a story about a film already taken today is skipped."""
+    import types
+    from addons.news import viral
+
+    now = 1_800_000_000.0
+    real = viral._channels_mod
+    fake = types.SimpleNamespace(chat_json=lambda *a, **k: [{"id": 2, "same_as": 1}, {"id": 3, "same_as": "T1"}])
+    monkeypatch.setattr(viral, "_channels_mod", lambda name: fake if name == "llm" else real(name))
+    monkeypatch.setenv("CODEX_GW_SECRET", "x")
+
+    def story(key, sc, ch, n):
+        st = {"key": key, "score": sc, "skip": [], "region": "moscow", "place": "Москва", "h": {}, "note": None,
+              "ai": {k: 7 for k in viral.AI_FEATURES} | {"hook": key}, "posts": [_vpost(ch, n, 100_000, key, 3, now)]}
+        st["seed"] = dict(st["posts"][0], plain=key)
+        st["signals"] = viral.signals(st, {}, now)
+        st["sigf"] = viral.signal_features(st["signals"])
+        return st
+
+    top = [story("рейв в библиотеке", 50, "moscowach", 1), story("Ленинка объясняет рейв", 45, "ostorozhno_moskva", 2),
+           story("воздухан в словарях", 40, "topor", 3)]
+    claims = [{"film": "news-viral-a-01-11-1", "title": "«Воздухан» могут внести в словари"}]
+    assert viral.same_events(top, [], claims, {}, now, viral.WEIGHTS) == 2
+    assert top[1]["skip"] == ["тот же сюжет, что рейв в библиотеке"]
+    assert top[0]["signals"]["channels"] == 2 and not top[0]["skip"]
+    assert top[2]["skip"][0].startswith("занято по смыслу")

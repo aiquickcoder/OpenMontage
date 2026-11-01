@@ -1,0 +1,16 @@
+[Unit]
+Description=Viral TikTok news film, slot %i (addons/news/morning.py --viral; the deadline is the slot's in tiktok_accounts.json)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=factory
+Group=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+EnvironmentFile=/opt/watermark-cleaner/deploy/.env
+# Codex through the local codex-gateway (the agent and viral.py's AI marks): its secret, never copied
+EnvironmentFile=-/etc/codex-gateway.env
+Environment=HOME=/home/factory DISPLAY=:99 PYTHONUNBUFFERED=1 PATH=/opt/node22/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python addons/news/morning.py --viral --slot %i
+TimeoutStartSec=5h

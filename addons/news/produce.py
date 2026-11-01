@@ -9,10 +9,13 @@ still cameras go into media/wm.json before this (see addons/news/README.md «О�
 1. Flow egress: the slower of FLOW_PROXY (US tunnel) and the reserve exit loses — the US tunnel crawled at ~100 KB/s
    on 2026-10-27 and Flow never loaded through it.
 2. In parallel: gen_shots.py (Flow, the browser) and clean_footage.py --run (the watermark-cleaner, CPU).
-3. build.py --retime under a lock shared by every project (two renders at once starve the server).
+3. build.py --retime. Steps 2–4 run under one lock shared by every project (owner 2026-11-01: one heavy job at a time
+   on this server — two films cleaning and rendering at once drove the load to ~300 and took sshd down); a second
+   produce.py waits for the first.
 4. A digest also gives one short per story for TikTok (build.py --split: 15–25 s, the hook in the first frame, a loop,
    no cat by default — owner 2026-10-30, the TikTok review); "tiktok": {"split": false} in story.json skips them.
-5. --send: the render to the owner's Telegram (caption from --caption), then the shorts; --kinescope:
+5. --send: the render to the owner's Telegram (caption from --caption; a viral TikTok film's caption opens with the
+   account it is for and when to post it — tiktok_accounts.json), then the shorts; --kinescope:
    kinescope_upload.py for the digest, --replace when the project was uploaded before.
 The last line is PRODUCE_RESULT: READY|FAILED <project> <reason>.
 """
@@ -62,6 +65,22 @@ def deliver_args(name: str) -> list[str]:
     return ["--file", "--name", name] + (["--also", chats] if chats else [])
 
 
+def viral_line(story: dict) -> str:
+    """«📱 TikTok: <account> · ролик N из 2 · выложить в HH:MM МСК» for a viral film (story.json "viral"), else ''."""
+    v = story.get("viral") or {}
+    if not v.get("account"):
+        return ""
+    try:
+        conf = json.loads((REPO / "addons" / "news" / "tiktok_accounts.json").read_text(encoding="utf-8"))
+        acc = next(x for x in conf["accounts"] if x["key"] == v["account"])
+    except (OSError, ValueError, KeyError, StopIteration):
+        return f"📱 TikTok: аккаунт {v['account']}"
+    slot = int(v.get("slot") or 1)
+    n = (slot - 1) // max(1, len(conf["accounts"])) + 1
+    when = next((s.get("post_at") for s in conf.get("slots", []) if s.get("slot") == slot), "")
+    return f"📱 TikTok: {acc['name']} · ролик {n} из 2" + (f" · выложить в {when} МСК" if when else "")
+
+
 def run(cmd: list[str], env: dict | None = None, log: Path | None = None) -> subprocess.Popen:
     out = log.open("w") if log else None
     return subprocess.Popen(cmd, cwd=REPO, env={**os.environ, **(env or {}), "PYTHONUNBUFFERED": "1"},
@@ -87,6 +106,10 @@ def main() -> None:
 
     if not (proj / "assets" / "narration.mp3").is_file():
         fail("no voice yet: run build.py --voice-only and set the shots first")
+    lock = BUILD_LOCK.open("w")
+    print("heavy lock: waiting", flush=True)
+    fcntl.flock(lock, fcntl.LOCK_EX)  # held through cleaning, the render, the shorts and the bot's squeeze
+    print("heavy lock: taken", flush=True)
     jobs = {}
     if story.get("illustrations"):
         jobs["pictures"] = run([PY, "addons/news/gen_shots.py", f"{rel}/story.json", f"{rel}/illustrations"],
@@ -104,29 +127,29 @@ def main() -> None:
     missing = [i["id"] for i in story.get("illustrations", []) if not (proj / "illustrations" / f"{i['id']}.png").is_file()]
     if missing:
         fail(f"illustrations missing: {', '.join(missing)}")
-    with BUILD_LOCK.open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        print("build: start", flush=True)
-        b = run([PY, "addons/news/build.py", rel, "--retime"],
+    print("build: start", flush=True)
+    b = run([PY, "addons/news/build.py", rel, "--retime"],
+            {"https_proxy": os.environ.get("NEWS_HTTPS_PROXY", "http://127.0.0.1:10809"),
+             "HYPERFRAMES_BIN": "/opt/node22/hyperframes.sh",
+             "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "build.log")
+    if b.wait() != 0:
+        fail(f"build failed: {(logs / 'build.log').read_text()[-300:]}")
+    shorts = []
+    if story.get("stories") and (story.get("tiktok") or {}).get("split", True):
+        print("shorts: start", flush=True)
+        t = run([PY, "addons/news/build.py", rel, "--retime", "--split"],
                 {"https_proxy": os.environ.get("NEWS_HTTPS_PROXY", "http://127.0.0.1:10809"),
                  "HYPERFRAMES_BIN": "/opt/node22/hyperframes.sh",
-                 "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "build.log")
-        if b.wait() != 0:
-            fail(f"build failed: {(logs / 'build.log').read_text()[-300:]}")
-        shorts = []
-        if story.get("stories") and (story.get("tiktok") or {}).get("split", True):
-            print("shorts: start", flush=True)
-            t = run([PY, "addons/news/build.py", rel, "--retime", "--split"],
-                    {"https_proxy": os.environ.get("NEWS_HTTPS_PROXY", "http://127.0.0.1:10809"),
-                     "HYPERFRAMES_BIN": "/opt/node22/hyperframes.sh",
-                     "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "shorts.log")
-            if t.wait() != 0:  # the digest is out either way: a failed short is reported, not fatal
-                print(f"shorts failed: {(logs / 'shorts.log').read_text()[-300:]}", flush=True)
-            shorts = sorted((proj / "renders").glob("tiktok_*.mp4"), key=lambda f: int(f.stem.split("_")[1]))
+                 "PATH": "/opt/node22/bin:" + os.environ.get("PATH", "/usr/bin:/bin")}, logs / "shorts.log")
+        if t.wait() != 0:  # the digest is out either way: a failed short is reported, not fatal
+            print(f"shorts failed: {(logs / 'shorts.log').read_text()[-300:]}", flush=True)
+        shorts = sorted((proj / "renders").glob("tiktok_*.mp4"), key=lambda f: int(f.stem.split("_")[1]))
     render = proj / "renders" / "final.mp4"
     print((logs / "build.log").read_text()[-400:], flush=True)
     if a.send:
         caption = a.caption.read_text(encoding="utf-8") if a.caption else story.get("headline", "")
+        if viral_line(story):
+            caption = viral_line(story) + "\n\n" + caption
         if subprocess.run([PY, "addons/mural/send_telegram.py", caption, str(render), *deliver_args(f"{proj.name}.mp4")], cwd=REPO,
                           env={**os.environ, "PYTHONPATH": str(REPO)}).returncode != 0:
             fail("telegram send failed")
@@ -136,6 +159,7 @@ def main() -> None:
             subprocess.run([PY, "addons/mural/send_telegram.py", f"TikTok {n}/{len(story['stories'])}: {head}", str(f),
                             *deliver_args(f"{proj.name}-tiktok-{n}.mp4")],
                            cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)})
+    lock.close()  # cleaned, rendered, squeezed for the bot and sent: the next film may start (the upload is light)
     if a.kinescope:
         k = [PY, "addons/news/kinescope_upload.py", rel, "--notify"] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
         if subprocess.run(k, cwd=REPO).returncode != 0:

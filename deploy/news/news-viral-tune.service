@@ -1,0 +1,13 @@
+[Unit]
+Description=Viral TikTok pick: weekly tuning of the weights from the films' numbers (addons/news/viral_stats.py tune)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=factory
+Group=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+Environment=HOME=/home/factory PYTHONUNBUFFERED=1 PYTHONPATH=/opt/openmontage
+ExecStart=/opt/openmontage/.venv/bin/python addons/news/viral_stats.py tune --send
+TimeoutStartSec=10min
