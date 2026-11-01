@@ -31,6 +31,7 @@ class Clusterer:
         self.idx = cluster.Index()
         self.pool: list[tuple[int, dict, float]] = []  # (story_id, sig, ts)
         self.seeds: dict[int, dict] = {}  # story_id -> its first post's signature
+        self.inv: dict[str, list[int]] = {}  # stem -> pool indices: only posts sharing a rare stem are compared
         self.built = 0.0
 
     def rebuild(self) -> None:
@@ -39,8 +40,11 @@ class Clusterer:
         self.idx = cluster.Index(r["sig"] for r in rows if isinstance(r["sig"], dict))
         self.pool = [(r["story_id"], r["sig"], r["ts"]) for r in rows if isinstance(r["sig"], dict)]
         self.seeds = {}
-        for sid, sig, _ in self.pool:
+        self.inv = {}
+        for i, (sid, sig, _) in enumerate(self.pool):
             self.seeds.setdefault(sid, sig)
+            for w in sig["s"]:
+                self.inv.setdefault(w, []).append(i)
         self.built = time.time()
 
     def run(self) -> int:
@@ -58,7 +62,11 @@ class Clusterer:
                 continue
             sig = p["sig"] if isinstance(p["sig"], dict) else cluster.signature(p["plain"])
             self.idx.add(sig)
-            cands = [(sid, s) for sid, s, ts in self.pool if abs(ts - p["ts"]) < 36 * 3600]
+            near: set[int] = set()
+            for w in sig["s"]:
+                if self.idx.rare(w, 0.05):
+                    near.update(self.inv.get(w, ()))
+            cands = [(self.pool[i][0], self.pool[i][1]) for i in near if abs(self.pool[i][2] - p["ts"]) < 36 * 3600]
             sid = cluster.best_story(sig, cands, self.idx, self.seeds)
             while sid is not None:  # a story merged by the judge lives on in the one it joined
                 row = self.db.one("SELECT status, merged_into FROM stories WHERE id=?", (sid,))
@@ -73,6 +81,8 @@ class Clusterer:
                 self.db.update("raw_posts", "id", p["id"], story_id=sid)
                 self.refresh_story(sid)
             self.pool.append((sid, sig, p["ts"]))
+            for w in sig["s"]:
+                self.inv.setdefault(w, []).append(len(self.pool) - 1)
             self.seeds.setdefault(sid, sig)
         return len(new)
 
