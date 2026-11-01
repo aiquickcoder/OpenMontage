@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from addons.channels import cluster, config, judge, llm, rewrite, tgread
@@ -119,7 +120,7 @@ def merge(db, into: int, sid: int) -> None:
 
 def judge_pending(db, batch: int = 10) -> int:
     horizon = time.time() - JUDGE_MAX_AGE_H * 3600
-    rows = db.q("SELECT * FROM stories WHERE status IN ('new','grown') ORDER BY first_ts DESC LIMIT 60")
+    rows = db.q("SELECT * FROM stories WHERE status IN ('new','grown') ORDER BY first_ts DESC LIMIT 30")
     todo = []
     for s in rows:
         if s["first_ts"] < horizon:
@@ -132,19 +133,27 @@ def judge_pending(db, batch: int = 10) -> int:
     trust = {r["ref"]: r["trust"] for r in db.q("SELECT ref, trust FROM sources")}
     trust.update({r["title"]: r["trust"] for r in db.q("SELECT title, trust FROM sources WHERE platform!='telegram'")})
     done = 0
-    for i in range(0, len(todo), batch):
-        part = todo[i:i + batch]
-        loaded = [(s, story_posts(db, s["id"])) for s in part]
+    batches = [todo[i:i + batch] for i in range(0, len(todo), batch)]
+
+    def ask(part: list[dict]) -> tuple[list, dict | Exception]:
+        own = config.db()  # a thread's own connection: sqlite3 connections are not shared between threads
+        loaded = [(s, story_posts(own, s["id"])) for s in part]
         loaded = [(s, p) for s, p in loaded if p]
         try:
-            verdicts = {int(v["id"]): v for v in judge.ask(db, loaded, recent_titles(db))
-                        if str(v.get("id", "")).isdigit()}
-        except llm.BudgetExceeded as e:
-            db.event("budget", str(e))
+            return loaded, {int(v["id"]): v for v in judge.ask(own, loaded, recent_titles(own))
+                            if str(v.get("id", "")).isdigit()}
+        except (llm.BudgetExceeded, llm.LLMError) as e:
+            return loaded, e
+
+    with ThreadPoolExecutor(3) as ex:
+        results = list(ex.map(ask, batches))
+    for loaded, verdicts in results:
+        if isinstance(verdicts, llm.BudgetExceeded):
+            db.event("budget", str(verdicts))
             return done
-        except llm.LLMError as e:
-            db.event("judge", f"ошибка ИИ: {e}"[:300])
-            return done
+        if isinstance(verdicts, Exception):
+            db.event("judge", f"ошибка ИИ: {verdicts}"[:300])
+            continue
         for s, posts in loaded:
             v = verdicts.get(s["id"])
             now = db.one("SELECT status FROM stories WHERE id=?", (s["id"],))

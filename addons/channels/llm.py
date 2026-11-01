@@ -76,6 +76,8 @@ def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: in
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
     req = urllib.request.Request(config.LLM_URL, data=json.dumps(body).encode(), method="POST", headers={
         "Authorization": f"Bearer {key}", "Content-Type": "application/json",
+        # Cloudflare in front of OpenRouter answers «error code: 1010» to urllib's default User-Agent now and then
+        "User-Agent": "Mozilla/5.0 (compatible; zasnyali-channels/1.0)",
         "HTTP-Referer": "https://studio.luvael.ru", "X-Title": "ZASNYALI channels"})
     last: Exception | None = None
     for k in range(tries):
@@ -95,8 +97,9 @@ def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: in
                 raise LLMError("empty answer")
             return text
         except urllib.error.HTTPError as e:
-            last = LLMError(f"HTTP {e.code}: {e.read()[:300]!r}")
-            if e.code in (400, 401, 402, 403):
+            body = e.read()[:300]
+            last = LLMError(f"HTTP {e.code}: {body!r}")
+            if e.code in (400, 401, 402) or (e.code == 403 and b"1010" not in body):
                 break
         except (urllib.error.URLError, TimeoutError, LLMError, ValueError, OSError) as e:
             last = e

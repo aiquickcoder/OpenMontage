@@ -158,8 +158,9 @@ def write(db, ch: dict, posts: list[dict], title: str = "") -> dict[str, Any]:
             feedback = "; ".join(bad)
             last = {"ok": False, "html": h, "data": d, "why": feedback}
             continue
+        body = plain(h.replace(cta_html(ch), "")).strip()  # the subscribe line is ours, not a fact to check
         verdict = llm.chat_json(db, "check", checker, style.CHECK,
-                                f"ИСТОЧНИКИ:\n{src}\n\nПОСТ:\n{plain(h)}", max_tokens=600, temperature=0)
+                                f"ИСТОЧНИКИ:\n{src}\n\nПОСТ:\n{body}", max_tokens=600, temperature=0)
         if isinstance(verdict, dict) and verdict.get("ok") and not verdict.get("unsupported") and not verdict.get("problems"):
             return {"ok": True, "html": h, "data": d, "check": verdict}
         issues = (verdict.get("unsupported") or []) + (verdict.get("problems") or []) if isinstance(verdict, dict) else []
