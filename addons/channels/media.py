@@ -288,7 +288,7 @@ def analyze(db, path: Path) -> dict:
     seen += r["what"]
     mask = np.zeros((h, w), np.uint8)
     auto, moving, blind = cf.auto_mask(fr)
-    if moving >= cf.STILL_SHIFT:
+    if moving >= cf.STILL_SHIFT and not blind:
         if auto.shape != mask.shape:
             auto = cv2.resize(auto, (w, h), interpolation=cv2.INTER_NEAREST)
         mask = np.maximum(mask, auto)
@@ -296,6 +296,8 @@ def analyze(db, path: Path) -> dict:
         if fm is not None:
             mask = np.maximum(mask, cv2.resize(fm, (w, h), interpolation=cv2.INTER_NEAREST))
         plan["how"].append(f"камера движется {moving:.1f} px/кадр: автомаска {float((auto > 0).mean()):.1%}")
+    elif moving >= cf.STILL_SHIFT:  # a slow camera keeps the background steady too: the steady-edge mask is blind
+        plan["how"].append(f"медленная камера ({moving:.1f} px): автомаска слепа, только ИИ и образцы логотипов")
     else:
         plan["how"].append("неподвижная камера: только ИИ и образцы логотипов")
     known = cf.template_mask(fr)
@@ -417,8 +419,11 @@ def do_inpaint(db, src: Path, plan: dict, dst: Path, wait_s: float = 3600) -> Pa
 
 
 def mask_share(plan: dict) -> float:
-    a = sum((b[2] - b[0]) * (b[3] - b[1]) for b in plan["boxes"])
-    return a / max(1, plan["w"] * plan["h"])
+    """Share of the frame the cleaner would have to repaint (union of the mask and the boxes)."""
+    m = np.zeros((plan["h"], plan["w"]), np.uint8) if plan.get("mask") is None else (plan["mask"] > 0).astype(np.uint8)
+    for b in plan["boxes"]:
+        m[max(0, b[1]):b[3], max(0, b[0]):b[2]] = 1
+    return float(m.mean())
 
 
 def verify(db, out: Path) -> list[str]:
@@ -483,7 +488,8 @@ def make_clean(db, src: Path, dst: Path, urgent: bool = False, allow_slow: bool 
         out = do_crop(src, plan, box, dst)
         how.append(f"обрезка {plan['w']}×{plan['h']}→{box[2]}×{box[3]}")
     else:
-        if mask_share(plan) > 0.12:
+        limit = 0.06 if plan["video"] else 0.10  # more than that and the cleaner leaves a smear
+        if mask_share(plan) > limit:
             raise Reject(f"знаки занимают {mask_share(plan):.0%} кадра — чисто не стереть")
         if plan["video"] and not allow_slow:
             raise Slow("видео нужно чистить сервисом — это долго")
