@@ -401,3 +401,18 @@ def test_a_channel_switched_on_midday_owes_only_from_then():
     since = _msk(17).timestamp()
     part = schedule.owed(now, 31, CH["hours"], since=since)
     assert full > 15 and 0 < part <= 3
+
+
+def test_media_goes_first_to_posts_that_can_still_be_published(tmp_path):
+    from addons.channels import media_worker
+
+    d = DB(tmp_path / "c.db")
+    for i, sc in enumerate((7.0, 7.5, 8.0, 8.5)):
+        d.insert("posts", {"story_id": 100 + i, "channel": "news", "status": "ready", "score": sc})
+    weak = d.insert("posts", {"story_id": 1, "channel": "news", "status": "media", "score": 6.5})
+    city = d.insert("posts", {"story_id": 2, "channel": "kazan", "status": "media", "score": 5.0})
+    assert media_worker.next_post(d)["id"] == city  # the news queue is full and 6.5 would not beat it
+    strong = d.insert("posts", {"story_id": 3, "channel": "news", "status": "media", "score": 9.0})
+    assert media_worker.next_post(d)["id"] == strong
+    d.update("posts", "id", weak, urgent=1)
+    assert media_worker.next_post(d)["id"] == weak
