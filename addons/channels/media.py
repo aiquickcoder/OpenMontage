@@ -468,8 +468,9 @@ def verify(db, out: Path) -> list[str]:
 def normalize(src: Path, dst: Path) -> Path:
     """A working copy small enough for the shared server: a video at most 1280 px on the long side, 30 fps, AAC;
     a photo at most 2048 px. 4K phone clips ran the cleaner and the server out of memory (2026-11-01)."""
+    # an explicit name: dst «x.norm».with_suffix(".mp4") was «x.mp4» — the final output's own name (Baza clips 01.11)
     if src.suffix.lower() in VIDEO:
-        out = dst.with_suffix(".mp4")
+        out = dst.parent / (dst.name.replace(".", "_") + "_work.mp4")
         ff(["-i", str(src), "-vf", "scale='min(iw,1280)':'min(ih,1280)':force_original_aspect_ratio=decrease,"
             "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,fps=30,format=yuv420p",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-c:a", "aac", "-b:a", "128k",
@@ -482,7 +483,7 @@ def normalize(src: Path, dst: Path) -> Path:
     k = min(1.0, 2048 / max(h, w))
     if k < 1:
         img = cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
-    out = dst.with_suffix(".jpg")
+    out = dst.parent / (dst.name.replace(".", "_") + "_work.jpg")
     cv2.imwrite(str(out), img, [cv2.IMWRITE_JPEG_QUALITY, 93])
     return out
 
@@ -521,6 +522,8 @@ def make_clean(db, src: Path, dst: Path, urgent: bool = False, allow_slow: bool 
                 raise Reject("знак в кадре, а очистка занята новостным роликом")
         out = do_inpaint(db, src, plan, dst, wait_s=900 if urgent else 3600)
         how.append(f"стёрто сервисом очистки ({mask_share(plan):.1%} кадра)")
+    if src != out:
+        src.unlink(missing_ok=True)  # the working copy
     left = verify(db, out)
     if left:
         out.unlink(missing_ok=True)

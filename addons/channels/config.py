@@ -44,6 +44,7 @@ DEFAULTS: dict[str, object] = {
     "effort_write": "",
     "effort_check": "",
     "effort_vision": "",
+    "effort_dedupe": "low",            # the last repeat check before a post goes out: a short question
     "model_fallback": "gpt-6.1-terra",  # used once when a call keeps failing (same provider), effort medium
     "codex_calls_per_day": 5000,       # cap on subscription calls a day
     "openrouter_fallback": False,      # OpenRouter only as an explicit fallback, off by default

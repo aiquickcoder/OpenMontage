@@ -435,3 +435,32 @@ def test_a_fresh_good_post_beats_an_old_strong_one():
     old = {"score": 9.0, "first_ts": now - 3.5 * 3600}
     fresh = {"score": 7.0, "first_ts": now - 600}
     assert publisher.effective(fresh, ch, 1200, now) > publisher.effective(old, ch, 1200, now)
+
+
+def test_working_copy_never_takes_the_output_name(tmp_path):
+    import cv2
+    import numpy as np
+
+    from addons.channels import media
+
+    src = tmp_path / "in.jpg"
+    cv2.imwrite(str(src), np.zeros((400, 600, 3), np.uint8))
+    dst = tmp_path / "post_1_0"
+    work = media.normalize(src, dst.with_name(dst.name + ".norm"))
+    assert work != dst.with_suffix(".jpg") and work.is_file()
+
+
+def test_a_repeat_of_a_published_post_is_caught_by_words(tmp_path, monkeypatch):
+    from addons.channels import publisher
+
+    d = DB(tmp_path / "c.db")
+    ch = {"key": "news"}
+    html = "⚡️<b>Во Франкфурте-на-Майне после молодёжных протестов начались погромы, пострадали 100 полицейских</b>."
+    old = d.insert("posts", {"story_id": 1, "channel": "news", "status": "previewed", "published_at": time.time() - 600,
+                             "html": html, "title": "Погромы во Франкфурте"})
+    new = {"id": 99, "html": "⚡️<b>Во Франкфурте-на-Майне во время беспорядков пострадали более 100 полицейских</b>, "
+                              "задержаны 54 человека после молодёжных протестов.", "title": "Беспорядки во Франкфурте"}
+    monkeypatch.setattr(publisher.llm, "chat_json", lambda *a, **k: {"dup": None})
+    assert publisher.duplicate_of(d, ch, new) == old
+    other = {"id": 98, "html": "⚡️<b>В Казани открыли новую станцию метро</b>.", "title": "Метро в Казани"}
+    assert publisher.duplicate_of(d, ch, other) is None

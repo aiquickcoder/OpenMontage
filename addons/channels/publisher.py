@@ -15,7 +15,7 @@ import logging
 import time
 from datetime import datetime
 
-from addons.channels import config, publish, schedule
+from addons.channels import cluster, config, llm, publish, rewrite, schedule
 
 log = logging.getLogger("channels.publisher")
 MSK = schedule.MSK
@@ -101,6 +101,39 @@ def rights_gate(db, ch: dict) -> dict:
     return ch
 
 
+DEDUPE = """Ты проверяешь новостной канал на повторы. Дан новый пост и список того, что канал уже опубликовал за сутки.
+Новый пост — о ТОМ ЖЕ событии, что один из опубликованных (даже другими словами)? Развитие события с новым важным
+фактом (стало известно число погибших, задержан подозреваемый, суд вынес приговор) — НЕ повтор.
+Ответ — только JSON: {"dup": номер опубликованного или null}"""
+
+
+def duplicate_of(db, ch: dict, p: dict) -> int | None:
+    """Last guard before a post goes out: the same event already out in this channel today? Words first (cluster.py),
+    then meaning (one short AI question, as influencer-network's «ДУБЛЬ/НОВОЕ»). Two stories judged in parallel can
+    both pass the judge's own check (Frankfurt, 2026-11-01: previewed twice)."""
+    recent = db.q("SELECT id, title, html FROM posts WHERE channel=? AND status IN ('published','previewed') AND "
+                  "published_at>=? AND id!=? ORDER BY id DESC LIMIT 40", (ch["key"], time.time() - 86400, p["id"]))
+    if not recent:
+        return None
+    mine = cluster.signature(rewrite.plain(p.get("html") or "") + " " + (p.get("title") or ""))
+    sigs = [(r["id"], cluster.signature(rewrite.plain(r["html"] or "") + " " + (r["title"] or ""))) for r in recent]
+    idx = cluster.Index([mine] + [sg for _, sg in sigs])
+    for rid, sg in sigs:
+        if cluster.same_event(mine, sg, idx):
+            return rid
+    listing = "\n".join(f"{i}. {r['title'] or rewrite.plain(r['html'] or '')[:160]}" for i, r in enumerate(recent, 1))
+    try:
+        v = llm.chat_json(db, "dedupe", config.setting(db, "model_check"), DEDUPE,
+                          f"Новый пост: {p.get('title') or ''}\n{rewrite.plain(p.get('html') or '')[:400]}\n\n"
+                          f"Уже опубликовано:\n{listing}", max_tokens=100, temperature=0)
+    except (llm.LLMError, llm.BudgetExceeded):
+        return None  # the guard must not stop the channel
+    n = v.get("dup") if isinstance(v, dict) else None
+    if isinstance(n, int) and 1 <= n <= len(recent):
+        return recent[n - 1]["id"]
+    return None
+
+
 def effective(p: dict, ch: dict, fresh_s: float, now: float | None = None) -> float:
     """A ready post's weight now: its score fading with age over the channel's max_age_h (a strong story of six
     hours ago loses to a good one of ten minutes ago), plus a nudge for the freshest."""
@@ -126,7 +159,16 @@ def tick(db, now: datetime | None = None) -> list[str]:
         fresh_s = 60 * float(config.setting(db, "fresh_min"))
         ready.sort(key=lambda p: (-int(p["urgent"] or 0), -effective(p, ch, fresh_s), p["id"]))
         n, last = published_today(db, ch["key"], now)
-        top = ready[0]
+        top = None
+        for cand in ready[:5]:
+            dup = duplicate_of(db, ch, cand)
+            if dup is None:
+                top = cand
+                break
+            db.update("posts", "id", cand["id"], status="rejected", error=f"повтор уже вышедшего поста #{dup}",
+                      updated=time.time())
+        if top is None:
+            continue
         strong = top["score"] >= float(ch.get("min_score") or 6) + 1.5 and time.time() - top["first_ts"] < fresh_s
         burst = int(config.setting(db, "fresh_burst")) if strong else 0
         ok, why = schedule.may_post(now, ch, n, last, urgent=bool(top.get("urgent")), burst=burst)
