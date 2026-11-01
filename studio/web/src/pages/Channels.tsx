@@ -445,6 +445,10 @@ const FIELD_KEYS: [string, string][] = [
   ["model_judge", "Модель: оценка сюжетов"], ["model_write", "Модель: переписывание"], ["model_check", "Модель: сверка фактов"],
   ["model_vision", "Модель: поиск знаков на медиа"], ["model_vision2", "Вторая модель-зритель"],
   ["model_fallback", "Запасная модель (если основная не отвечает)"],
+  ["llm_provider", "Провайдер ИИ: codex (подписка) или openrouter"], ["reasoning_effort", "Усилие рассуждения (low/medium/high)"],
+  ["effort_judge", "…для оценки (пусто = общее)"], ["effort_write", "…для переписывания"], ["effort_check", "…для сверки"],
+  ["effort_vision", "…для проверки медиа"], ["codex_calls_per_day", "Вызовов подписки в день, до"],
+  ["model_openrouter", "Модель OpenRouter (запасной провайдер)"],
   ["daily_budget_usd", "Бюджет ИИ в день, $"], ["video_max_s", "Видео не длиннее, с"],
   ["inpaint_video_max_s", "Чистить сервисом видео до, с"], ["crop_max_share", "Обрезать знак у края, доля кадра"],
   ["max_media", "Медиа в посте, до"], ["join_every_s", "Вступать в канал раз в, с"], ["max_channels", "Каналов у аккаунта, до"],
@@ -478,6 +482,11 @@ function StyleTab() {
                 onChange={(e) => setForm({ ...form, [k]: numeric(k) ? Number(e.target.value) : e.target.value })} />
             </label>
           ))}
+          <label>OpenRouter как запасной
+            <select value={form.openrouter_fallback ? "1" : "0"} onChange={(e) => setForm({ ...form, openrouter_fallback: e.target.value === "1" })}>
+              <option value="0">нет</option><option value="1">да</option>
+            </select>
+          </label>
           <label>Вступать в каналы-источники
             <select value={form.join_enabled ? "1" : "0"} onChange={(e) => setForm({ ...form, join_enabled: e.target.value === "1" })}>
               <option value="1">да</option><option value="0">нет</option>

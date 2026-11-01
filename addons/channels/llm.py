@@ -92,7 +92,7 @@ def _parts(user: Any, provider: str) -> Any:
 
 
 def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: int = 1500, temperature: float = 0.3,
-         timeout: float = 180, tries: int = 3, fallback: bool = True) -> str:
+         timeout: float = 300, tries: int = 3, fallback: bool = True) -> str:
     """One completion. `user` is a string or a list of parts ({"type": "text"} / image_part()). When the model keeps
     failing the request goes once to model_fallback (same provider), and — only if openrouter_fallback is on — to
     OpenRouter's model_openrouter."""
@@ -121,19 +121,24 @@ def _call(db, provider, purpose, model, system, user, max_tokens, temperature, t
         cap = int(config.setting(db, "codex_calls_per_day") or 0)
         if cap and calls_today(db) >= cap:
             raise BudgetExceeded(f"дневной лимит вызовов подписки ({cap}) исчерпан")
-        return _codex(db, purpose, model, system, user, timeout, tries)
+        effort = config.setting(db, f"effort_{purpose}") or config.setting(db, "reasoning_effort") or ""
+        if model == config.setting(db, "model_fallback") and effort == "high":
+            effort = "medium"  # the fallback is there to answer, and fast
+        return _codex(db, purpose, model, system, user, timeout, tries, effort)
     budget = float(config.setting(db, "daily_budget_usd"))
     if spent_today(db) >= budget:
         raise BudgetExceeded(f"дневной бюджет OpenRouter ${budget:g} исчерпан")
     return _openrouter(db, purpose, model, system, user, max_tokens, temperature, timeout, tries)
 
 
-def _codex(db, purpose, model, system, user, timeout, tries) -> str:
+def _codex(db, purpose, model, system, user, timeout, tries, effort: str = "") -> str:
     key = os.environ.get(CODEX_KEY_ENV, "")
     if not key:
         raise LLMError(f"{CODEX_KEY_ENV} is not set (the unit needs EnvironmentFile=-/etc/codex-gateway.env)")
     body = {"model": model, "instructions": system, "input": [{"role": "user", "content": _parts(user, "codex")}],
             "stream": True}
+    if effort:
+        body["reasoning"] = {"effort": effort}
     req = urllib.request.Request(CODEX_URL, data=json.dumps(body).encode(), method="POST", headers={
         "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "text/event-stream"})
     last: Exception | None = None

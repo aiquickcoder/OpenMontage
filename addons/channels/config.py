@@ -32,12 +32,19 @@ DEFAULTS: dict[str, object] = {
     # Codex GPT by the ChatGPT subscription through codex-gateway (owner 2026-11-01); checked 2026-11-01: gpt-6.1-sol
     # and gpt-6.1-terra answer (terra faster), images go in as input_image; gpt-6.1-luna / -mini are refused
     "llm_provider": "codex",
-    "model_judge": "gpt-6.1-terra",
+    # owner 2026-11-01: «модель gpt-6.1-sol с усилием рассуждения high» — every task, effort in the request's
+    # "reasoning"; per task: effort_<judge|write|check|vision> over reasoning_effort
+    "model_judge": "gpt-6.1-sol",
     "model_write": "gpt-6.1-sol",
-    "model_check": "gpt-6.1-terra",
+    "model_check": "gpt-6.1-sol",
     "model_vision": "gpt-6.1-sol",
     "model_vision2": "gpt-6.1-sol",   # a different second model doubles the looks (union of both); same = one look
-    "model_fallback": "gpt-6.1-terra",  # used once when a call keeps failing (same provider)
+    "reasoning_effort": "high",
+    "effort_judge": "",
+    "effort_write": "",
+    "effort_check": "",
+    "effort_vision": "",
+    "model_fallback": "gpt-6.1-terra",  # used once when a call keeps failing (same provider), effort medium
     "codex_calls_per_day": 5000,       # cap on subscription calls a day
     "openrouter_fallback": False,      # OpenRouter only as an explicit fallback, off by default
     "model_openrouter": "anthropic/claude-haiku-5.5",
