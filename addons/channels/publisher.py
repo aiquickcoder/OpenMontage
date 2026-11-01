@@ -101,6 +101,14 @@ def rights_gate(db, ch: dict) -> dict:
     return ch
 
 
+def effective(p: dict, ch: dict, fresh_s: float, now: float | None = None) -> float:
+    """A ready post's weight now: its score fading with age over the channel's max_age_h (a strong story of six
+    hours ago loses to a good one of ten minutes ago), plus a nudge for the freshest."""
+    age = (now or time.time()) - float(p["first_ts"])
+    fade = max(0.3, 1 - age / (3600 * float(ch.get("max_age_h") or 8)))
+    return float(p["score"]) * fade + (0.7 if age < fresh_s else 0.0)
+
+
 def tick(db, now: datetime | None = None) -> list[str]:
     now = now or datetime.now(MSK)
     out = []
@@ -116,8 +124,7 @@ def tick(db, now: datetime | None = None) -> list[str]:
         if not ready:
             continue
         fresh_s = 60 * float(config.setting(db, "fresh_min"))
-        ready.sort(key=lambda p: (-int(p["urgent"] or 0), -(p["score"] + (0.7 if time.time() - p["first_ts"] < fresh_s
-                                                                             else 0)), p["id"]))
+        ready.sort(key=lambda p: (-int(p["urgent"] or 0), -effective(p, ch, fresh_s), p["id"]))
         n, last = published_today(db, ch["key"], now)
         top = ready[0]
         strong = top["score"] >= float(ch.get("min_score") or 6) + 1.5 and time.time() - top["first_ts"] < fresh_s

@@ -425,3 +425,13 @@ def test_city_score_uses_residents_interest():
     assert city > main
     chans = [dict(c) for c in config.CHANNELS]
     assert judge.channels_for(v, main, chans, city) == ["kazan"]
+
+
+def test_a_fresh_good_post_beats_an_old_strong_one():
+    from addons.channels import publisher
+
+    now = 1_000_000.0
+    ch = {"max_age_h": 4}
+    old = {"score": 9.0, "first_ts": now - 3.5 * 3600}
+    fresh = {"score": 7.0, "first_ts": now - 600}
+    assert publisher.effective(fresh, ch, 1200, now) > publisher.effective(old, ch, 1200, now)
