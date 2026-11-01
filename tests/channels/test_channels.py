@@ -416,3 +416,12 @@ def test_media_goes_first_to_posts_that_can_still_be_published(tmp_path):
     assert media_worker.next_post(d)["id"] == strong
     d.update("posts", "id", weak, urgent=1)
     assert media_worker.next_post(d)["id"] == weak
+
+
+def test_city_score_uses_residents_interest():
+    v = {"relevance": 6, "significance": 2, "virality": 5, "local": 8, "region": "kazan"}
+    sig = {**SIG, "channels": 1, "reach": 20000, "primary": False, "video": False}
+    main, city = judge.score(v, sig), judge.score(v, sig, city=True)
+    assert city > main
+    chans = [dict(c) for c in config.CHANNELS]
+    assert judge.channels_for(v, main, chans, city) == ["kazan"]

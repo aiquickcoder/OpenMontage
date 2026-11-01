@@ -86,10 +86,10 @@ CHANNELS: list[dict] = [
      "per_day": 31, "hours": HOURS["news"], "quiet_from": 1, "quiet_to": 7, "min_gap_min": 8, "min_score": 6.0,
      "max_age_h": 6, "cta": "ЗАСНЯЛИ Live. Подписаться"},
     {"key": "moscow", "username": "zasnyali_moscow", "title": "ЗАСНЯЛИ МОСКВА Live", "regions": ["moscow"],
-     "per_day": 17, "hours": HOURS["moscow"], "quiet_from": 1, "quiet_to": 7, "min_gap_min": 15, "min_score": 5.0,
+     "per_day": 17, "hours": HOURS["moscow"], "quiet_from": 1, "quiet_to": 7, "min_gap_min": 15, "min_score": 4.5,
      "max_age_h": 10, "cta": "ЗАСНЯЛИ МОСКВА. Подписаться"},
     {"key": "kazan", "username": "zasnyali_kazan", "title": "ЗАСНЯЛИ КАЗАНЬ Live", "regions": ["kazan"],
-     "per_day": 14, "hours": HOURS["kazan"], "quiet_from": 0, "quiet_to": 7, "min_gap_min": 20, "min_score": 4.5,
+     "per_day": 14, "hours": HOURS["kazan"], "quiet_from": 0, "quiet_to": 7, "min_gap_min": 20, "min_score": 4.0,
      "max_age_h": 14, "cta": "ЗАСНЯЛИ КАЗАНЬ. Подписаться"},
 ]
 

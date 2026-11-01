@@ -184,20 +184,23 @@ def judge_pending(db, batch: int = 10) -> int:
                                 db.update("stories", "id", target, status="grown")
                         continue
             sig = judge.signals(posts, trust)
-            sc = judge.score(v, sig, float(config.setting(db, "primary_bonus")))
+            bonus = float(config.setting(db, "primary_bonus"))
+            sc = judge.score(v, sig, bonus)
+            sc_city = judge.score(v, sig, bonus, city=True)
             flags = [k for k in ("war", "ad", "propaganda", "politics", "risky") if v.get(k)]
             fields = {"judge": v, "score": sc, "region": v.get("region") or "", "category": v.get("category") or "",
                       "title": (v.get("title") or "")[:200], "judged_at": time.time(), "judged_posts": len(posts)}
             if flags:
                 fields.update(status="rejected", reason="ИИ: " + ", ".join(flags))
             else:
-                targets = judge.channels_for(v, sc, chans)
+                targets = judge.channels_for(v, sc, chans, sc_city)
                 fields.update(status="selected" if targets else "judged",
                               reason=(v.get("why") or "")[:300])
                 urgent = bool(v.get("breaking")) and sc >= 8
                 for key in targets:
                     db.insert("posts", {"story_id": s["id"], "channel": key, "created": time.time(), "status": "draft",
-                                        "score": sc, "urgent": int(urgent), "title": fields["title"],
+                                        "score": sc if key == "news" else sc_city, "urgent": int(urgent),
+                                        "title": fields["title"],
                                         "updated": time.time()}, ignore=True)
             db.update("stories", "id", s["id"], **fields)
     return done

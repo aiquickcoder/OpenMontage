@@ -37,7 +37,10 @@ SYSTEM = """Ты — выпускающий редактор сети новос
 Оценки 0–10 (целые):
 - relevance — насколько это свежая новость для широкой аудитории сейчас (а не справка, анонс, мнение, старьё);
 - significance — масштаб и последствия (погибшие, много пострадавших, решения на всю страну, деньги людей);
-- virality — захочется ли переслать и обсудить (необычно, возмутительно, трогательно, смешно, «как такое возможно»).
+- virality — захочется ли переслать и обсудить (необычно, возмутительно, трогательно, смешно, «как такое возможно»);
+- local — для событий в Москве/Подмосковье или Казани/Татарстане: насколько это важно и интересно ЖИТЕЛЯМ этого
+  города (ДТП на их улице, пожар, задержание, погода, транспорт, цены, городские курьёзы — то, что пишут городские
+  каналы); для остальных регионов — 0.
 
 region — где событие: moscow (город Москва), moscow_oblast (Подмосковье), kazan (Казань), tatarstan (Татарстан
 кроме Казани), russia (вся страна: федеральное решение, цены, законы), other_region (конкретный другой регион
@@ -50,7 +53,7 @@ same_as — если сюжет о ТОМ ЖЕ событии, что друго
 title — нейтральное описание события до 120 знаков (без оценок, без названий каналов).
 
 Ответ — только JSON-массив: [{"id": 1, "war": false, "ad": false, "propaganda": false, "politics": false,
-"risky": false, "relevance": 7, "significance": 5, "virality": 8, "region": "moscow", "category": "дтп",
+"risky": false, "relevance": 7, "significance": 5, "virality": 8, "local": 8, "region": "moscow", "category": "дтп",
 "breaking": false, "same_as": null, "title": "…", "why": "коротко почему"}]"""
 
 
@@ -97,12 +100,14 @@ def signals(posts: list[dict], trust: dict[str, float] | None = None) -> dict[st
             "primary": primary, "trust": t}
 
 
-def score(v: dict, sig: dict[str, float], primary_bonus: float = 0.8) -> float:
+def score(v: dict, sig: dict[str, float], primary_bonus: float = 0.8, city: bool = False) -> float:
     """0..~12: the AI's three marks plus the feed's signals. A first-hand source adds primary_bonus (setting; owner
-    2026-11-01: a priority, but a soft one — it never lifts a dull agency report over the bar on its own)."""
+    2026-11-01: a priority, but a soft one — it never lifts a dull agency report over the bar on its own).
+    city=True: the city channels' score — the residents' interest («local») instead of national significance."""
     if any(v.get(k) for k in ("war", "ad", "propaganda", "politics", "risky")):
         return 0.0
-    ai = 0.3 * float(v.get("relevance", 0)) + 0.35 * float(v.get("significance", 0)) + 0.35 * float(v.get("virality", 0))
+    weight = float(v.get("local", 0)) if city else float(v.get("significance", 0))
+    ai = 0.3 * float(v.get("relevance", 0)) + 0.35 * weight + 0.35 * float(v.get("virality", 0))
     cross = min(1.0, (sig["channels"] - 1) * 0.35) * 1.5
     reach = max(0.0, min(1.2, math.log10(max(1, sig["reach"]) / 20000) * 0.6)) if sig["reach"] else 0.0
     media = 0.5 if sig["video"] else 0.3 if sig["photo"] else 0.0
@@ -112,14 +117,17 @@ def score(v: dict, sig: dict[str, float], primary_bonus: float = 0.8) -> float:
     return round((ai + cross + reach + media + first_hand + trust) * fresh, 2)
 
 
-def channels_for(v: dict, s: float, chans: list[dict]) -> list[str]:
-    """Which of our channels take a story: its region in the channel's regions and the score over its bar. The main
-    channel also takes a city story or another region's when it is big (bar + 1)."""
+def channels_for(v: dict, s: float, chans: list[dict], city_s: float | None = None) -> list[str]:
+    """Which of our channels take a story: its region in the channel's regions and the score over its bar (the main
+    channel's score for @zasnyali_news, the residents' score city_s for the city channels). The main channel also
+    takes a city story or another region's when it is big (bar + 1)."""
     if not s:
         return []
     region = v.get("region") or "russia"
     out = []
+    main_s = s
     for ch in chans:
+        s = main_s if ch["key"] == "news" or city_s is None else city_s
         regions = ch.get("regions") or []
         bar = float(ch.get("min_score", 6))
         if ch["key"] == "news":
