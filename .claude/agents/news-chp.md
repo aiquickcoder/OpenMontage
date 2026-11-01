@@ -24,16 +24,21 @@ article's media (`article_video.py`), `library.py find`, `fetch_commons.py`, a m
 case (the article, date, place, how it happened) and transcribe the agency video's sound; put the agency's own
 words in as a sound bite only where its representative speaks on camera (`[bite]` + `"bite"` + a `"bite": true`
 shot, README; never an off-screen agency narrator — its facts go into our text); say the maximum term when the article
-is known («Ему грозит до пятнадцати лет», sanction checked in the УК); end with «Подписывайтесь, чтобы первыми знать,
-что происходит в городе.». Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
+is known («Ему грозит до пятнадцати лет», sanction checked in the УК); end with a comment bait, then the subscribe line
+(owner 2026-11-01, README «Конец ролика»): «Как думаете, <a provocative question from this film's own conflict, two
+sides people will argue over>? <an easy one-word way to answer: «Пишите: запретить или оставить», «Пишите цифру»,
+«Расскажите — предупредите других»>. И подписывайтесь, чтобы первыми знать, что происходит в городе.» — question up to
+12–14 words, the same question as the caption's last line; honest: no new facts, no «он виновен?» before a verdict, no
+blaming the victim, no violence, nationality, religion or war. Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
 
 A top story with no footage of its own (a trend, a study) is built from thematic YouTube footage the agent plans phrase by phrase (README «Новость без своих кадров», `news-world`). A big political or world story (owner 2026-10-31, README «Большая история») is the `news-world` agent's (`.claude/agents/news-world.md`: world.py, dossier.py); in short: build a dossier first —
 `tg_client.py search "<stem>" --hours 48 --json projects/<slug>/dossier.json` over all our channels, the country's
 own media in its language, `yt_footage.py scout … --lang <xx>`; a loaded word («госпереворот», «штурм») only with its
 author and the other side's words next to it; a connected story of about 40–60 s (what, timeline, why, who says what,
-latest, next date) ending «Как думаете, чем это закончится? Пишите в комментариях. И подписывайтесь, чтобы первыми знать,
-что происходит.». Length is a guide, never a limit (owner 2026-10-31: «Обрезай, только если можешь укоротить, не теряя смысл, не теряй ничего важного и не старайся любым способом уместиться в рамки»): shorten only what can be said shorter with the same meaning; never drop a fact, either side's quote, the background, the latest event or the next date to save seconds — a full 70 s story beats a 55 s stump; note the overrun in `"notes"`. Every text keeps TikTok's safe zone (120 px from the sides, the hook card from 230 px).
+latest, next date) ending with the comment bait above — a question from the story's own conflict («Как думаете, это
+защита закона — или захват власти? Пишите в комментариях. И подписывайтесь, чтобы первыми знать, что происходит.»;
+«чем это закончится?» only when nothing sharper fits). Length is a guide, never a limit (owner 2026-10-31: «Обрезай, только если можешь укоротить, не теряя смысл, не теряй ничего важного и не старайся любым способом уместиться в рамки»): shorten only what can be said shorter with the same meaning; never drop a fact, either side's quote, the background, the latest event or the next date to save seconds — a full 70 s story beats a 55 s stump; note the overrun in `"notes"`. Every text keeps TikTok's safe zone (120 px from the sides, the hook card from 230 px).
 
 ## Defaults (owner's choices, 2026-10-24)
 - About 30 s for one story, or a digest of 3–4 stories up to 100 s (README «Выпуск»), 9:16, Russian.

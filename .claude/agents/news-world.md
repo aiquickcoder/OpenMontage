@@ -30,8 +30,12 @@ format) — and `.claude/agents/news-chp.md` for the pipeline. The approved refe
 
 ## The text (narration.text)
 In order: what happened (one picture-phrase) → the events in time → why (the background in one phrase) → who says
-what (both sides, a quote each) → the latest → what next, with its date. Then, instead of a summary: «Как думаете,
-чем это закончится? Пишите в комментариях. И подписывайтесь, чтобы первыми знать, что происходит.»
+what (both sides, a quote each) → the latest → what next, with its date. Then, instead of a summary, a comment bait
+(owner 2026-11-01, README «Конец ролика»): a provocative question from this story's own conflict, two sides people
+will argue over, and an easy way to answer — «Как думаете, Германии нужна армия за сотни миллиардов — или эти деньги
+нужнее самим немцам? Пишите: армия или люди. И подписывайтесь, чтобы первыми знать, что происходит.» «Чем это
+закончится?» only when an open outcome is ahead and nothing sharper fits. The same question ends the caption. Honest:
+no new facts, no guilt before a verdict, no violence, nationality, religion or war.
 **Length is a guide, never a limit** (owner 2026-10-31: «Обрезай, только если можешь укоротить, не теряя смысл, не
 теряй ничего важного и не старайся любым способом уместиться в рамки»): about 40–60 s, but shorten only what can be
 said shorter with the same meaning; never drop a fact, a side's quote, the background, the latest turn or the next
