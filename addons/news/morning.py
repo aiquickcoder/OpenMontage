@@ -8,8 +8,8 @@
 Timers (all MSK): news-morning-ru 06:00 (in the bot by 9:00); news-evening-kazan 17:30, -moscow 17:50, -spb 18:10
 (in the bot by 20:45, the best evening window by the 14-day channel stats). Started with /opt/openmontage/.env and /opt/watermark-cleaner/deploy/.env, after
 the night pre-clean (01:00–07:00) has cleaned the best candidates' footage. Same launch as the factory worker
-(factory/runner.py): `claude -p`, acceptEdits, Bash/Read/Write/Edit/Glob/Grep, Anthropic traffic through
-FACTORY_CLAUDE_PROXY. The agent's last line is MORNING_RESULT; anything else (or the deadline) is reported to the
+(factory/runner.py): Codex through the local codex-gateway and the VPN (factory/agent_cli.py; FACTORY_AGENT=claude
+— the old `claude -p`, acceptEdits, Anthropic traffic through FACTORY_CLAUDE_PROXY). The agent's last line is MORNING_RESULT; anything else (or the deadline) is reported to the
 owner's Telegram so a missing morning film never goes unnoticed. Log: projects/news-<city>-<dd-mm>/morning.log.
 """
 from __future__ import annotations
@@ -25,6 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from factory import agent_cli  # noqa: E402  (Codex by default since 2026-11-01, FACTORY_AGENT=claude for the old run)
 MSK = timezone(timedelta(hours=3))
 AGENTS = {"russia": "news-chp-russia", "moscow": "news-chp", "kazan": "news-chp-kazan", "spb": "news-chp-spb",
           "world": "news-world"}
@@ -113,9 +115,15 @@ def main() -> None:
         env["HTTPS_PROXY"] = env["HTTP_PROXY"] = proxy
         env["NO_PROXY"] = ",".join(filter(None, [env.get("NO_PROXY"), "localhost", "127.0.0.1", ".google.com",
                                                  ".googleusercontent.com", ".gstatic.com", ".googleapis.com"]))
-    tools = "Bash Read Write Edit Glob Grep" + (" WebSearch WebFetch" if a.city == "world" else "")
-    cmd = [env.get("FACTORY_CLAUDE_BIN", "claude"), "-p", prompt, "--permission-mode", "acceptEdits",
-           "--allowedTools", tools, "--max-turns", "400", "--output-format", "text"]
+    last = proj / "morning.last.txt"
+    last.unlink(missing_ok=True)
+    codex = agent_cli.engine(env) == "codex"
+    if codex:
+        cmd, env = agent_cli.codex_command(prompt, REPO, last, env, search=a.city == "world"), agent_cli.codex_env(env)
+    else:
+        tools = "Bash Read Write Edit Glob Grep" + (" WebSearch WebFetch" if a.city == "world" else "")
+        cmd = [env.get("FACTORY_CLAUDE_BIN", "claude"), "-p", prompt, "--permission-mode", "acceptEdits",
+               "--allowedTools", tools, "--max-turns", "400", "--output-format", "text"]
     started = time.time()
     try:
         p = subprocess.run(cmd, cwd=REPO, env=env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
@@ -124,7 +132,7 @@ def main() -> None:
     except subprocess.TimeoutExpired as e:
         out = f"{e.stdout or ''}\n[stopped at the {a.deadline} deadline]"
     (proj / "morning.log").write_text(f"PROMPT:\n{prompt}\n\nOUTPUT:\n{out}", encoding="utf-8")
-    found = RESULT.findall(out)
+    found = RESULT.findall(agent_cli.result_text(out, last) if codex else out)
     delivered = [f for f in films if (REPO / "projects" / f / "kinescope.json").is_file()
                  and (REPO / "projects" / f / "kinescope.json").stat().st_mtime >= started]
     if not found and delivered:

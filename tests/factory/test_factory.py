@@ -96,12 +96,30 @@ def test_parse_brief_rejects_bad_bait():
 
 # -- runner ----------------------------------------------------------------
 def test_command_and_env(tmp_path):
-    s = _settings(tmp_path)
+    s = _settings(tmp_path, agent="claude")
     cmd = runner.build_command(s, "PROMPT")
     assert cmd[:3] == ["claude", "-p", "PROMPT"] and "--allowedTools" in cmd and "50" in cmd
     env = runner.build_env(s, {"PATH": "/bin"})
     assert env["HTTPS_PROXY"] == "http://127.0.0.1:8118"
     assert ".google.com" in env["NO_PROXY"] and env["FLOW_DRIVER"] == "agent" and env["FLOW_BRIDGE"] == "1"
+
+
+def test_codex_runs_through_the_gateway_in_its_sandbox(tmp_path):
+    """Owner 2026-11-01: Claude → Codex GPT (gpt-6.1-sol, effort high), through the VPN via the local codex-gateway."""
+    from factory import agent_cli
+    s = _settings(tmp_path)
+    assert s.agent == "codex"
+    cmd = runner.build_command(s, "PROMPT", tmp_path / "last.txt")
+    assert cmd[:2] == ["codex", "exec"] and cmd[-1] == "PROMPT"
+    assert "workspace-write" in cmd and "--dangerously-bypass-approvals-and-sandbox" not in cmd
+    assert "gpt-6.1-sol" in cmd and 'model_reasoning_effort="high"' in cmd and str(tmp_path / "last.txt") in cmd
+    assert any("172.22.0.1:8282" in c and 'env_key="CODEX_GW_SECRET"' in c for c in cmd)
+    env = runner.build_env(s, {"PATH": "/bin"})
+    assert "172.22.0.1" in env["NO_PROXY"]  # the gateway is local even when the tools get the VPN proxy
+    # Codex echoes the prompt (which spells AUTOPILOT_RESULT out) into stdout: only its last message counts
+    (tmp_path / "last.txt").write_text("AUTOPILOT_RESULT: READY projects/b1 done", encoding="utf-8")
+    assert agent_cli.result_text("user\nEnd with AUTOPILOT_RESULT: READY projects/<id>", tmp_path / "last.txt").startswith("AUTOPILOT_RESULT: READY projects/b1")
+    assert agent_cli.result_text("anything", tmp_path / "missing.txt") == ""
 
 
 def test_prompt_mentions_addons():
@@ -131,7 +149,7 @@ def test_parse_result():
 
 
 def test_run_brief_writes_log(tmp_path):
-    s = _settings(tmp_path)
+    s = _settings(tmp_path, agent="claude")
 
     def fake(cmd, **kw):
         assert kw["cwd"] == tmp_path
@@ -140,6 +158,17 @@ def test_run_brief_writes_log(tmp_path):
     out = runner.run_brief(s, {"id": "b1", "text": "t", "options": {}}, runner=fake)
     assert out.status == "READY" and out.project_dir == tmp_path / "projects" / "b1"
     assert "AUTOPILOT_RESULT" in (tmp_path / "projects" / "b1" / "factory_run.log").read_text()
+
+
+def test_run_brief_with_codex_reads_its_last_message(tmp_path):
+    s = _settings(tmp_path)
+
+    def fake(cmd, **kw):  # Codex prints the prompt (with the result line spelled out) and writes its answer to -o
+        Path(cmd[cmd.index("-o") + 1]).write_text("AUTOPILOT_RESULT: READY projects/b1 done", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="user\nEnd with AUTOPILOT_RESULT: FAILED <reason>", stderr="")
+
+    out = runner.run_brief(s, {"id": "b1", "text": "t", "options": {}}, runner=fake)
+    assert out.status == "READY" and out.project_dir == tmp_path / "projects" / "b1"
 
 
 # -- release ---------------------------------------------------------------

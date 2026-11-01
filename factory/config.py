@@ -26,6 +26,7 @@ class Settings:
     tg_chat: str
     tg_proxy: str
     release_base_url: str
+    agent: str = "codex"  # which coding agent runs briefs: codex (since 2026-11-01) or claude — factory/agent_cli.py
 
     @property
     def db_path(self) -> Path:
@@ -51,4 +52,5 @@ def load() -> Settings:
         tg_chat=_env("TG_CHAT"),
         tg_proxy=_env("TG_PROXY"),
         release_base_url=_env("FACTORY_RELEASE_BASE_URL", "https://studio.luvael.ru/releases"),
+        agent=_env("FACTORY_AGENT", "codex"),
     )

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from factory import agent_cli
 from factory.config import Settings
 
 RESULT_LINE = re.compile(r"^AUTOPILOT_RESULT:\s*(READY|BUDGET|FAILED)\s+(\S+)(?:\s+(.*))?$", re.M)
@@ -104,7 +105,9 @@ def build_prompt(brief: dict[str, Any], done: Optional[list[str]] = None,
     return "\n".join(lines)
 
 
-def build_command(settings: Settings, prompt: str) -> list[str]:
+def build_command(settings: Settings, prompt: str, last_message: Optional[Path] = None) -> list[str]:
+    if settings.agent == "codex":
+        return agent_cli.codex_command(prompt, settings.repo, last_message or settings.repo / "codex_last.txt", dict(os.environ))
     return [
         settings.claude_bin, "-p", prompt,
         "--permission-mode", "acceptEdits",
@@ -123,7 +126,7 @@ def build_env(settings: Settings, base: Optional[dict[str, str]] = None) -> dict
         env["NO_PROXY"] = ",".join(filter(None, [env.get("NO_PROXY"), "localhost", "127.0.0.1",
                                                  ".google.com", ".google", ".googleusercontent.com",
                                                  ".gstatic.com", ".googleapis.com"]))
-    return env
+    return agent_cli.codex_env(env) if settings.agent == "codex" else env
 
 
 def parse_result(output: str, default_project: Path) -> tuple[str, Path, str]:
@@ -140,17 +143,20 @@ def run_brief(settings: Settings, brief: dict[str, Any], runner=subprocess.run) 
     project_dir.mkdir(parents=True, exist_ok=True)
     log_path = project_dir / "factory_run.log"
     prompt = build_prompt(brief, completed_stages(project_dir), settings)
+    last = project_dir / "factory_last.txt"
+    last.unlink(missing_ok=True)
     try:
-        proc = runner(build_command(settings, prompt), cwd=settings.repo, env=build_env(settings),
+        proc = runner(build_command(settings, prompt, last), cwd=settings.repo, env=build_env(settings),
                       capture_output=True, text=True, timeout=settings.run_timeout_s)
         output, code = (proc.stdout or "") + ("\n[stderr]\n" + proc.stderr if proc.stderr else ""), proc.returncode
     except subprocess.TimeoutExpired as exc:
         output = f"{exc.stdout or ''}\n[timeout after {settings.run_timeout_s}s]"
         code = -1
     log_path.write_text(f"PROMPT:\n{prompt}\n\nOUTPUT:\n{output}", encoding="utf-8")
-    status, reported, detail = parse_result(proc.stdout if code != -1 else output, project_dir)
+    said = agent_cli.result_text(output, last) if settings.agent == "codex" else (proc.stdout if code != -1 else output)
+    status, reported, detail = parse_result(said, project_dir)
     if not reported.is_absolute():
         reported = settings.repo / reported
     if status == "READY" and code != 0:
-        status, detail = "FAILED", f"claude exited {code} after reporting READY"
+        status, detail = "FAILED", f"{settings.agent} exited {code} after reporting READY"
     return RunOutcome(status=status, project_dir=reported, detail=detail, returncode=code)
