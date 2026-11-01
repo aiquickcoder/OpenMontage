@@ -1,0 +1,8 @@
+[Unit]
+Description=ЗАСНЯЛИ channels engine (capped: the server is shared with the VPN relay, other bots and the news films)
+
+[Slice]
+CPUQuota=100%
+MemoryHigh=1700M
+MemoryMax=2G
+TasksMax=512

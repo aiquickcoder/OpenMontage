@@ -135,19 +135,23 @@ async def read_new(c, username: str, cached: dict | None, min_id: int, hours: fl
     return out, info
 
 
+def item(r: dict) -> dict:
+    return {"kind": r["media"], "post": r["post"], "size": r["size"], "duration": r["duration"]}
+
+
 def fold_albums(rows: list[dict]) -> list[dict]:
-    """An album is one post: the item with text carries the others' ids in "album" and their kinds in "kinds"."""
+    """An album is one post: the item with text carries every item's media in "media" (kind, post id, size)."""
     by: dict[int, list[dict]] = {}
     out: list[dict] = []
     for r in rows:
         if r["grouped"]:
             by.setdefault(r["grouped"], []).append(r)
         else:
-            out.append({**r, "album": [r["post"]], "kinds": [r["media"]] if r["media"] else []})
+            out.append({**r, "media": [item(r)] if r["media"] else []})
     for g in by.values():
+        g.sort(key=lambda r: r["post"])
         head = next((r for r in g if r["raw"].strip()), g[0])
-        out.append({**head, "album": [r["post"] for r in g], "kinds": [r["media"] for r in g if r["media"]],
-                    "views": max(r["views"] for r in g)})
+        out.append({**head, "media": [item(r) for r in g if r["media"]], "views": max(r["views"] for r in g)})
     return sorted(out, key=lambda r: r["date"])
 
 

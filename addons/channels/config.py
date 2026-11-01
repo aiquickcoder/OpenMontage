@@ -41,18 +41,39 @@ DEFAULTS: dict[str, object] = {
     "inpaint_video_max_s": 25,         # a video that needs the cleaner (not a crop) only up to this length
     "crop_max_share": 0.18,            # a logo within this share of an edge is cropped off instead of inpainted
     "max_media": 4,                    # album size
+    "model_vision2": "openai/gpt-5.6-luna",  # second pair of eyes on every picture (union of both)
+    "join_enabled": True,              # owner 2026-11-01: «Да разрешаю» — join the public source channels
+    "join_every_s": 180,               # one join every ~3 minutes
+    "max_channels": 480,               # the account's channel count stays under Telegram's 500
 }
 
-CHANNELS: list[dict] = [  # seed rows; the numbers are replaced by research.freq results (see README)
+# Measured 2026-11-01 through Telethon (research.py freq, 14 full days 18–31.10, ads and reposts left out):
+#   main  — Топор Live 67.1/day, Топор 12.6, Mash 16.6, Baza 16.1, SHOT 17.9, Readovka 23.1, Осторожно 19.6,
+#           Раньше всех 78.6, Ньюсач 48.4, Varlamov 12.9 → mean 31.3
+#   Moscow — Москвач 17.5, Новости Москвы 14.0, Москва сейчас 24.4, Осторожно Москва 11.9, МСК 4.9, Москва 24 52.0,
+#           Мосфид 9.1, ЧП/Москва 17.6, ДТП и ЧП 5.5 → mean 17.4
+#   Kazan — Казань на максималках 19.6, КазаньДА 16.4, Казань сейчас 2.0, Go Kazan 17.6, ЧП Казань 10.9,
+#           Происшествия Татарстан 5.4, Mash Iptash 4.9, Казань Сейчас 15.1, Первый Казанский 22.3, ТАТМЕДИА 22.7,
+#           ЧП Казань новости 13.9 → mean 13.7
+# Hours: the references' average posts by hour (MSK), quiet hours set to 0 (urgent posts still go).
+HOURS = {
+    "news": [0.41, 0, 0, 0, 0, 0, 0, 0.36, 1.22, 1.61, 1.67, 1.66, 1.7, 1.91, 1.65, 1.58, 1.7, 1.51, 1.3, 1.29, 1.29,
+             1.24, 1.16, 0.74],
+    "moscow": [0.29, 0, 0, 0, 0, 0, 0, 0.34, 0.82, 1.71, 1.45, 1.57, 1.83, 1.9, 1.51, 1.91, 1.65, 1.99, 1.78, 1.6, 1.17,
+               0.99, 0.83, 0.65],
+    "kazan": [0, 0, 0, 0, 0, 0, 0, 0.64, 1.53, 2.06, 2.15, 1.49, 2.06, 1.56, 2.07, 1.57, 1.42, 1.66, 1.45, 1.16, 0.99,
+              1.15, 0.51, 0.51],
+}
+CHANNELS: list[dict] = [
     {"key": "news", "username": "zasnyali_news", "title": "ЗАСНЯЛИ Live", "regions": ["russia", "world", "moscow", "kazan"],
-     "per_day": 40, "quiet_from": 1, "quiet_to": 7, "min_gap_min": 8, "min_score": 6.5, "max_age_h": 6,
-     "cta": "ЗАСНЯЛИ Live — подписаться"},
+     "per_day": 31, "hours": HOURS["news"], "quiet_from": 1, "quiet_to": 7, "min_gap_min": 8, "min_score": 6.5,
+     "max_age_h": 6, "cta": "ЗАСНЯЛИ Live. Подписаться"},
     {"key": "moscow", "username": "zasnyali_moscow", "title": "ЗАСНЯЛИ МОСКВА Live", "regions": ["moscow"],
-     "per_day": 20, "quiet_from": 1, "quiet_to": 7, "min_gap_min": 15, "min_score": 5.5, "max_age_h": 10,
-     "cta": "ЗАСНЯЛИ МОСКВА — подписаться"},
+     "per_day": 17, "hours": HOURS["moscow"], "quiet_from": 1, "quiet_to": 7, "min_gap_min": 15, "min_score": 5.5,
+     "max_age_h": 10, "cta": "ЗАСНЯЛИ МОСКВА. Подписаться"},
     {"key": "kazan", "username": "zasnyali_kazan", "title": "ЗАСНЯЛИ КАЗАНЬ Live", "regions": ["kazan"],
-     "per_day": 12, "quiet_from": 1, "quiet_to": 7, "min_gap_min": 20, "min_score": 5.0, "max_age_h": 14,
-     "cta": "ЗАСНЯЛИ КАЗАНЬ — подписаться"},
+     "per_day": 14, "hours": HOURS["kazan"], "quiet_from": 0, "quiet_to": 7, "min_gap_min": 20, "min_score": 5.0,
+     "max_age_h": 14, "cta": "ЗАСНЯЛИ КАЗАНЬ. Подписаться"},
 ]
 
 

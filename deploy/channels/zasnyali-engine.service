@@ -1,0 +1,19 @@
+[Unit]
+Description=ЗАСНЯЛИ: editor (clustering, AI judge, rewriting)
+After=network-online.target
+
+[Service]
+Slice=zasnyali.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+
+Environment=HOME=/home/factory PYTHONPATH=/opt/openmontage PYTHONUNBUFFERED=1 PATH=/opt/openmontage/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python -m addons.channels.engine
+Restart=always
+RestartSec=20
+MemoryMax=600M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

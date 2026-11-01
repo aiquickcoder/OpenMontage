@@ -1,0 +1,19 @@
+[Unit]
+Description=ЗАСНЯЛИ: media worker (look, crop/clean, check)
+After=network-online.target
+
+[Service]
+Slice=zasnyali.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+EnvironmentFile=/opt/watermark-cleaner/deploy/.env
+Environment=HOME=/home/factory PYTHONPATH=/opt/openmontage PYTHONUNBUFFERED=1 PATH=/opt/openmontage/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python -m addons.channels.media_worker
+Restart=always
+RestartSec=20
+MemoryMax=1200M
+Nice=12
+
+[Install]
+WantedBy=multi-user.target

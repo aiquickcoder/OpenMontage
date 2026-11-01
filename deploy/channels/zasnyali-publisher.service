@@ -1,0 +1,19 @@
+[Unit]
+Description=ЗАСНЯЛИ: publisher (schedule, trial previews / live posts, owner reports)
+After=network-online.target
+
+[Service]
+Slice=zasnyali.slice
+User=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+
+Environment=HOME=/home/factory PYTHONPATH=/opt/openmontage PYTHONUNBUFFERED=1 PATH=/opt/openmontage/.venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python -m addons.channels.publisher
+Restart=always
+RestartSec=20
+MemoryMax=400M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

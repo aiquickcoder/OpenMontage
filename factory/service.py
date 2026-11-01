@@ -146,12 +146,46 @@ def run_studio_tasks(settings: Settings) -> int:
         return 0
 
 
+CHANNEL_ACTIONS = ("chdel", "chpause", "chresume")
+
+
+def handle_channel_button(tg: Telegram, cq: dict[str, Any], action: str, arg: str) -> None:
+    """«Удалить» / «Пауза канала» / «Возобновить» under a channel post report. This bot is the only getUpdates
+    reader of its token, so the channels engine's buttons come through here."""
+    post_id = None
+    try:
+        from addons.channels import bot_actions
+
+        note, _ = bot_actions.handle(action, arg)
+        for row in (cq.get("message", {}).get("reply_markup") or {}).get("inline_keyboard") or []:
+            for b in row:
+                if str(b.get("callback_data", "")).startswith("chdel:"):
+                    post_id = int(b["callback_data"].split(":", 1)[1])
+        if post_id is not None:
+            channel = arg if action != "chdel" else None
+            keyboard = bot_actions.keyboard(post_id, channel) if channel else None
+            if action == "chdel":
+                keyboard = []
+            msg = cq.get("message") or {}
+            tg.call("editMessageReplyMarkup", chat_id=msg.get("chat", {}).get("id"), message_id=msg.get("message_id"),
+                    reply_markup={"inline_keyboard": keyboard or []})
+    except Exception as exc:  # noqa: BLE001 — a button must never take the bot down
+        log.exception("channel button failed")
+        note = f"⚠️ {exc}"
+    tg.call("answerCallbackQuery", callback_query_id=cq["id"], text=(note or "ok")[:190])
+    if note:
+        tg.send(note)
+
+
 def handle_update(settings: Settings, store: BriefStore, tg: Telegram, update: dict[str, Any]) -> None:
     if "callback_query" in update:
         cq = update["callback_query"]
         if str(cq.get("message", {}).get("chat", {}).get("id")) != tg.chat:
             return
         action, _, brief_id = (cq.get("data") or "").partition(":")
+        if action in CHANNEL_ACTIONS:  # the ЗАСНЯЛИ channels' report buttons (addons/channels/bot_actions.py)
+            handle_channel_button(tg, cq, action, brief_id)
+            return
         notes: list[str] = []
         try:
             if action == "approve":

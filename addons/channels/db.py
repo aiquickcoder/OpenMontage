@@ -26,12 +26,14 @@ CREATE TABLE IF NOT EXISTS sources(
   id INTEGER PRIMARY KEY, platform TEXT NOT NULL, ref TEXT NOT NULL, title TEXT DEFAULT '',
   region TEXT DEFAULT 'russia', kind TEXT DEFAULT 'aggregator', trust REAL DEFAULT 0.6, enabled INTEGER DEFAULT 1,
   every_min INTEGER DEFAULT 15, last_id INTEGER DEFAULT 0, last_read REAL DEFAULT 0, tg_id INTEGER, tg_hash INTEGER,
-  subscribers INTEGER, note TEXT DEFAULT '', error TEXT DEFAULT '', added REAL DEFAULT 0,
+  subscribers INTEGER, note TEXT DEFAULT '', error TEXT DEFAULT '', added REAL DEFAULT 0, joined INTEGER DEFAULT 0,
+  join_tried REAL DEFAULT 0, posts_seen INTEGER DEFAULT 0, last_post_ts REAL DEFAULT 0,
   UNIQUE(platform, ref));
 CREATE TABLE IF NOT EXISTS raw_posts(
   id INTEGER PRIMARY KEY, source_id INTEGER, channel TEXT, post INTEGER, link TEXT UNIQUE, ts REAL, text TEXT,
   plain TEXT, views INTEGER DEFAULT 0, forwards INTEGER DEFAULT 0, reactions INTEGER DEFAULT 0, media TEXT DEFAULT '[]',
-  fwd INTEGER DEFAULT 0, filtered TEXT DEFAULT '', story_id INTEGER, read_at REAL);
+  fwd INTEGER DEFAULT 0, filtered TEXT DEFAULT '', story_id INTEGER, read_at REAL, kind TEXT DEFAULT '',
+  trust REAL DEFAULT 0.6, region TEXT DEFAULT '', sig TEXT DEFAULT '');
 CREATE INDEX IF NOT EXISTS raw_ts ON raw_posts(ts);
 CREATE INDEX IF NOT EXISTS raw_story ON raw_posts(story_id);
 CREATE TABLE IF NOT EXISTS stories(
@@ -51,7 +53,11 @@ CREATE TABLE IF NOT EXISTS posts(
   id INTEGER PRIMARY KEY, story_id INTEGER, channel TEXT, created REAL, status TEXT DEFAULT 'draft', html TEXT,
   score REAL DEFAULT 0, media TEXT DEFAULT '[]', media_note TEXT DEFAULT '', sources TEXT DEFAULT '[]',
   published_at REAL, message_ids TEXT DEFAULT '[]', chat_id TEXT DEFAULT '', report_msg INTEGER, error TEXT DEFAULT '',
-  model TEXT DEFAULT '', title TEXT DEFAULT '', updated REAL, UNIQUE(story_id, channel));
+  model TEXT DEFAULT '', title TEXT DEFAULT '', updated REAL, urgent INTEGER DEFAULT 0, upgrade TEXT DEFAULT '',
+  facts TEXT DEFAULT '[]', UNIQUE(story_id, channel));
+CREATE TABLE IF NOT EXISTS downloads(
+  id INTEGER PRIMARY KEY, created REAL, channel TEXT, posts TEXT, status TEXT DEFAULT 'new', paths TEXT DEFAULT '[]',
+  error TEXT DEFAULT '', done REAL);
 CREATE INDEX IF NOT EXISTS posts_status ON posts(status);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS llm_usage(
@@ -60,7 +66,8 @@ CREATE TABLE IF NOT EXISTS llm_usage(
 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, ts REAL, kind TEXT, text TEXT);
 """
 
-JSON_FIELDS = {"media", "terms", "judge", "regions", "hours", "sources", "message_ids"}
+JSON_FIELDS = {"media", "terms", "judge", "regions", "hours", "sources", "message_ids", "sig", "posts", "paths",
+               "upgrade", "facts"}
 
 
 class DB:
