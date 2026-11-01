@@ -172,8 +172,23 @@ def tidy() -> None:
             pass
 
 
+READY_AHEAD = 4  # a channel with this many ready posts gets pictures only for a post that would beat them
+
+
+def next_post(db) -> dict | None:
+    """The next post to find pictures for: urgent first, then by score — but a channel whose ready queue is already
+    full only gets a post that scores above the weakest one there (the rest would expire unpublished)."""
+    ready = {r["channel"]: (r["n"], r["low"]) for r in db.q(
+        "SELECT channel, COUNT(*) n, MIN(score) low FROM posts WHERE status='ready' GROUP BY channel")}
+    for p in db.q("SELECT * FROM posts WHERE status='media' ORDER BY urgent DESC, score DESC, id LIMIT 50"):
+        n, low = ready.get(p["channel"], (0, 0))
+        if p["urgent"] or n < READY_AHEAD or p["score"] > (low or 0):
+            return p
+    return None
+
+
 def tick(db) -> bool:
-    post = db.one("SELECT * FROM posts WHERE status='media' ORDER BY urgent DESC, score DESC, id LIMIT 1")
+    post = next_post(db)
     if post:
         got, notes, upgrade = prepare(db, post)
         note = "; ".join([f"{m['kind']}: {m['how']}" for m in got] + (["отбраковано: " + "; ".join(notes)] if notes else []))
