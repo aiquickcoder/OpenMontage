@@ -3,6 +3,7 @@
     .venv/bin/python -m addons.channels.research resolve toporlive,mash,...        # which usernames exist, titles
     .venv/bin/python -m addons.channels.research freq toporlive,mash --days 14 [--json out.json]
     .venv/bin/python -m addons.channels.research dump toporlive --n 100 --json out.json   # style samples
+    .venv/bin/python -m addons.channels.research search "Москва сейчас,Казань новости"      # find public channels
 
 freq: posts a day and by hour of the day (MSK) over the last --days, counting an album once and leaving out ads
 (filters.is_ad) and reposts (fwd_from) — what a channel itself publishes as news. The days at the edges are partial
@@ -38,6 +39,25 @@ async def resolve(names: list[str]) -> list[dict]:
             except Exception as ex:  # noqa: BLE001 — a wrong guess is just reported
                 out.append({"username": n, "error": f"{type(ex).__name__}: {ex}"[:160]})
             await asyncio.sleep(2.5)
+    return out
+
+
+async def search(queries: list[str]) -> list[dict]:
+    """Telegram's global search for public channels (contacts.Search): username, title, subscribers."""
+    from telethon.tl.functions.contacts import SearchRequest
+
+    out = []
+    async with tgread.session() as c:
+        for q in queries:
+            try:
+                res = await c(SearchRequest(q=q, limit=20))
+                for ch in res.chats:
+                    if getattr(ch, "broadcast", False) and getattr(ch, "username", None):
+                        out.append({"q": q, "username": ch.username, "title": ch.title,
+                                    "subscribers": getattr(ch, "participants_count", None)})
+            except Exception as ex:  # noqa: BLE001
+                out.append({"q": q, "error": f"{type(ex).__name__}: {ex}"[:160]})
+            await asyncio.sleep(3)
     return out
 
 
@@ -120,7 +140,7 @@ async def dump(name: str, n: int) -> list[dict]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["resolve", "freq", "dump"])
+    ap.add_argument("cmd", choices=["resolve", "freq", "dump", "search"])
     ap.add_argument("names")
     ap.add_argument("--days", type=float, default=14)
     ap.add_argument("--n", type=int, default=100)
@@ -129,6 +149,10 @@ def main() -> None:
     names = [x.strip().lstrip("@") for x in a.names.split(",") if x.strip()]
     if a.cmd == "resolve":
         res = asyncio.run(resolve(names))
+        for r in res:
+            print(json.dumps(r, ensure_ascii=False), flush=True)
+    elif a.cmd == "search":
+        res = asyncio.run(search([x.strip() for x in a.names.split(",") if x.strip()]))
         for r in res:
             print(json.dumps(r, ensure_ascii=False), flush=True)
     elif a.cmd == "freq":
