@@ -310,6 +310,10 @@ class Collector:
             self.refresh_ids()
             c.add_event_handler(self.on_message, events.NewMessage())
             c.add_event_handler(self.on_album, events.Album())
+            from telethon import functions
+
+            await c.get_me()
+            await c(functions.updates.GetStateRequest())  # Telegram starts pushing updates to this session
             self.db.event("collector", "сборщик запущен")
             loop = asyncio.get_running_loop()
             while True:

@@ -128,6 +128,8 @@ def patch_channel(key: str, body: ChannelPatch) -> dict:
         if not r.get("ok"):
             raise HTTPException(409, f"бот не может публиковать в @{ch['username']}: {r.get('detail') or r.get('status')}")
         fields.update(chat_id=r["chat_id"], live_since=time.time(), since=time.time(), note="")
+    if "bot_env" in fields and fields["bot_env"] != ch.get("bot_env"):
+        d.set_setting(f"rights:{key}", {})  # another bot: check its rights afresh
     d.update("channels", "key", key, **fields)
     d.event("control", f"{key}: {', '.join(f'{k}={v}' for k, v in fields.items() if k not in ('style', 'hours'))} (веб)"[:300])
     return d.channel(key)

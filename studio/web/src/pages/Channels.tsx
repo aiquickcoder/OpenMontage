@@ -110,12 +110,12 @@ function ChannelCard({ ch }: { ch: Channel }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     per_day: ch.per_day, quiet_from: ch.quiet_from, quiet_to: ch.quiet_to, min_gap_min: ch.min_gap_min,
-    min_score: ch.min_score, max_age_h: ch.max_age_h, cta: ch.cta, style: ch.style,
+    min_score: ch.min_score, max_age_h: ch.max_age_h, cta: ch.cta, style: ch.style, bot_env: ch.bot_env,
   });
   useEffect(() => {
     setForm({ per_day: ch.per_day, quiet_from: ch.quiet_from, quiet_to: ch.quiet_to, min_gap_min: ch.min_gap_min,
-      min_score: ch.min_score, max_age_h: ch.max_age_h, cta: ch.cta, style: ch.style });
-  }, [ch.per_day, ch.quiet_from, ch.quiet_to, ch.min_gap_min, ch.min_score, ch.max_age_h, ch.cta, ch.style]);
+      min_score: ch.min_score, max_age_h: ch.max_age_h, cta: ch.cta, style: ch.style, bot_env: ch.bot_env });
+  }, [ch.per_day, ch.quiet_from, ch.quiet_to, ch.min_gap_min, ch.min_score, ch.max_age_h, ch.cta, ch.style, ch.bot_env]);
   const patch = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch<Channel>(`/channels/ch/${ch.key}`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ch-overview"] }),
@@ -178,6 +178,9 @@ function ChannelCard({ ch }: { ch: Channel }) {
         <label>Интервал, мин<input type="number" min="1" value={form.min_gap_min} onChange={num("min_gap_min")} /></label>
         <label>Порог оценки<input type="number" step="0.1" value={form.min_score} onChange={num("min_score")} /></label>
         <label>Свежесть, ч<input type="number" step="1" value={form.max_age_h} onChange={num("max_age_h")} /></label>
+        <label title="Имя переменной окружения в /opt/openmontage/.env с токеном бота-публикатора (не сам токен)">
+          Бот: переменная с токеном<input value={form.bot_env} onChange={(e) => setForm({ ...form, bot_env: e.target.value.toUpperCase() })} />
+        </label>
         <label className="span-2">Подпись-ссылка в конце<input value={form.cta} onChange={(e) => setForm({ ...form, cta: e.target.value })} /></label>
         <label className="span-2">
           Дополнительно к стайлгайду этого канала
