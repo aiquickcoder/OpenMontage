@@ -296,3 +296,31 @@ def test_mural_format_routes_to_mural_addon():
     p = runner.build_prompt({"id": "b2", "text": text, "options": opts})
     assert "addons/mural/README.md" in p and "projects/b2" in p
     assert "cartoon-ad" not in p and "addons/autopilot" not in p
+
+
+def test_a_film_over_the_bot_limit_goes_as_a_squeezed_file(tmp_path, monkeypatch):
+    from factory import tg as tgmod
+    big, small = tmp_path / "final.mp4", tmp_path / "final.tg.mp4"
+    big.write_bytes(b"x" * 2000)
+    small.write_bytes(b"x" * 500)
+    monkeypatch.setattr(tgmod, "VIDEO_LIMIT_BYTES", 1000)
+    monkeypatch.setattr(tgmod, "squeeze", lambda p: small)
+    calls = []
+    t = tgmod.Telegram("tok", "42")
+    monkeypatch.setattr(t, "call", lambda method, **kw: calls.append((method, kw)))
+    t.send_document(big, "cap", "news.mp4")
+    (method, kw), = calls
+    assert method == "sendDocument" and kw["files"]["document"][0] == "news.mp4"
+    assert kw["caption"].startswith("cap") and "сжат" in kw["caption"]
+    assert 2400 < tgmod.fit_kbps(145.8) < 2600 and tgmod.fit_kbps(38) > 9000  # 2.5 min film / 38 s film
+
+
+def test_squeeze_keeps_the_picture_size(tmp_path):
+    from factory import tg as tgmod
+    src = tmp_path / "f.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=270x480:rate=25:duration=2",
+                    "-f", "lavfi", "-i", "sine=duration=2", "-shortest", "-c:v", "libx264", "-c:a", "aac", str(src)],
+                   check=True)
+    out = tgmod.squeeze(src)
+    assert out.name == "f.tg.mp4" and tgmod.video_meta(out)["height"] == 480
+    assert tgmod.squeeze(src) == out  # the second chat reuses the copy

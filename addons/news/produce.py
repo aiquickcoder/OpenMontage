@@ -56,7 +56,8 @@ def flow_proxy() -> str:
 
 def deliver_args(name: str) -> list[str]:
     """A film goes to the owner as a file (not recompressed) and to the news group(s) too — NEWS_TG_CHATS in the .env
-    (owner 2026-10-30: «пусть бот в эту группу тоже отправляет … видео пусть отправляет файлом»)."""
+    (owner 2026-10-30: «пусть бот в эту группу тоже отправляет … видео пусть отправляет файлом»). Over the bot's
+    50 MB the file is a two-pass copy that fits (factory.tg.squeeze)."""
     chats = os.environ.get("NEWS_TG_CHATS", "").strip()
     return ["--file", "--name", name] + (["--also", chats] if chats else [])
 

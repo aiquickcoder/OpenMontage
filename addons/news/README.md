@@ -722,6 +722,10 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 5. `addons/news/build.py projects/<id>`. Открыть `qa/contact.jpg` и 2 кадра ведущего.
 6. `addons/mural/publish.py projects/<id> --caption "<заголовок>" --tags "#москва #чп #новости ..."`.
 7. Отправить в Telegram на одобрение: `addons/mural/send_telegram.py` через `systemd-run --wait` с `EnvironmentFile`.
+   Ролик уходит файлом (`--file`) владельцу и в группу «РЕГИОНЫ». Бот принимает файл до 50 МБ, а ролики нового
+   формата весят 60–210 МБ: больше лимита `factory/tg.py` сам делает копию в том же кадре, x264 в два прохода
+   ровно под лимит, и шлёт её файлом с пометкой «сжат с N до M МБ»; оригинал 1080p — по ссылке Kinescope
+   (владелец 2026-11-01: «файлом в бот не отдаётся» — до этого уходила только текстовая пометка).
 8. Сразу после отправки — залить ролик в Kinescope (решение владельца 2026-10-28): `addons/news/kinescope_upload.py projects/<id>`
    через `systemd-run --wait` с `EnvironmentFile` (`KINESCOPE_API_TOKEN`, `KINESCOPE_PARENT_ID` — проект «My project»; токен
    не печатать). Ссылка — в `projects/<id>/kinescope.json` и в отчёте. Пересобранный ролик — с `--replace` (тот же id).
