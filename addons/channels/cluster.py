@@ -77,15 +77,27 @@ class Index:
         return self.df.get(w, 0) <= max(2, self.n * share)
 
 
+DIGEST_LINE = re.compile(r"^\s*(?:[▪•●◾️▫️◽️➖—–-]|\d[.)]|\d\ufe0f?\u20e3|[\U0001F300-\U0001FAFF])\s*\S", re.M)
+
+
+def is_digest(text: str) -> bool:
+    """A round-up of several stories (bullets, numbered or emoji-led lines): it would glue unrelated stories together
+    (aifonline's «▪ Иран… ▪ умер бэк-вокалист «Любэ»… ▪ Шнайдер…» merged three stories, 2026-11-01)."""
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    return sum(1 for ln in lines if DIGEST_LINE.match(ln)) >= 3 and len(lines) >= 4
+
+
 def similarity(a: dict, b: dict, idx: Index) -> tuple[float, int]:
-    """(score 0..~1.6, shared rare words). Score = IDF-weighted overlap of the smaller post + numbers + names."""
+    """(score 0..~1.6, shared rare words). Score = IDF-weighted overlap of the smaller post + numbers + names, but
+    never more than twice the cosine: a long post shares something with everything."""
     sa, sb = set(a["s"]), set(b["s"])
     if not sa or not sb:
         return 0.0, 0
     shared = sa & sb
     wa = sum(idx.idf(w) for w in sa)
     wb = sum(idx.idf(w) for w in sb)
-    score = sum(idx.idf(w) for w in shared) / max(1e-6, min(wa, wb))
+    common = sum(idx.idf(w) for w in shared)
+    score = min(common / max(1e-6, min(wa, wb)), 2 * common / max(1e-6, math.sqrt(wa * wb)))
     nums = set(a["n"]) & set(b["n"])
     score += min(0.3, 0.15 * len(nums))
     caps = set(a["c"]) & set(b["c"])
@@ -99,12 +111,20 @@ def same_event(a: dict, b: dict, idx: Index) -> bool:
     return (score >= 0.42 and rare >= 3) or (score >= 0.6 and rare >= 2)
 
 
-def best_story(sig: dict, candidates: list[tuple[int, dict]], idx: Index) -> int | None:
-    """The story id (of (story_id, post_sig) pairs) the post belongs to, by its closest post."""
+def best_story(sig: dict, candidates: list[tuple[int, dict]], idx: Index, seeds: dict[int, dict] | None = None,
+               seed_min: float = 0.3) -> int | None:
+    """The story id (of (story_id, post_sig) pairs) the post belongs to, by its closest post — and only if it also
+    resembles the story's first post (seeds): without that anchor a chain of half-related posts glues different
+    events together (Путин—Зеленский and Новак's diesel, 2026-11-01)."""
     best: tuple[float, int | None] = (0.0, None)
     for story_id, other in candidates:
         if same_event(sig, other, idx):
             score, _ = similarity(sig, other, idx)
             if score > best[0]:
                 best = (score, story_id)
-    return best[1]
+    sid = best[1]
+    if sid is not None and seeds and sid in seeds:
+        score, rare = similarity(sig, seeds[sid], idx)
+        if score < seed_min or rare < 1:
+            return None
+    return sid

@@ -253,9 +253,9 @@ def test_score_zero_for_flags_and_higher_for_spread():
 
 def test_channels_for_routes_by_region():
     chans = [dict(c) for c in config.CHANNELS]
-    assert judge.channels_for({"region": "moscow"}, 7.6, chans) == ["news", "moscow"]
-    assert judge.channels_for({"region": "moscow"}, 6.0, chans) == ["moscow"]
-    assert judge.channels_for({"region": "kazan"}, 5.5, chans) == ["kazan"]
+    assert judge.channels_for({"region": "moscow"}, 7.1, chans) == ["news", "moscow"]
+    assert judge.channels_for({"region": "moscow"}, 5.5, chans) == ["moscow"]
+    assert judge.channels_for({"region": "kazan"}, 5.0, chans) == ["kazan"]
     assert judge.channels_for({"region": "world"}, 7.0, chans) == ["news"]
     assert judge.channels_for({"region": "world"}, 0, chans) == []
 
@@ -344,3 +344,20 @@ def test_buttons_from_a_stranger_chat_are_ignored(tmp_path, monkeypatch):
     service.handle_update(None, None, tg, {"callback_query": {"id": "q", "data": "chpause:news",
                                                              "message": {"chat": {"id": 13}}}})
     assert tg.calls == [] and not (tmp_path / "c.db").exists()
+
+
+def test_digest_posts_are_recognised():
+    assert cluster.is_digest("Главное за день:\n▪ Иран признал ВМФ террористами\n▪ Умер бэк-вокалист «Любэ»\n"
+                             "▪ Шнайдер выиграла турнир\n▪ Снег в среду")
+    assert not cluster.is_digest("Пожар на складе.\nПлощадь 20 тысяч метров.\nПострадавших нет.")
+
+
+def test_a_chain_does_not_glue_another_event_to_a_story():
+    idx = _idx(FEED * 2)
+    seed = cluster.signature("Путин ответит на звонок Зеленского, заявил помощник президента Ушаков")
+    bridge = cluster.signature("Ушаков рассказал о звонке Зеленского и о том, что российский дизель попадает в Европу "
+                               "под другими марками, как сказал Новак")
+    new = cluster.signature("Новак: российский дизель попадает на рынки Европы под другими марками")
+    for s in (seed, bridge, new):
+        idx.add(s)
+    assert cluster.best_story(new, [(1, seed), (1, bridge)], idx, seeds={1: seed}) is None

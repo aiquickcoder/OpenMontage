@@ -25,7 +25,7 @@ from factory import actions
 from factory.db import BriefStore, InvalidTransition
 from factory.service import BAIT_MODES
 from factory.tg import Telegram
-from studio import ads, auth, characters, farm, planner, projects, worlds
+from studio import ads, auth, channels, characters, farm, planner, projects, worlds
 from studio import config as studio_config
 from studio.config import StudioSettings
 
@@ -426,6 +426,7 @@ def create_app(settings: Optional[StudioSettings] = None) -> FastAPI:
     app.include_router(worlds.router)
     app.include_router(planner.router)
     app.include_router(ads.router)
+    app.include_router(channels.router)  # ЗАСНЯЛИ news channels (addons/channels)
     app.include_router(api)
 
     dist = settings.web_dist

@@ -29,13 +29,17 @@ class Clusterer:
         self.db = db
         self.idx = cluster.Index()
         self.pool: list[tuple[int, dict, float]] = []  # (story_id, sig, ts)
+        self.seeds: dict[int, dict] = {}  # story_id -> its first post's signature
         self.built = 0.0
 
     def rebuild(self) -> None:
         horizon = time.time() - float(config.setting(self.db, "story_window_h")) * 3600
-        rows = self.db.q("SELECT story_id, sig, ts FROM raw_posts WHERE ts>=? AND story_id>0", (horizon,))
+        rows = self.db.q("SELECT story_id, sig, ts FROM raw_posts WHERE ts>=? AND story_id>0 ORDER BY ts", (horizon,))
         self.idx = cluster.Index(r["sig"] for r in rows if isinstance(r["sig"], dict))
         self.pool = [(r["story_id"], r["sig"], r["ts"]) for r in rows if isinstance(r["sig"], dict)]
+        self.seeds = {}
+        for sid, sig, _ in self.pool:
+            self.seeds.setdefault(sid, sig)
         self.built = time.time()
 
     def run(self) -> int:
@@ -47,10 +51,14 @@ class Clusterer:
             if "реклама" in (p["filtered"] or "") or p["ts"] < horizon or not (p["plain"] or "").strip():
                 self.db.update("raw_posts", "id", p["id"], story_id=-1)
                 continue
+            if cluster.is_digest(p["plain"]):  # a round-up of several stories would glue them together
+                self.db.update("raw_posts", "id", p["id"], story_id=-1,
+                               filtered=", ".join(x for x in (p["filtered"], "дайджест") if x))
+                continue
             sig = p["sig"] if isinstance(p["sig"], dict) else cluster.signature(p["plain"])
             self.idx.add(sig)
             cands = [(sid, s) for sid, s, ts in self.pool if abs(ts - p["ts"]) < 36 * 3600]
-            sid = cluster.best_story(sig, cands, self.idx)
+            sid = cluster.best_story(sig, cands, self.idx, self.seeds)
             while sid is not None:  # a story merged by the judge lives on in the one it joined
                 row = self.db.one("SELECT status, merged_into FROM stories WHERE id=?", (sid,))
                 if row and row["status"] == "merged" and row["merged_into"]:
@@ -64,6 +72,7 @@ class Clusterer:
                 self.db.update("raw_posts", "id", p["id"], story_id=sid)
                 self.refresh_story(sid)
             self.pool.append((sid, sig, p["ts"]))
+            self.seeds.setdefault(sid, sig)
         return len(new)
 
     def refresh_story(self, sid: int) -> None:

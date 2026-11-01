@@ -107,7 +107,7 @@ def score(v: dict, sig: dict[str, float]) -> float:
     media = 0.5 if sig["video"] else 0.3 if sig["photo"] else 0.0
     first_hand = 0.4 if sig["primary"] else 0.0
     trust = (sig["trust"] - 0.6) * 1.0
-    fresh = max(0.4, 1 - sig["age_h"] / 24)
+    fresh = max(0.5, 1 - sig["age_h"] / 36)  # the judge's relevance already weighs age; this only fades
     return round((ai + cross + reach + media + first_hand + trust) * fresh, 2)
 
 
