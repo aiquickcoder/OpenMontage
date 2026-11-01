@@ -48,13 +48,15 @@ _VENV = HERE.parents[1] / ".venv" / "bin" / "yt-dlp"
 YTDLP = [str(_VENV) if _VENV.is_file() else "yt-dlp", "--quiet", "--no-warnings"]
 CACHE = Path.home() / ".cache" / "openmontage" / "youtube"
 CACHE_DAYS = 3
-EGRESS = os.environ.get("YT_PROXY", "http://127.0.0.1:10809")
+# the YouTube exits in order: factory-yt-proxy (the Hostkey NL server — 01.11 YouTube asked every other exit of the
+# server to «sign in to confirm you're not a bot»), then the factory's general egress
+EGRESSES = [os.environ["YT_PROXY"]] if os.environ.get("YT_PROXY") else ["http://127.0.0.1:10811", "http://127.0.0.1:10809"]
 
 
-def _egress_up() -> bool:
+def _up(url: str) -> bool:
     import socket
 
-    host, port = EGRESS.rsplit("://", 1)[-1].rsplit(":", 1)
+    host, port = url.rsplit("://", 1)[-1].rsplit(":", 1)
     try:
         socket.create_connection((host, int(port)), timeout=1).close()
         return True
@@ -62,10 +64,11 @@ def _egress_up() -> bool:
         return False
 
 
-# YouTube does not answer the server directly: yt-dlp and the storyboard fetches go through the factory's egress
+# YouTube does not answer the server directly: yt-dlp and the storyboard fetches go through the first exit that listens
 # unless the caller set a proxy (31.10: run with only the .env, every search failed on an SSL EOF); on a machine
-# without the egress (the Mac) nothing changes
-if "https_proxy" not in os.environ and _egress_up():
+# without one (the Mac) nothing changes
+EGRESS = next((u for u in EGRESSES if _up(u)), "")
+if "https_proxy" not in os.environ and EGRESS:
     os.environ["https_proxy"] = EGRESS
 # a silent upload (drone footage often has no sound) has no audio to merge: then the picture alone — footage is muted
 FORMAT = ("bv*[height<=720][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720]"
