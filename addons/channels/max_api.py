@@ -1,9 +1,11 @@
 """MAX (max.ru) Bot API for the ЗАСНЯЛИ channels: the same ready posts into the channels' MAX twins.
 
 Owner 2026-11-01: «автопостинг настроим в каналы — тг / макс». Written to dev.max.ru (checked 2026-11-01):
-- base https://platform-api2.max.ru (CHANNELS_MAX_API); its certificate is issued by the Russian «Минцифры» root —
-  when the system trust store lacks it, CHANNELS_MAX_CA names the PEM bundle to trust; reached directly (a Russian
-  service, no VPN);
+- base https://botapi.max.ru (CHANNELS_MAX_API). The docs now name platform-api2.max.ru, but its certificate comes
+  from the «Russian Trusted Root CA» (Минцифры), which the server does not trust (checked 2026-11-01: CERTIFICATE_
+  VERIFY_FAILED), while botapi.max.ru and platform-api.max.ru answer with a public certificate (an invalid token
+  gets 401 verify.token there). To move to platform-api2: CHANNELS_MAX_API=https://platform-api2.max.ru and
+  CHANNELS_MAX_CA=<PEM of the Russian root>. Reached directly (a Russian service, no VPN);
 - auth: header `Authorization: <token>` (query tokens are no longer accepted); the token lives in the environment
   under the name the channel row gives (max_bot_env, default MAX_BOT_TOKEN) — never in the code or the DB;
 - POST /messages?chat_id=<id> {"text" ≤ 4000, "format": "html", "attachments": [...]} → message.body.mid;
@@ -31,7 +33,7 @@ from typing import Any
 
 from addons.channels import config
 
-API = config.env("CHANNELS_MAX_API", "https://platform-api2.max.ru").rstrip("/")
+API = config.env("CHANNELS_MAX_API", "https://botapi.max.ru").rstrip("/")
 MAX_TEXT = 4000
 NOT_READY_WAITS = (2, 4, 8, 16, 30)
 
