@@ -444,6 +444,7 @@ const TEXT_KEYS: [string, string][] = [
 const FIELD_KEYS: [string, string][] = [
   ["model_judge", "Модель: оценка сюжетов"], ["model_write", "Модель: переписывание"], ["model_check", "Модель: сверка фактов"],
   ["model_vision", "Модель: поиск знаков на медиа"], ["model_vision2", "Вторая модель-зритель"],
+  ["model_fallback", "Запасная модель (если основная не отвечает)"],
   ["daily_budget_usd", "Бюджет ИИ в день, $"], ["video_max_s", "Видео не длиннее, с"],
   ["inpaint_video_max_s", "Чистить сервисом видео до, с"], ["crop_max_share", "Обрезать знак у края, доля кадра"],
   ["max_media", "Медиа в посте, до"], ["join_every_s", "Вступать в канал раз в, с"], ["max_channels", "Каналов у аккаунта, до"],

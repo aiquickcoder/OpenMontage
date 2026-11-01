@@ -33,6 +33,7 @@ DEFAULTS: dict[str, object] = {
     "model_write": "anthropic/claude-haiku-5.5",
     "model_check": "anthropic/claude-haiku-5.5",
     "model_vision": "google/gemini-3.8-flash",
+    "model_fallback": "openai/gpt-5.6-luna",  # used once when a call keeps failing
     "daily_budget_usd": 5.0,           # the engine stops calling the AI for the day past it (and says so)
     "collect_every_min": 10,
     "story_window_h": 36,              # a new post joins a story at most this old

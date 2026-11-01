@@ -22,6 +22,7 @@ from studio import auth
 router = APIRouter(prefix="/api/channels", dependencies=[Depends(auth.require_user)])
 POST_STATES = ("draft", "media", "ready", "previewed", "published", "deleted", "rejected", "expired", "failed")
 SETTING_KEYS = ("style_common", "style_news", "style_city", "model_judge", "model_write", "model_check", "model_vision",
+                "model_fallback",
                 "model_vision2", "daily_budget_usd", "video_max_s", "inpaint_video_max_s", "crop_max_share",
                 "max_media", "join_enabled", "join_every_s", "max_channels", "primary_bonus", "fresh_burst", "fresh_min")
 

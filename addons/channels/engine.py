@@ -209,6 +209,17 @@ def write_drafts(db, limit: int = 6) -> int:
     for p in rows:
         ch = db.channel(p["channel"])
         st = db.one("SELECT * FROM stories WHERE id=?", (p["story_id"],))
+        hops = 0
+        while st and st["status"] == "merged" and st["merged_into"] and hops < 5:  # the judge merged the story
+            st = db.one("SELECT * FROM stories WHERE id=?", (st["merged_into"],))
+            hops += 1
+        if st and st["id"] != p["story_id"]:
+            if db.one("SELECT id FROM posts WHERE story_id=? AND channel=?", (st["id"], p["channel"])):
+                db.update("posts", "id", p["id"], status="rejected", error="дубль: сюжет слит с уже взятым",
+                          updated=time.time())
+                continue
+            db.update("posts", "id", p["id"], story_id=st["id"])
+            p["story_id"] = st["id"]
         if not ch or not st:
             continue
         if time.time() - st["first_ts"] > float(ch.get("max_age_h") or 8) * 3600:
@@ -220,6 +231,8 @@ def write_drafts(db, limit: int = 6) -> int:
         p, ch, st = job
         own = config.db()  # a thread's own connection
         posts = story_posts(own, p["story_id"])
+        if not posts:
+            return posts, llm.LLMError("у сюжета нет постов")
         try:
             return posts, rewrite.write(own, ch, posts, st["title"])
         except (llm.BudgetExceeded, llm.LLMError) as e:

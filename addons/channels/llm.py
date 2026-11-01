@@ -64,8 +64,23 @@ def image_part_array(img, max_side: int = 1024) -> dict:
 
 
 def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: int = 1500, temperature: float = 0.3,
-         timeout: float = 120, tries: int = 3) -> str:
-    """One completion. `user` is a string or a list of content parts (text + images)."""
+         timeout: float = 120, tries: int = 3, fallback: bool = True) -> str:
+    """One completion. `user` is a string or a list of content parts (text + images). When the model keeps failing
+    (OpenRouter answered 404 for some texts to one provider and not to another, 2026-11-01) the request goes once to
+    the fallback model (setting model_fallback)."""
+    try:
+        return _chat(db, purpose, model, system, user, max_tokens=max_tokens, temperature=temperature,
+                     timeout=timeout, tries=tries)
+    except LLMError:
+        alt = config.setting(db, "model_fallback")
+        if not fallback or not alt or alt == model:
+            raise
+        return _chat(db, purpose, alt, system, user, max_tokens=max_tokens, temperature=temperature, timeout=timeout,
+                     tries=1)
+
+
+def _chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: int, temperature: float,
+          timeout: float, tries: int) -> str:
     budget = float(config.setting(db, "daily_budget_usd"))
     if spent_today(db) >= budget:
         raise BudgetExceeded(f"дневной бюджет ИИ ${budget:g} исчерпан")
@@ -95,6 +110,8 @@ def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: in
                 text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
             if not text.strip():
                 raise LLMError("empty answer")
+            if (data.get("choices") or [{}])[0].get("finish_reason") in ("error",):
+                raise LLMError("the answer was cut by a provider error")
             return text
         except urllib.error.HTTPError as e:
             body = e.read()[:300]

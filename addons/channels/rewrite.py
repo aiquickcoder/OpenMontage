@@ -31,6 +31,8 @@ PHONE = re.compile(r"(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}")
 PLATE = re.compile(r"(?<![А-ЯA-Z])[АВЕКМНОРСТУХ]\s?\d{3}\s?[АВЕКМНОРСТУХ]{2}\s?\d{2,3}(?![\d])")
 FLAT = re.compile(r"(?:кв\.|квартир[аеуы])\s*№?\s*\d+", re.I)
 TAG = re.compile(r"<[^>]+>")
+META = re.compile(r"(?<![а-яё])(?:в источник\w*|источник\w* (?:не|нет)|по данным источник\w*|в материал\w* (?:не|нет)|"
+                  r"в тексте (?:не|нет)|информаци\w* об этом нет)", re.I)
 FIRST_EMOJI = re.compile("^[\U0001F000-\U0001FAFF☀-➿⬀-⯿‼⁉™ℹ↔-↪⌚-⏿Ⓜ▪-◾〰〽㊗㊙]")
 MAX_PLAIN = 1000  # a caption holds 1024
 
@@ -105,6 +107,8 @@ def problems(h: str, ch: dict) -> list[str]:
         out.append("личные данные (телефон / номер машины / квартира)")
     if filters.is_war(body_plain):
         out.append("военная тема")
+    if META.search(body_plain):
+        out.append(f"рассуждение об источниках вместо новости: «{META.search(body_plain).group(0)}»")
     return out
 
 

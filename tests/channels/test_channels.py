@@ -388,3 +388,8 @@ def test_json_of_takes_the_whole_array_and_salvages_a_cut_one():
     assert llm.json_of('[{"id": 1}, {"id": 2}, {"id": 3, "tit') == [{"id": 1}, {"id": 2}]
     with pytest.raises(llm.LLMError):
         llm.json_of("нет json")
+
+
+def test_problems_catch_talk_about_sources():
+    h = rewrite.render(_post(paragraphs=["Точного прогноза в источнике нет."]), NEWS)
+    assert any("источник" in p for p in rewrite.problems(h, NEWS))
