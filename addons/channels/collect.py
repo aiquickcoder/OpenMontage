@@ -260,7 +260,9 @@ class Collector:
         self.db.update("sources", "id", src["id"], join_tried=time.time())
         try:
             ent = await c.get_entity(tgread.peer_of(src, src["ref"]))
-            if not getattr(ent, "username", None):
+            public = getattr(ent, "username", None) or any(getattr(u, "active", False)
+                                                           for u in (getattr(ent, "usernames", None) or []))
+            if not public:  # a channel with several usernames (Mash: mash + breakingmash) has username=None
                 self.db.update("sources", "id", src["id"], note="приватный — не вступаем без разрешения")
                 return
             if getattr(ent, "left", True) is False:  # already a member: leave as it is
