@@ -29,12 +29,19 @@ BOT_PROXY_ENV = "TG_PROXY"
 
 # editable through settings (key -> default)
 DEFAULTS: dict[str, object] = {
-    "model_judge": "anthropic/claude-haiku-5.5",
-    "model_write": "anthropic/claude-haiku-5.5",
-    "model_check": "anthropic/claude-haiku-5.5",
-    "model_vision": "google/gemini-3.8-flash",
-    "model_fallback": "openai/gpt-5.6-luna",  # used once when a call keeps failing
-    "daily_budget_usd": 5.0,           # the engine stops calling the AI for the day past it (and says so)
+    # Codex GPT by the ChatGPT subscription through codex-gateway (owner 2026-11-01); checked 2026-11-01: gpt-6.1-sol
+    # and gpt-6.1-terra answer (terra faster), images go in as input_image; gpt-6.1-luna / -mini are refused
+    "llm_provider": "codex",
+    "model_judge": "gpt-6.1-terra",
+    "model_write": "gpt-6.1-sol",
+    "model_check": "gpt-6.1-terra",
+    "model_vision": "gpt-6.1-sol",
+    "model_vision2": "gpt-6.1-sol",   # a different second model doubles the looks (union of both); same = one look
+    "model_fallback": "gpt-6.1-terra",  # used once when a call keeps failing (same provider)
+    "codex_calls_per_day": 5000,       # cap on subscription calls a day
+    "openrouter_fallback": False,      # OpenRouter only as an explicit fallback, off by default
+    "model_openrouter": "anthropic/claude-haiku-5.5",
+    "daily_budget_usd": 5.0,           # OpenRouter only: no paid calls past it for the day
     "collect_every_min": 10,
     "story_window_h": 36,              # a new post joins a story at most this old
     "judge_min_posts": 1,
@@ -42,7 +49,6 @@ DEFAULTS: dict[str, object] = {
     "inpaint_video_max_s": 25,         # a video that needs the cleaner (not a crop) only up to this length
     "crop_max_share": 0.18,            # a logo within this share of an edge is cropped off instead of inpainted
     "max_media": 4,                    # album size
-    "model_vision2": "openai/gpt-5.6-luna",  # second pair of eyes on every picture (union of both)
     "join_enabled": True,              # owner 2026-11-01: «Да разрешаю» — join the public source channels
     "join_every_s": 180,               # one join every ~3 minutes
     "max_channels": 480,               # the account's channel count stays under Telegram's 500

@@ -61,49 +61,72 @@ class Slow(Reject):
 
 # -- looking ------------------------------------------------------------------------------------------------------
 def vision_models(db) -> list[str]:
-    a, b = config.setting(db, "model_vision"), config.setting(db, "model_vision2") or "openai/gpt-5.6-luna"
+    a, b = config.setting(db, "model_vision"), config.setting(db, "model_vision2") or config.setting(db, "model_vision")
     return [a] if a == b else [a, b]
 
 
-def look(db, img: np.ndarray, note: str = "") -> dict:
-    """Both models on one image: the union of their overlays (pixel boxes), the strictest kind."""
-    h, w = img.shape[:2]
-    part = llm.image_part_array(img, 1024)
-    text = "Inspect this image." + (f" {note}" if note else "")
+MANY = VISION.replace("Classify the whole image", "Classify each whole image").replace(
+    'Answer JSON only: {"kind"', 'You get several images, numbered. Answer JSON only, one entry per image: '
+    '{"images": [{"n": 1, "kind"').replace('"clean": true|false}', '"clean": true|false}]}')
 
-    def one(model: str) -> dict:
-        return llm.chat_json(db, "vision", model, VISION, [{"type": "text", "text": text}, part], max_tokens=900,
-                             temperature=0)
 
-    out = {"kind": "photo", "boxes": [], "what": [], "models": 0}
-    with cfut.ThreadPoolExecutor(2) as ex:
-        results = list(ex.map(lambda m: _safe(one, m), vision_models(db)))
-    for r in results:
-        if not isinstance(r, dict) or "error" in r:
+def look_many(db, imgs: list[tuple[np.ndarray, str]]) -> list[dict]:
+    """One request for several images of one file (frames, the average): per image {"kind", "boxes", "what"} with
+    pixel boxes; with two vision models, the union of what both saw and the stricter kind."""
+    parts: list[dict] = [{"type": "text", "text": "Inspect each image."}]
+    for i, (img, note) in enumerate(imgs, 1):
+        parts.append({"type": "text", "text": f"Image {i}." + (f" {note}" if note else "")})
+        parts.append(llm.image_part_array(img, 1024))
+
+    def one(model: str):
+        if len(imgs) == 1:
+            r = llm.chat_json(db, "vision", model, VISION, parts, max_tokens=900, temperature=0)
+            return [r] if isinstance(r, dict) else r
+        r = llm.chat_json(db, "vision", model, MANY, parts, max_tokens=500 * len(imgs), temperature=0)
+        return (r.get("images") if isinstance(r, dict) else r) or []
+
+    models = vision_models(db)
+    with cfut.ThreadPoolExecutor(len(models)) as ex:
+        answers = list(ex.map(lambda m: _safe(one, m), models))
+    out = [{"kind": "photo", "boxes": [], "what": []} for _ in imgs]
+    seen = 0
+    for ans in answers:
+        if not isinstance(ans, list):
             continue
-        out["models"] += 1
-        kind = r.get("kind") or "photo"
-        if kind != "photo":
-            out["kind"] = kind
-        for o in r.get("overlays") or []:
-            b = o.get("box") if isinstance(o, dict) else None
-            if not (isinstance(b, list) and len(b) == 4):
+        seen += 1
+        for j, r in enumerate(ans):
+            if not isinstance(r, dict):
                 continue
-            y0, x0, y1, x1 = [max(0.0, min(1000.0, float(v))) for v in b]
-            if y1 <= y0 or x1 <= x0:
+            k = int(r.get("n") or j + 1) - 1 if str(r.get("n", "")).isdigit() or "n" not in r else j
+            if not 0 <= k < len(imgs):
                 continue
-            out["boxes"].append([int(x0 / 1000 * w), int(y0 / 1000 * h), int(x1 / 1000 * w) + 1, int(y1 / 1000 * h) + 1])
-            out["what"].append(str(o.get("what", ""))[:80])
-    if out["models"] == 0:
+            h, w = imgs[k][0].shape[:2]
+            if (r.get("kind") or "photo") != "photo":
+                out[k]["kind"] = r["kind"]
+            for o in r.get("overlays") or []:
+                b = o.get("box") if isinstance(o, dict) else None
+                if not (isinstance(b, list) and len(b) == 4):
+                    continue
+                y0, x0, y1, x1 = [max(0.0, min(1000.0, float(v))) for v in b]
+                if y1 <= y0 or x1 <= x0:
+                    continue
+                out[k]["boxes"].append([int(x0 / 1000 * w), int(y0 / 1000 * h), int(x1 / 1000 * w) + 1,
+                                        int(y1 / 1000 * h) + 1])
+                out[k]["what"].append(str(o.get("what", ""))[:80])
+    if seen == 0:
         raise Reject("ИИ не посмотрел картинку")
     return out
+
+
+def look(db, img: np.ndarray, note: str = "") -> dict:
+    return look_many(db, [(img, note)])[0]
 
 
 def _safe(fn, *a):
     try:
         return fn(*a)
     except Exception as e:  # noqa: BLE001 — one model failing is reported, the other still counts
-        return {"error": str(e)[:200]}
+        return e
 
 
 def average(fr: list[np.ndarray]) -> np.ndarray:
@@ -250,42 +273,39 @@ def analyze(db, path: Path) -> dict:
     if dur > float(config.setting(db, "video_max_s")):
         raise Reject(f"видео {dur:.0f} с — длиннее {config.setting(db, 'video_max_s')} с")
     start, end = 0.0, dur
-    # a branded intro / outro card is cut off (Mash, Baza end their clips with one)
-    for edge in ("end", "start"):
-        for _ in range(3):
-            t = end - 0.4 if edge == "end" else start + 0.3
-            f = frame_at(path, t)
-            if f is None:
-                break
-            r = look(db, f)
-            if r["kind"] == "photo":
-                break
-            if edge == "end":
-                end = max(start + 1.0, end - 2.5)
-            else:
-                start = min(end - 1.0, start + 2.0)
-            plan["how"].append(f"обрезана заставка ({edge})")
-        if end - start < 2.0:
-            raise Reject("от видео ничего не осталось после заставок")
     fr = cf.frames(path)
-    fr = [f for f in fr] if fr else []
     if not fr:
         raise Reject("кадры не читаются")
+    avg = average(fr)
+    shots = [(frame_at(path, 0.3), "The first frame."), (frame_at(path, dur - 0.4), "The last frame.")]
+    shots += [(frame_at(path, dur * sh), f"A frame at {int(sh * 100)}% of the clip.") for sh in (0.15, 0.5, 0.85)]
+    shots = [(f, n) for f, n in shots if f is not None] + [(avg, AVG_NOTE)]
+    seen_all = look_many(db, shots)
     boxes: list[list[int]] = []
     seen: list[str] = []
-    for share in (0.15, 0.5, 0.85):
-        f = frame_at(path, start + (end - start) * share)
-        if f is None:
+    for (f, note), r in zip(shots, seen_all):
+        if note.startswith("The first") and r["kind"] != "photo":
+            start = min(dur - 1.0, 2.0)  # a branded intro card (Mash, Baza): cut it off
+            plan["how"].append("обрезана заставка в начале")
             continue
-        r = look(db, f)
+        if note.startswith("The last") and r["kind"] != "photo":
+            end = max(start + 1.0, dur - 2.5)  # a branded outro card
+            plan["how"].append("обрезана заставка в конце")
+            continue
         if r["kind"] == "screenshot":
             raise Reject("это запись экрана, а не съёмка")
         boxes += r["boxes"]
         seen += r["what"]
-    avg = average(fr)
-    r = look(db, avg, AVG_NOTE)
-    boxes += r["boxes"]
-    seen += r["what"]
+    if end - start < 2.0:
+        raise Reject("от видео ничего не осталось после заставок")
+    if start > 0 or end < dur:  # the new edges must be clean too
+        edges = [(frame_at(path, start + 0.2), "The first frame."), (frame_at(path, end - 0.3), "The last frame.")]
+        edges = [e for e in edges if e[0] is not None]
+        for r in look_many(db, edges) if edges else []:
+            if r["kind"] != "photo":
+                raise Reject("заставка длиннее, чем ожидалось")
+            boxes += r["boxes"]
+            seen += r["what"]
     mask = np.zeros((h, w), np.uint8)
     auto, moving, blind = cf.auto_mask(fr)
     if moving >= cf.STILL_SHIFT and not blind:
@@ -427,18 +447,18 @@ def mask_share(plan: dict) -> float:
 
 
 def verify(db, out: Path) -> list[str]:
-    """What the eyes still see on a result ([] = clean)."""
+    """What the eyes still see on a result ([] = clean): one look at its frames and their average."""
     if out.suffix.lower() in VIDEO:
         d = probe(out)["dur"]
-        imgs = [frame_at(out, d * s) for s in (0.1, 0.5, 0.9)]
+        shots = [(frame_at(out, d * sh), "") for sh in (0.1, 0.5, 0.9)]
         fr = cf.frames(out, 60)
         if fr:
-            imgs.append(average(fr))
+            shots.append((average(fr), AVG_NOTE))
     else:
-        imgs = [cv2.imread(str(out))]
+        shots = [(cv2.imread(str(out)), "")]
+    shots = [(f, n) for f, n in shots if f is not None]
     left: list[str] = []
-    for i, img in enumerate(x for x in imgs if x is not None):
-        r = look(db, img, AVG_NOTE if i == 3 else "")
+    for r in look_many(db, shots):
         if r["kind"] == "screenshot":
             left.append("скриншот")
         left += r["what"]

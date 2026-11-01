@@ -1,10 +1,15 @@
-"""The AI behind the judge, the writer, the checker and the watermark eye: an OpenAI-compatible chat endpoint
-(OpenRouter by default — config.LLM_URL, key from the env var named by config.LLM_KEY_ENV), through the egress proxy.
-Models are settings (model_judge / model_write / model_check / model_vision), changed on the web page.
+"""The AI behind the judge, the writer, the checker and the watermark eye.
 
-Every call is metered (llm_usage: tokens and OpenRouter's own cost) and refused past the day's budget
-(daily_budget_usd), so a loop gone wrong costs a day's budget at most. Answers are JSON: the prompt asks for it and
-`json_of` takes the first object or array out of the reply.
+Provider (owner 2026-11-01: «весь ИИ переключаем … на Codex GPT по подписке, трафик — через VPN»):
+- codex (default): our codex-gateway on this server (codex-gateway.service, POST http://172.22.0.1:8282/v1/responses,
+  OpenAI Responses API, streamed as SSE). The gateway adds the ChatGPT subscription's login and goes out through the
+  VPN proxy itself; we send `Authorization: Bearer $CODEX_GW_SECRET` — the units read /etc/codex-gateway.env, the secret
+  is never copied or printed. Billed by the subscription, not per token: llm_usage keeps the tokens, cost 0, and
+  codex_calls_per_day caps the calls so a loop gone wrong cannot eat the subscription's limits.
+- openrouter: the old way (chat/completions, key OPENROUTER_API_KEY, through the egress proxy) — only when
+  llm_provider is set to it, or as a fallback when openrouter_fallback is switched on (off by default).
+Models are settings (model_judge / model_write / model_check / model_vision / model_fallback), on the web page.
+Answers are JSON: the prompt asks for it and `json_of` takes the outermost value out of the reply.
 """
 from __future__ import annotations
 
@@ -20,6 +25,9 @@ from typing import Any
 
 from addons.channels import config
 
+CODEX_URL = config.env("CHANNELS_CODEX_URL", "http://172.22.0.1:8282/v1/responses")
+CODEX_KEY_ENV = "CODEX_GW_SECRET"
+
 
 class BudgetExceeded(RuntimeError):
     pass
@@ -29,17 +37,24 @@ class LLMError(RuntimeError):
     pass
 
 
+def _day() -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3 * 3600))
+
+
 def spent_today(db) -> float:
-    day = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3 * 3600))
-    r = db.one("SELECT COALESCE(SUM(cost), 0) AS c FROM llm_usage WHERE day=?", (day,))
+    r = db.one("SELECT COALESCE(SUM(cost), 0) AS c FROM llm_usage WHERE day=?", (_day(),))
     return float(r["c"] if r else 0)
 
 
-def _opener():
-    if config.LLM_PROXY:
-        return urllib.request.build_opener(urllib.request.ProxyHandler({"https": config.LLM_PROXY,
-                                                                        "http": config.LLM_PROXY}))
-    return urllib.request.build_opener()
+def calls_today(db) -> int:
+    r = db.one("SELECT COALESCE(SUM(calls), 0) AS c FROM llm_usage WHERE day=? AND model NOT LIKE '%/%'", (_day(),))
+    return int(r["c"] if r else 0)
+
+
+def _opener(proxy: str = ""):
+    if proxy:
+        return urllib.request.build_opener(urllib.request.ProxyHandler({"https": proxy, "http": proxy}))
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))  # the gateway is local: no proxy
 
 
 def image_part(path: Path, max_side: int = 1024) -> dict:
@@ -60,35 +75,116 @@ def image_part_array(img, max_side: int = 1024) -> dict:
     if k < 1:
         img = cv2.resize(img, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 88])
-    return {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode()}}
+    return {"type": "image", "url": "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode()}
+
+
+def _parts(user: Any, provider: str) -> Any:
+    if isinstance(user, str):
+        return [{"type": "input_text", "text": user}] if provider == "codex" else user
+    out = []
+    for p in user:
+        if p.get("type") == "image":
+            out.append({"type": "input_image", "image_url": p["url"]} if provider == "codex" else
+                       {"type": "image_url", "image_url": {"url": p["url"]}})
+        elif p.get("type") in ("text", "input_text"):
+            out.append({"type": "input_text" if provider == "codex" else "text", "text": p["text"]})
+    return out
 
 
 def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: int = 1500, temperature: float = 0.3,
-         timeout: float = 120, tries: int = 3, fallback: bool = True) -> str:
-    """One completion. `user` is a string or a list of content parts (text + images). When the model keeps failing
-    (OpenRouter answered 404 for some texts to one provider and not to another, 2026-11-01) the request goes once to
-    the fallback model (setting model_fallback)."""
+         timeout: float = 180, tries: int = 3, fallback: bool = True) -> str:
+    """One completion. `user` is a string or a list of parts ({"type": "text"} / image_part()). When the model keeps
+    failing the request goes once to model_fallback (same provider), and — only if openrouter_fallback is on — to
+    OpenRouter's model_openrouter."""
+    provider = config.setting(db, "llm_provider") or "codex"
     try:
-        return _chat(db, purpose, model, system, user, max_tokens=max_tokens, temperature=temperature,
-                     timeout=timeout, tries=tries)
+        return _call(db, provider, purpose, model, system, user, max_tokens, temperature, timeout, tries)
+    except BudgetExceeded:
+        raise
     except LLMError:
-        alt = config.setting(db, "model_fallback")
-        if not fallback or not alt or alt == model:
+        if not fallback:
             raise
-        return _chat(db, purpose, alt, system, user, max_tokens=max_tokens, temperature=temperature, timeout=timeout,
-                     tries=1)
+        alt = config.setting(db, "model_fallback")
+        if alt and alt != model:
+            try:
+                return _call(db, provider, purpose, alt, system, user, max_tokens, temperature, timeout, 1)
+            except LLMError:
+                pass
+        if provider == "codex" and config.setting(db, "openrouter_fallback"):
+            return _call(db, "openrouter", purpose, config.setting(db, "model_openrouter"), system, user, max_tokens,
+                         temperature, timeout, 1)
+        raise
 
 
-def _chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: int, temperature: float,
-          timeout: float, tries: int) -> str:
+def _call(db, provider, purpose, model, system, user, max_tokens, temperature, timeout, tries) -> str:
+    if provider == "codex":
+        cap = int(config.setting(db, "codex_calls_per_day") or 0)
+        if cap and calls_today(db) >= cap:
+            raise BudgetExceeded(f"дневной лимит вызовов подписки ({cap}) исчерпан")
+        return _codex(db, purpose, model, system, user, timeout, tries)
     budget = float(config.setting(db, "daily_budget_usd"))
     if spent_today(db) >= budget:
-        raise BudgetExceeded(f"дневной бюджет ИИ ${budget:g} исчерпан")
+        raise BudgetExceeded(f"дневной бюджет OpenRouter ${budget:g} исчерпан")
+    return _openrouter(db, purpose, model, system, user, max_tokens, temperature, timeout, tries)
+
+
+def _codex(db, purpose, model, system, user, timeout, tries) -> str:
+    key = os.environ.get(CODEX_KEY_ENV, "")
+    if not key:
+        raise LLMError(f"{CODEX_KEY_ENV} is not set (the unit needs EnvironmentFile=-/etc/codex-gateway.env)")
+    body = {"model": model, "instructions": system, "input": [{"role": "user", "content": _parts(user, "codex")}],
+            "stream": True}
+    req = urllib.request.Request(CODEX_URL, data=json.dumps(body).encode(), method="POST", headers={
+        "Authorization": f"Bearer {key}", "Content-Type": "application/json", "Accept": "text/event-stream"})
+    last: Exception | None = None
+    for k in range(tries):
+        try:
+            text, usage, failed = [], {}, ""
+            with _opener().open(req, timeout=timeout) as r:
+                for raw in r:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    ev = json.loads(data)
+                    kind = ev.get("type", "")
+                    if kind == "response.output_text.delta":
+                        text.append(ev.get("delta", ""))
+                    elif kind == "response.completed":
+                        usage = (ev.get("response") or {}).get("usage") or {}
+                    elif kind in ("response.failed", "error", "response.incomplete"):
+                        failed = json.dumps(ev.get("response", ev), ensure_ascii=False)[:300]
+            db.usage(model, purpose, int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0), 0.0)
+            out = "".join(text)
+            if failed and not out.strip():
+                raise LLMError(f"codex: {failed}")
+            if not out.strip():
+                raise LLMError("codex: empty answer")
+            return out
+        except urllib.error.HTTPError as e:
+            body_err = e.read()[:300]
+            last = LLMError(f"codex HTTP {e.code}: {body_err!r}")
+            if e.code == 401:
+                raise LLMError("codex-gateway: 401 — вход подписки протух, шлюз надо перелогинить") from None
+            if e.code in (400, 403, 404):
+                break
+            if e.code == 429:
+                time.sleep(30 * (k + 1))
+                continue
+        except (urllib.error.URLError, TimeoutError, LLMError, ValueError, OSError) as e:
+            last = e
+        time.sleep(3 * (k + 1))
+    raise LLMError(str(last))
+
+
+def _openrouter(db, purpose, model, system, user, max_tokens, temperature, timeout, tries) -> str:
     key = os.environ.get(config.LLM_KEY_ENV, "")
     if not key:
         raise LLMError(f"{config.LLM_KEY_ENV} is not set")
     body = {"model": model, "temperature": temperature, "max_tokens": max_tokens, "usage": {"include": True},
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": _parts(user, "openrouter")}]}
     req = urllib.request.Request(config.LLM_URL, data=json.dumps(body).encode(), method="POST", headers={
         "Authorization": f"Bearer {key}", "Content-Type": "application/json",
         # Cloudflare in front of OpenRouter answers «error code: 1010» to urllib's default User-Agent now and then
@@ -97,26 +193,26 @@ def _chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: i
     last: Exception | None = None
     for k in range(tries):
         try:
-            with _opener().open(req, timeout=timeout) as r:
+            with _opener(config.LLM_PROXY).open(req, timeout=timeout) as r:
                 data = json.loads(r.read())
             if data.get("error"):
                 raise LLMError(str(data["error"])[:300])
             u = data.get("usage") or {}
-            cost = float(u.get("cost") or 0.0)
-            db.usage(model, purpose, int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0), cost)
-            msg = (data.get("choices") or [{}])[0].get("message") or {}
-            text = msg.get("content") or ""
+            db.usage(model, purpose, int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0),
+                     float(u.get("cost") or 0.0))
+            choice = (data.get("choices") or [{}])[0]
+            text = (choice.get("message") or {}).get("content") or ""
             if isinstance(text, list):
                 text = "".join(p.get("text", "") for p in text if isinstance(p, dict))
             if not text.strip():
                 raise LLMError("empty answer")
-            if (data.get("choices") or [{}])[0].get("finish_reason") in ("error", "content_filter"):
+            if choice.get("finish_reason") in ("error", "content_filter"):
                 raise LLMError("the answer was cut (provider error or content filter)")
             return text
         except urllib.error.HTTPError as e:
-            body = e.read()[:300]
-            last = LLMError(f"HTTP {e.code}: {body!r}")
-            if e.code in (400, 401, 402) or (e.code == 403 and b"1010" not in body):
+            body_err = e.read()[:300]
+            last = LLMError(f"HTTP {e.code}: {body_err!r}")
+            if e.code in (400, 401, 402) or (e.code == 403 and b"1010" not in body_err):
                 break
         except (urllib.error.URLError, TimeoutError, LLMError, ValueError, OSError) as e:
             last = e
