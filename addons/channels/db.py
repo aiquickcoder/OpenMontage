@@ -81,11 +81,19 @@ class DB:
         self.con.executescript(SCHEMA)
         self._migrate()
 
+    MIGRATIONS = {  # columns added after the first deploy (CREATE TABLE IF NOT EXISTS does not add them)
+        "channels": [("since", "REAL DEFAULT 0"), ("max_enabled", "INTEGER DEFAULT 0"), ("max_chat", "TEXT DEFAULT ''"),
+                     ("max_link", "TEXT DEFAULT ''"), ("max_bot_env", "TEXT DEFAULT 'MAX_BOT_TOKEN'"),
+                     ("max_cta", "TEXT DEFAULT ''")],
+        "posts": [("max_status", "TEXT DEFAULT ''"), ("max_mid", "TEXT DEFAULT ''"), ("max_error", "TEXT DEFAULT ''")],
+    }
+
     def _migrate(self) -> None:
-        """Columns added after the first deploy (CREATE TABLE IF NOT EXISTS does not add them)."""
-        have = {r[1] for r in self.con.execute("PRAGMA table_info(channels)")}
-        if "since" not in have:
-            self.con.execute("ALTER TABLE channels ADD COLUMN since REAL DEFAULT 0")
+        for table, cols in self.MIGRATIONS.items():
+            have = {r[1] for r in self.con.execute(f"PRAGMA table_info({table})")}
+            for name, decl in cols:
+                if name not in have:
+                    self.con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     # -- generic ---------------------------------------------------------------------------------------------------
     @staticmethod

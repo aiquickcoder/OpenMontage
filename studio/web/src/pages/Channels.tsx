@@ -27,6 +27,13 @@ interface Channel {
   out_today: number;
   owed_now: number;
   rights: { ok?: boolean; bot?: string; status?: string; detail?: string };
+  max_enabled: number;
+  max_chat: string;
+  max_link: string;
+  max_bot_env: string;
+  max_cta: string;
+  max_rights: { ok?: boolean; bot?: string; detail?: string };
+  max_today: Record<string, number>;
 }
 interface Usage { model: string; purpose: string; calls: number; tokens_in: number; tokens_out: number; cost: number }
 interface Overview {
@@ -56,6 +63,8 @@ interface Post {
   created: number;
   published_at: number | null;
   message_ids: number[];
+  max_status: string;
+  max_error: string;
 }
 interface Story {
   id: number;
@@ -190,8 +199,42 @@ function ChannelCard({ ch }: { ch: Channel }) {
           <button className="btn btn-primary" disabled={patch.isPending}>Сохранить</button>
         </div>
       </form>
+      <MaxForm ch={ch} />
       <HoursBar hours={ch.hours} />
     </Card>
+  );
+}
+
+function MaxForm({ ch }: { ch: Channel }) {
+  const qc = useQueryClient();
+  const [f, setF] = useState({ max_chat: ch.max_chat || "", max_link: ch.max_link || "", max_bot_env: ch.max_bot_env || "MAX_BOT_TOKEN", max_cta: ch.max_cta || "" });
+  const patch = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch<Channel>(`/channels/ch/${ch.key}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ch-overview"] }),
+  });
+  const mt = ch.max_today || {};
+  return (
+    <details className="max-box">
+      <summary>
+        MAX-канал: {ch.max_enabled ? <b className="ok">публикует</b> : <span className="muted">выключен</span>}
+        {ch.max_enabled ? <span className="muted"> · сегодня отправлено {mt.sent ?? 0}, сбоев {mt.failed ?? 0}, пропущено {mt.skipped ?? 0}</span> : null}
+        {ch.max_rights?.detail ? <span className="bad"> · {ch.max_rights.detail}</span> : null}
+      </summary>
+      <ErrorNote error={patch.error} />
+      <form className="form ch-form" onSubmit={(e) => { e.preventDefault(); patch.mutate(f); }}>
+        <label title="Число; приходит с событием bot_added — команда cli max-chats">chat_id MAX-канала<input value={f.max_chat} onChange={(e) => setF({ ...f, max_chat: e.target.value.trim() })} /></label>
+        <label className="span-2">Ссылка на MAX-канал (для «Подписаться»)<input value={f.max_link} placeholder="https://max.ru/…" onChange={(e) => setF({ ...f, max_link: e.target.value.trim() })} /></label>
+        <label title="Имя переменной окружения с токеном MAX-бота, не сам токен">Переменная с токеном<input value={f.max_bot_env} onChange={(e) => setF({ ...f, max_bot_env: e.target.value.toUpperCase() })} /></label>
+        <label className="span-2">Подпись-ссылка в MAX<input value={f.max_cta} placeholder={ch.cta} onChange={(e) => setF({ ...f, max_cta: e.target.value })} /></label>
+        <div className="form-foot">
+          <button className="btn" disabled={patch.isPending}>Сохранить MAX</button>
+          <button type="button" className={`btn ${ch.max_enabled ? "btn-ghost" : "btn-primary"}`} disabled={patch.isPending}
+            onClick={() => patch.mutate({ max_enabled: !ch.max_enabled })}>
+            {ch.max_enabled ? "Выключить MAX" : "Включить MAX"}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }
 
@@ -269,6 +312,10 @@ function PostsTab({ channels }: { channels: Channel[] }) {
     mutationFn: (id: number) => api.post<{ note: string }>(`/channels/posts/${id}/delete`),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["ch-posts"] }); alert(r.note); },
   });
+  const delMax = useMutation({
+    mutationFn: (id: number) => api.post<{ note: string }>(`/channels/posts/${id}/delete-max`),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["ch-posts"] }); alert(r.note); },
+  });
   const user = Object.fromEntries(channels.map((c) => [c.key, c.username]));
   return (
     <Card
@@ -294,6 +341,10 @@ function PostsTab({ channels }: { channels: Channel[] }) {
               <span className="badge">{STATUS_LABEL[p.status] ?? p.status}</span>
               <span>@{user[p.channel] ?? p.channel}</span>
               <span className="muted">скор {p.score}{p.urgent ? " · СРОЧНО" : ""} · {time(p.published_at || p.created)}</span>
+              {p.max_status && <span className={p.max_status === "sent" ? "ok" : "muted"} title={p.max_error}>MAX: {p.max_status}</span>}
+              {p.max_status === "sent" && (
+                <button className="btn btn-ghost" onClick={() => confirm("Удалить пост из MAX-канала?") && delMax.mutate(p.id)}>Удалить в MAX</button>
+              )}
               {["published", "previewed", "ready", "media", "draft"].includes(p.status) && (
                 <button className="btn btn-danger" disabled={del.isPending}
                   onClick={() => confirm(p.status === "published" ? "Удалить пост из канала?" : "Снять пост?") && del.mutate(p.id)}>

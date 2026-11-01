@@ -61,3 +61,17 @@ def test_posts_take_off_and_settings_whitelist(client):
     assert client.put("/api/channels/settings", json={"values": {"evil": 1}}, headers=H).status_code == 422
     s = client.put("/api/channels/settings", json={"values": {"daily_budget_usd": 3}}, headers=H).json()
     assert s["daily_budget_usd"] == 3 and "ЖЁСТКИЕ ПРАВИЛА" in s["style_common"]
+
+
+def test_max_twin_settings_and_enable_needs_rights(client, monkeypatch):
+    r = client.patch("/api/channels/ch/kazan", json={"max_chat": "-7000123", "max_link": "https://max.ru/zasnyali_kazan",
+                                                    "max_bot_env": "MAX_BOT_TOKEN"}, headers=H)
+    assert r.status_code == 200 and r.json()["max_chat"] == "-7000123" and r.json()["max_enabled"] == 0
+    assert client.patch("/api/channels/ch/kazan", json={"max_link": "https://evil.example/x"}, headers=H).status_code == 422
+    from addons.channels import max_api
+
+    monkeypatch.setattr(max_api, "check_rights", lambda ch: {"ok": False, "detail": "нет токена"})
+    r = client.patch("/api/channels/ch/kazan", json={"max_enabled": True}, headers=H)
+    assert r.status_code == 409 and "MAX" in r.json()["detail"]
+    monkeypatch.setattr(max_api, "check_rights", lambda ch: {"ok": True, "detail": ""})
+    assert client.patch("/api/channels/ch/kazan", json={"max_enabled": True}, headers=H).json()["max_enabled"] == 1

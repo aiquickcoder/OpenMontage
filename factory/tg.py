@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -11,6 +12,15 @@ from typing import Any, Optional
 import requests
 
 API = "https://api.telegram.org/bot{token}/{method}"
+TOKEN_IN_TEXT = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+
+
+def mask(text: str, token: str = "") -> str:
+    """A text with the bot token taken out: requests puts the whole URL — /bot<token>/getUpdates — into its errors,
+    and the bot loop logs them (2026-11-01, an SSL error printed the token into the journal)."""
+    if token:
+        text = text.replace(token, "***")
+    return TOKEN_IN_TEXT.sub("bot***", text)
 VIDEO_LIMIT_BYTES = 49 * 1024 * 1024
 FIT_BYTES = 46 * 1024 * 1024  # what a squeezed copy aims at: under the limit, with room for x264 overshoot
 
@@ -66,8 +76,11 @@ class Telegram:
     def call(self, method: str, *, http_timeout: float = 60, files: Any = None, **params: Any) -> Any:
         data = {k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v)
                 for k, v in params.items() if v is not None}
-        resp = self.s.post(API.format(token=self.token, method=method), data=data, files=files,
-                           timeout=http_timeout)
+        try:
+            resp = self.s.post(API.format(token=self.token, method=method), data=data, files=files,
+                               timeout=http_timeout)
+        except requests.RequestException as exc:  # its message carries the URL with the token
+            raise RuntimeError(f"telegram {method}: {mask(f'{type(exc).__name__}: {exc}', self.token)}") from None
         payload = resp.json()
         if not payload.get("ok"):
             raise RuntimeError(f"telegram {method}: {payload.get('description')}")

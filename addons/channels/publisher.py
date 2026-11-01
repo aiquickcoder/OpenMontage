@@ -15,7 +15,7 @@ import logging
 import time
 from datetime import datetime
 
-from addons.channels import cluster, config, llm, publish, rewrite, schedule
+from addons.channels import cluster, config, llm, max_api, publish, rewrite, schedule
 
 log = logging.getLogger("channels.publisher")
 MSK = schedule.MSK
@@ -48,6 +48,40 @@ def note_for(db, p: dict, ch: dict, live: bool) -> str:
             f"медиа: {media}\nисточники:\n{src}")
 
 
+def max_rights(db, ch: dict) -> dict:
+    key = f"max_rights:{ch['key']}"
+    r = db.setting(key) or {}
+    if time.time() - float(r.get("ts", 0)) > 3600:
+        r = {**max_api.check_rights(ch), "ts": time.time()}
+        db.set_setting(key, r)
+    return r
+
+
+def mirror_max(db, ch: dict, p: dict) -> str:
+    """The same post into the channel's MAX twin (owner 2026-11-01: «тг / макс»). '' when the twin is off — the
+    default until a MAX bot token is in the environment and the owner switches it on."""
+    if not ch.get("max_enabled"):
+        return ""
+    if not max_api.enabled(ch):
+        db.update("posts", "id", p["id"], max_status="skipped", max_error="MAX: нет токена, chat_id или ссылки")
+        return "skipped"
+    r = max_rights(db, ch)
+    if not r.get("ok"):
+        db.update("posts", "id", p["id"], max_status="skipped", max_error=f"MAX: {r.get('detail')}"[:300])
+        return "skipped"
+    try:
+        mid = max_api.send(ch, p["html"], p.get("media") or [])
+    except max_api.MaxError as e:
+        db.update("posts", "id", p["id"], max_status="failed", max_error=str(e)[:300])
+        db.event("publish", f"MAX {ch['key']}: сбой {e}"[:300])
+        return "failed"
+    db.update("posts", "id", p["id"], max_status="sent", max_mid=mid, max_error="")
+    return "sent"
+
+
+MAX_NOTE = {"sent": "MAX: опубликовано", "failed": "MAX: сбой отправки", "skipped": "MAX: пропущено"}
+
+
 def publish_one(db, ch: dict, p: dict) -> None:
     live = ch.get("mode") == "live"
     owner = publish.owner()
@@ -59,24 +93,37 @@ def publish_one(db, ch: dict, p: dict) -> None:
             ids = publish.send_post(tg, chat, p["html"], media)
             db.update("posts", "id", p["id"], status="published", published_at=time.time(), message_ids=ids,
                       chat_id=str(chat), updated=time.time())
-            note = note_for(db, p, ch, True)
-            link = f"https://t.me/{ch['username']}/{ids[0]}"
-            msg = owner.call("sendMessage", chat_id=owner.chat, text=f"{note}\n\n{link}"[:4000],
-                             disable_web_page_preview=True,
-                             reply_markup={"inline_keyboard": publish.report_buttons(p["id"], ch, True)})
         else:
             ids = publish.send_post(owner, owner.chat, p["html"], media)
             db.update("posts", "id", p["id"], status="previewed", published_at=time.time(), message_ids=ids,
                       chat_id=str(owner.chat), updated=time.time())
-            msg = owner.call("sendMessage", chat_id=owner.chat, text=note_for(db, p, ch, False)[:4000],
-                             disable_web_page_preview=True, reply_to_message_id=ids[0],
-                             reply_markup={"inline_keyboard": publish.report_buttons(p["id"], ch, False)})
-        db.update("posts", "id", p["id"], report_msg=msg["message_id"])
-        db.event("publish", f"{'опубликовано' if live else 'превью'} {ch['key']}: {p.get('title')}"[:300])
     except Exception as e:  # noqa: BLE001 — a failed post is marked and the next one tried
         log.exception("publish failed")
         db.update("posts", "id", p["id"], status="failed", error=f"{type(e).__name__}: {e}"[:400], updated=time.time())
         db.event("publish", f"сбой публикации {ch['key']}: {e}"[:300])
+        return
+    mx = ""
+    try:
+        mx = mirror_max(db, ch, p)
+    except Exception as e:  # noqa: BLE001 — MAX must never stop Telegram
+        log.exception("max failed")
+        db.update("posts", "id", p["id"], max_status="failed", max_error=f"{type(e).__name__}: {e}"[:300])
+        mx = "failed"
+    try:
+        note = note_for(db, p, ch, live) + (f"\n{MAX_NOTE[mx]}" if mx else "")
+        buttons = publish.report_buttons(p["id"], ch, live, max_sent=mx == "sent")
+        if live:
+            msg = owner.call("sendMessage", chat_id=owner.chat,
+                             text=f"{note}\n\nhttps://t.me/{ch['username']}/{ids[0]}"[:4000],
+                             disable_web_page_preview=True, reply_markup={"inline_keyboard": buttons})
+        else:
+            msg = owner.call("sendMessage", chat_id=owner.chat, text=note[:4000], disable_web_page_preview=True,
+                             reply_to_message_id=ids[0], reply_markup={"inline_keyboard": buttons})
+        db.update("posts", "id", p["id"], report_msg=msg["message_id"])
+    except Exception:  # noqa: BLE001 — the post is out; only the report failed
+        log.exception("report failed")
+    db.event("publish", f"{'опубликовано' if live else 'превью'} {ch['key']}"
+                        f"{' + MAX' if mx == 'sent' else ''}: {p.get('title')}"[:300])
 
 
 def rights_gate(db, ch: dict) -> dict:

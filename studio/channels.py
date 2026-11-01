@@ -49,6 +49,12 @@ class ChannelPatch(BaseModel):
     style: Optional[str] = Field(default=None, max_length=3000)
     hours: Optional[list[float]] = Field(default=None, min_length=24, max_length=24)
     bot_env: Optional[str] = Field(default=None, pattern="^[A-Z][A-Z0-9_]{2,60}$")
+    # the channel's MAX twin (addons/channels/max_api.py): off until a token is in the environment
+    max_enabled: Optional[bool] = None
+    max_chat: Optional[str] = Field(default=None, pattern="^(-?[0-9]{1,20})?$")
+    max_link: Optional[str] = Field(default=None, pattern="^(https://max\\.ru/[A-Za-z0-9_./-]{1,120})?$")
+    max_bot_env: Optional[str] = Field(default=None, pattern="^[A-Z][A-Z0-9_]{2,60}$")
+    max_cta: Optional[str] = Field(default=None, max_length=80)
 
 
 class SourceIn(BaseModel):
@@ -100,7 +106,11 @@ def overview() -> dict:
         owed = schedule.owed(now, ch["per_day"], ch["hours"] or [], ch["live_since"] or 0, ch["ramp"] or 0.5,
                              ch["since"] or 0)
         chans.append({**ch, "today": counts, "queue": queue, "out_today": out_today, "owed_now": owed,
-                      "rights": d.setting(f"rights:{ch['key']}") or {}})
+                      "rights": d.setting(f"rights:{ch['key']}") or {},
+                      "max_rights": d.setting(f"max_rights:{ch['key']}") or {},
+                      "max_today": {r["max_status"]: r["n"] for r in d.q(
+                          "SELECT max_status, COUNT(*) n FROM posts WHERE channel=? AND max_status!='' AND updated>=? "
+                          "GROUP BY max_status", (ch["key"], start))}})
     day = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 3 * 3600))
     usage = d.q("SELECT model, purpose, calls, tokens_in, tokens_out, cost FROM llm_usage WHERE day=?", (day,))
     src = d.one("SELECT COUNT(*) n, SUM(enabled) e, SUM(joined) j FROM sources")
@@ -120,6 +130,17 @@ def patch_channel(key: str, body: ChannelPatch) -> dict:
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if "paused" in fields:
         fields["paused"] = int(fields["paused"])
+    if any(k.startswith("max_") for k in fields):
+        d.set_setting(f"max_rights:{key}", {})  # MAX settings changed: check the bot afresh
+    if "max_enabled" in fields:
+        fields["max_enabled"] = int(fields["max_enabled"])
+        if fields["max_enabled"] and not ch.get("max_enabled"):
+            from addons.channels import max_api
+
+            r = max_api.check_rights({**ch, **fields})
+            d.set_setting(f"max_rights:{key}", {**r, "ts": time.time()})
+            if not r.get("ok"):
+                raise HTTPException(409, f"MAX: бот не может публиковать в канал: {r.get('detail')}")
     if fields.get("mode") == "live" and ch["mode"] != "live":
         from addons.channels import publish
 
@@ -159,6 +180,14 @@ def delete_post(post_id: int) -> dict:
     from addons.channels import bot_actions
 
     note, _ = bot_actions.handle("chdel", str(post_id))
+    return {"note": note}
+
+
+@router.post("/posts/{post_id}/delete-max")
+def delete_post_max(post_id: int) -> dict:
+    from addons.channels import bot_actions
+
+    note, _ = bot_actions.handle("chmaxdel", str(post_id))
     return {"note": note}
 
 

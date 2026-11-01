@@ -91,11 +91,14 @@ def edit_media(tg: Telegram, chat: str, message_id: int, path: Path, kind: str, 
                 chat_id=chat, message_id=message_id, media=item)
 
 
-def report_buttons(post_id: int, ch: dict, live: bool) -> list[list[dict[str, str]]]:
+def report_buttons(post_id: int, ch: dict, live: bool, max_sent: bool = False) -> list[list[dict[str, str]]]:
     pause = ({"text": "▶️ Возобновить канал", "callback_data": f"chresume:{ch['key']}"} if ch.get("paused") else
              {"text": "⏸ Пауза канала", "callback_data": f"chpause:{ch['key']}"})
     first = {"text": "🗑 Удалить" if live else "🗑 Снять", "callback_data": f"chdel:{post_id}"}
-    return [[first, pause]]
+    rows = [[first, pause]]
+    if max_sent:  # the MAX twin's copy has its own button (owner 2026-11-01)
+        rows.append([{"text": "🗑 Удалить в MAX", "callback_data": f"chmaxdel:{post_id}"}])
+    return rows
 
 
 def check_rights(ch: dict) -> dict:

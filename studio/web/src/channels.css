@@ -17,3 +17,5 @@
 .small { font-size: 12px; }
 input.trust { width: 70px; }
 @media (max-width: 640px) { .ch-form .span-2 { grid-column: span 1; } }
+.max-box { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.max-box summary { cursor: pointer; font-size: 14px; }

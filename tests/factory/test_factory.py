@@ -353,3 +353,24 @@ def test_squeeze_keeps_the_picture_size(tmp_path):
     out = tgmod.squeeze(src)
     assert out.name == "f.tg.mp4" and tgmod.video_meta(out)["height"] == 480
     assert tgmod.squeeze(src) == out  # the second chat reuses the copy
+
+
+def test_bot_token_never_reaches_the_log(monkeypatch):
+    """requests puts /bot<token>/getUpdates into its error text; Telegram.call must hand it on masked."""
+    import requests
+
+    from factory.tg import Telegram, mask
+
+    token = "123456789:AAH-secret_Token"
+    tg = Telegram(token, "42")
+
+    def fail(url, **kw):
+        raise requests.exceptions.SSLError(f"Max retries exceeded with url: /bot{token}/getUpdates (SSL)")
+
+    monkeypatch.setattr(tg.s, "post", fail)
+    with pytest.raises(RuntimeError) as err:
+        tg.call("getUpdates")
+    text = str(err.value)
+    assert token not in text and "AAH-secret" not in text and "bot***" in text
+    assert err.value.__cause__ is None and err.value.__suppress_context__
+    assert mask(f"url /bot{token}/x") == "url /bot***/x"

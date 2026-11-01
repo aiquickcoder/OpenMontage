@@ -146,7 +146,7 @@ def run_studio_tasks(settings: Settings) -> int:
         return 0
 
 
-CHANNEL_ACTIONS = ("chdel", "chpause", "chresume")
+CHANNEL_ACTIONS = ("chdel", "chpause", "chresume", "chmaxdel")
 
 
 def handle_channel_button(tg: Telegram, cq: dict[str, Any], action: str, arg: str) -> None:
@@ -162,10 +162,7 @@ def handle_channel_button(tg: Telegram, cq: dict[str, Any], action: str, arg: st
                 if str(b.get("callback_data", "")).startswith("chdel:"):
                     post_id = int(b["callback_data"].split(":", 1)[1])
         if post_id is not None:
-            channel = arg if action != "chdel" else None
-            keyboard = bot_actions.keyboard(post_id, channel) if channel else None
-            if action == "chdel":
-                keyboard = []
+            keyboard = [] if action == "chdel" else bot_actions.keyboard(post_id)  # the post's own channel
             msg = cq.get("message") or {}
             tg.call("editMessageReplyMarkup", chat_id=msg.get("chat", {}).get("id"), message_id=msg.get("message_id"),
                     reply_markup={"inline_keyboard": keyboard or []})

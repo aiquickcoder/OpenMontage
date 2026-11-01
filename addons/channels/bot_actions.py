@@ -4,14 +4,15 @@ only getUpdates reader of that token, so factory/service.py hands these callback
     chdel:<post id>      live post: deleted from the channel (every message of an album); a preview: taken off
     chpause:<channel>    the channel publishes nothing until resumed (the publisher re-reads the row before each post)
     chresume:<channel>   back on schedule
+    chmaxdel:<post id>   the post's copy in the channel's MAX twin is deleted
 """
 from __future__ import annotations
 
 import time
 
-from addons.channels import config, publish
+from addons.channels import config, max_api, publish
 
-ACTIONS = ("chdel", "chpause", "chresume")
+ACTIONS = ("chdel", "chpause", "chresume", "chmaxdel")
 
 
 def handle(action: str, arg: str) -> tuple[str, list | None]:
@@ -26,6 +27,18 @@ def handle(action: str, arg: str) -> tuple[str, list | None]:
         db.event("control", f"{'пауза' if paused else 'возобновлён'} {arg} (кнопка в боте)")
         return (f"⏸ @{ch['username']} на паузе — посты не выходят" if paused else
                 f"▶️ @{ch['username']} снова публикует по графику"), None
+    if action == "chmaxdel":
+        p = db.one("SELECT * FROM posts WHERE id=?", (int(arg),)) if arg.isdigit() else None
+        if not p or p.get("max_status") != "sent" or not p.get("max_mid"):
+            return "⚠️ в MAX этого поста нет", None
+        ch = db.channel(p["channel"]) or {}
+        try:
+            max_api.delete(ch, p["max_mid"])
+        except max_api.MaxError as e:
+            return f"⚠️ MAX: не удалось удалить: {e}"[:190], None
+        db.update("posts", "id", p["id"], max_status="deleted", max_error="удалён владельцем")
+        db.event("control", f"удалён пост {p['id']} из MAX-канала {ch.get('key')}")
+        return "🗑 Удалено из MAX", None
     if action == "chdel":
         if not arg.isdigit():
             return "⚠️ не тот пост", None
@@ -48,8 +61,10 @@ def handle(action: str, arg: str) -> tuple[str, list | None]:
     return "", None
 
 
-def keyboard(post_id: int, channel_key: str) -> list:
+def keyboard(post_id: int, channel_key: str | None = None) -> list:
+    """The report's buttons as they should look now (the post's own channel when none is given)."""
     db = config.db()
-    ch = db.channel(channel_key) or {"key": channel_key}
-    p = db.one("SELECT status FROM posts WHERE id=?", (post_id,)) or {}
-    return publish.report_buttons(post_id, ch, p.get("status") == "published")
+    p = db.one("SELECT channel, status, max_status FROM posts WHERE id=?", (post_id,)) or {}
+    key = channel_key or p.get("channel") or ""
+    ch = db.channel(key) or {"key": key}
+    return publish.report_buttons(post_id, ch, p.get("status") == "published", max_sent=p.get("max_status") == "sent")

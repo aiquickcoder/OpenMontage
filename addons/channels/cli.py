@@ -2,6 +2,8 @@
 
     .venv/bin/python -m addons.channels.cli status                 # channels, queue, services' heartbeat, AI cost
     .venv/bin/python -m addons.channels.cli check-bots             # may the channels' bots post? (getChatMember)
+    .venv/bin/python -m addons.channels.cli check-max              # MAX twins: token, chat, admin rights
+    .venv/bin/python -m addons.channels.cli max-chats              # chat_ids of the channels the MAX bot was added to
     .venv/bin/python -m addons.channels.cli mode news live|trial   # live only when its bot may post
     .venv/bin/python -m addons.channels.cli pause news | resume news
     .venv/bin/python -m addons.channels.cli posts [--status ready] [--n 10]   # the posts as they would appear
@@ -40,7 +42,7 @@ def status(db) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["status", "check-bots", "mode", "pause", "resume", "posts", "seed"])
+    ap.add_argument("cmd", choices=["status", "check-bots", "check-max", "max-chats", "mode", "pause", "resume", "posts", "seed"])
     ap.add_argument("args", nargs="*")
     ap.add_argument("--status", default="")
     ap.add_argument("--n", type=int, default=10)
@@ -52,6 +54,19 @@ def main() -> None:
     elif a.cmd == "check-bots":
         for ch in db.channels():
             print(ch["key"], json.dumps(publish.check_rights(ch), ensure_ascii=False))
+    elif a.cmd == "check-max":
+        from addons.channels import max_api
+
+        for ch in db.channels():
+            print(ch["key"], "включён" if ch.get("max_enabled") else "выключен",
+                  json.dumps(max_api.check_rights(ch), ensure_ascii=False))
+    elif a.cmd == "max-chats":
+        from addons.channels import max_api
+
+        envs = {ch.get("max_bot_env") or "MAX_BOT_TOKEN" for ch in db.channels()}
+        for env_name in sorted(envs):
+            tok = max_api.token_of({"max_bot_env": env_name})
+            print(env_name, json.dumps(max_api.added_chats(tok), ensure_ascii=False) if tok else "нет токена")
     elif a.cmd == "mode":
         key, mode = a.args
         ch = db.channel(key)

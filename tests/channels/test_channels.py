@@ -464,3 +464,129 @@ def test_a_repeat_of_a_published_post_is_caught_by_words(tmp_path, monkeypatch):
     assert publisher.duplicate_of(d, ch, new) == old
     other = {"id": 98, "html": "⚡️<b>В Казани открыли новую станцию метро</b>.", "title": "Метро в Казани"}
     assert publisher.duplicate_of(d, ch, other) is None
+
+
+# -- MAX twins -------------------------------------------------------------------------------------------------------
+MAXCH = {**NEWS, "max_enabled": 1, "max_chat": "-71234567890", "max_link": "https://max.ru/zasnyali_news",
+         "max_bot_env": "TEST_MAX_TOKEN", "max_cta": "ЗАСНЯЛИ Live в MAX"}
+
+
+def test_max_text_points_the_subscribe_line_to_the_max_channel():
+    from addons.channels import max_api
+
+    h = rewrite.render(_post(), NEWS)
+    t = max_api.text_for(h, MAXCH)
+    assert "t.me" not in t and t.startswith("⚡️<b>Склад загорелся в Подольске</b>")
+    assert t.endswith('👉 <a href="https://max.ru/zasnyali_news">ЗАСНЯЛИ Live в MAX</a>')
+    assert t.count("👉") == 1
+    with pytest.raises(max_api.MaxError):
+        max_api.text_for("x" * 4100, MAXCH)
+
+
+def test_max_is_off_without_token_flag_chat_or_link(monkeypatch):
+    from addons.channels import max_api
+
+    monkeypatch.delenv("TEST_MAX_TOKEN", raising=False)
+    assert not max_api.enabled(MAXCH)
+    monkeypatch.setenv("TEST_MAX_TOKEN", "t")
+    assert max_api.enabled(MAXCH)
+    assert not max_api.enabled({**MAXCH, "max_enabled": 0})
+    assert not max_api.enabled({**MAXCH, "max_link": ""})
+    assert not max_api.check_rights({**MAXCH, "max_chat": ""})["ok"]
+
+
+def test_publisher_sends_nothing_to_max_while_it_is_off(tmp_path, monkeypatch):
+    from addons.channels import max_api, publisher
+
+    def boom(*a, **k):
+        raise AssertionError("MAX must not be called")
+
+    monkeypatch.setattr(max_api, "call", boom)
+    monkeypatch.delenv("TEST_MAX_TOKEN", raising=False)
+    d = DB(tmp_path / "c.db")
+    pid = d.insert("posts", {"story_id": 1, "channel": "news", "status": "published", "html": "x"})
+    assert publisher.mirror_max(d, {**MAXCH, "max_enabled": 0}, {"id": pid, "html": "x"}) == ""
+    assert publisher.mirror_max(d, MAXCH, {"id": pid, "html": "x"}) == "skipped"  # on, but no token
+    assert d.one("SELECT max_status FROM posts WHERE id=?", (pid,))["max_status"] == "skipped"
+
+
+def test_publisher_mirrors_a_post_into_max_with_its_pictures(tmp_path, monkeypatch):
+    import json as _json
+
+    from addons.channels import max_api, publisher
+
+    monkeypatch.setenv("TEST_MAX_TOKEN", "t")
+    pic = tmp_path / "a.jpg"
+    pic.write_bytes(b"jpeg")
+    sent = {}
+
+    def fake_call(token, method, path, params=None, body=None, timeout=60):
+        if path == "/me":
+            return {"username": "zasnyali_bot"}
+        if path.endswith("/members/me"):
+            return {"is_admin": True, "permissions": ["write", "delete"]}
+        if path == "/uploads":
+            return {"url": "https://upload.example/x"}
+        if path == "/messages" and method == "POST":
+            sent.update(params=params, body=body)
+            return {"message": {"body": {"mid": "mid.42"}}}
+        raise AssertionError(path)
+
+    class FakeResp:
+        def __init__(self, data):
+            self.data = data
+
+        def read(self):
+            return self.data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeOpener:
+        def open(self, req, timeout=0):
+            return FakeResp(_json.dumps({"photos": {"p1": {"token": "img.tok"}}}).encode())
+
+    monkeypatch.setattr(max_api, "call", fake_call)
+    monkeypatch.setattr(max_api, "_opener", lambda: FakeOpener())
+    d = DB(tmp_path / "c.db")
+    html = rewrite.render(_post(), NEWS)
+    pid = d.insert("posts", {"story_id": 1, "channel": "news", "status": "published", "html": html})
+    st = publisher.mirror_max(d, MAXCH, {"id": pid, "html": html, "media": [{"path": str(pic), "kind": "photo"}]})
+    assert st == "sent" and sent["params"] == {"chat_id": -71234567890}
+    assert sent["body"]["format"] == "html" and sent["body"]["attachments"] == [{"type": "image", "payload": {"token": "img.tok"}}]
+    row = d.one("SELECT max_status, max_mid FROM posts WHERE id=?", (pid,))
+    assert row["max_status"] == "sent" and row["max_mid"] == "mid.42"
+    assert publish_buttons_have_max(pid)
+
+
+def publish_buttons_have_max(pid):
+    from addons.channels import publish
+
+    rows = publish.report_buttons(pid, {"key": "news"}, True, max_sent=True)
+    return rows[1][0]["callback_data"] == f"chmaxdel:{pid}"
+
+
+def test_max_delete_button(tmp_path, monkeypatch):
+    from addons.channels import bot_actions, max_api, seed
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "c.db")
+    d = DB(config.DB_PATH)
+    seed.seed(d)
+    pid = d.insert("posts", {"story_id": 1, "channel": "news", "status": "published", "max_status": "sent",
+                             "max_mid": "mid.1"})
+    gone = []
+    monkeypatch.setattr(max_api, "delete", lambda ch, mid: gone.append(mid))
+    note, _ = bot_actions.handle("chmaxdel", str(pid))
+    assert "MAX" in note and gone == ["mid.1"]
+    assert DB(config.DB_PATH).one("SELECT max_status FROM posts WHERE id=?", (pid,))["max_status"] == "deleted"
+    assert "нет" in bot_actions.handle("chmaxdel", str(pid))[0]
+
+
+def test_image_token_from_upload_answer():
+    from addons.channels import max_api
+
+    assert max_api.image_token(b'{"photos": {"abc": {"token": "T1"}}}') == "T1"
+    assert max_api.image_token(b"<retval>1</retval>") is None
