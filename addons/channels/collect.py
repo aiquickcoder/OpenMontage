@@ -161,6 +161,8 @@ class Collector:
         self.join_pause_until = 0.0
         self.flood_until = 0.0
         self.n_channels: int | None = None
+        self.events = 0
+        self.matched = 0
         self.counted = 0.0
 
     def tg_sources(self) -> list[dict]:
@@ -210,9 +212,15 @@ class Collector:
     async def _take(self, msgs: list, chat_id: int) -> None:
         from telethon import utils
 
-        src = self.by_tg_id.get(utils.resolve_id(int(chat_id))[0])
+        cid = utils.resolve_id(int(chat_id))[0]
+        src = self.by_tg_id.get(cid)
+        self.events += 1
+        if self.events % 20 == 1 or src:
+            self.db.set_setting("collector_events", {"n": self.events, "matched": self.matched, "last_chat": cid,
+                                                     "ts": time.time()})
         if not src:
             return
+        self.matched += 1
         rows = tgread.fold_albums([tgread.message_row(src["ref"], m) for m in msgs])
         for r in tg_rows(src["ref"], rows):
             store(self.db, src, r)
