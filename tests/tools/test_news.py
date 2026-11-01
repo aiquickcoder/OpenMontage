@@ -1029,3 +1029,18 @@ def test_a_hand_list_over_a_found_mask_is_called_out():
     assert "⚠" in cf.replaced_note([], 0.012, 2.1)           # a drone clip marked «[]» that had a watermark
     assert cf.replaced_note({"add": []}, 0.012, 2.1) == ""     # the auto mask is kept
     assert cf.replaced_note([], 0.012, 0.2) == ""              # a still camera: its auto mask is not trusted anyway
+
+
+def test_a_4k_phone_clip_goes_to_the_cleaner_at_most_1920_on_the_long_side(tmp_path: Path):
+    """2160x3840 from Baza ran the cleaner's worker out of memory and hung the server (Kitay-gorod, 01.11)."""
+    from addons.news import clean_footage as cf
+    big, small = tmp_path / "big.mp4", tmp_path / "small.mp4"
+    for f, size in ((big, "1000x2400"), (small, "1280x720")):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size={size}:rate=30:duration=0.4",
+                        "-c:v", "libx264", str(f)], check=True)
+    for f, want in ((big, "800x1920"), (small, "1280x720")):
+        out = tmp_path / f"{f.stem}.in.mp4"
+        cf.prepare(f, 0.0, 0.3, out)
+        got = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                              "-of", "csv=p=0:s=x", str(out)], capture_output=True, text=True).stdout.strip()
+        assert got == want

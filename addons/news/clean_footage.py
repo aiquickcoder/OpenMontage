@@ -220,7 +220,10 @@ def prepare(src: Path, start: float, dur: float, dst: Path) -> None:
     """A service-friendly copy: CFR 30, 8-bit 4:2:0, even size, no audio (footage is silent anyway)."""
     # setsar=1: a clip with non-square pixels kept its SAR and the service saw another frame size than the mask
     # (the server agent's fix during SPb 28.10, folded in here)
-    vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,format=yuv420p"
+    # the long side at most 1920: a 2160x3840 phone clip (Baza, Kitay-gorod 01.11) ran the service's worker out of
+    # memory again and again and hung the whole server; the film is 1080x1920 anyway, submit() resizes the mask
+    vf = ("scale='min(iw,1920)':'min(ih,1920)':force_original_aspect_ratio=decrease,"
+          "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,format=yuv420p")
     if src.suffix.lower() in VIDEO:
         sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{dur:.3f}", "-an", "-r", "30",
             "-vf", vf, "-c:v", "libx264", "-crf", "14", "-preset", "veryfast", str(dst)])
