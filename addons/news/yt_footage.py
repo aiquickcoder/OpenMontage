@@ -201,6 +201,35 @@ def peek(ref: str, t0: float, t1: float, dst: Path, cols: int = 4, most: int = 1
     return dst
 
 
+def scenes(path: Path) -> list[float]:
+    """Where a piece's own scenes change (ffmpeg scene score > 0.3), in seconds from its start."""
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(path), "-vf", "select=gt(scene\\,0.3),showinfo", "-an",
+                        "-f", "null", "-"], capture_output=True, text=True)
+    return [round(float(x), 2) for x in re.findall(r"pts_time:([0-9.]+)", r.stderr)]
+
+
+def _dhash(path: Path, t: float) -> int:
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", str(path), "-frames:v", "1", "-vf",
+                          "scale=9:8,format=gray", "-f", "rawvideo", "-"], capture_output=True).stdout
+    if len(raw) < 72:
+        return -1
+    px = [[raw[r * 9 + c] for c in range(9)] for r in range(8)]
+    return sum(1 << (r * 8 + c) for r in range(8) for c in range(8) if px[r][c] > px[r][c + 1])
+
+
+def repeats(path: Path, cuts: list[float], most: int = 10) -> list[tuple[float, float]]:
+    """Scenes of a piece that look like an earlier one of it (a compilation of alike takes): (earlier, later) starts."""
+    starts = [0.0, *cuts]
+    marks = [(s, _dhash(path, s + 0.3)) for s in starts]
+    out = []
+    for i, (b, hb) in enumerate(marks):
+        for a, ha in marks[:max(0, i - 1)]:  # not the scene right before: a cut inside one shot looks alike anyway
+            if ha >= 0 and hb >= 0 and bin(ha ^ hb).count("1") <= most:
+                out.append((a, b))
+                break
+    return out
+
+
 def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None) -> Path:
     meta = info(ref)
     src = video(ref)
@@ -210,9 +239,14 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
                     "-b:a", "160k", "-movflags", "+faststart", str(dst)], check=True)
     said = " ".join(w for w, t in captions(ref) if t0 <= t < t1)
     channel = meta.get("channel") or meta.get("uploader") or ""
+    cuts = scenes(dst)
+    again = repeats(dst, cuts)
+    if again:  # 01.11: «4 videos» of hands counting euros — two alike takes in one piece looked like the same shot twice
+        print(f"⚠ {dst.name}: a scene repeats — {', '.join(f'{b:.1f} s looks like {a:.1f} s' for a, b in again)}; "
+              f"cut inside one scene (scenes at {', '.join(f'{c:.1f}' for c in cuts)} s)", file=sys.stderr, flush=True)
     out = {"source": meta.get("webpage_url"), "channel": channel, "title": meta.get("title"),
            "uploaded": meta.get("upload_date"), "from": t0, "to": t1, "said": said,
-           "credit": f"Видео: {channel} / YouTube"}
+           "credit": f"Видео: {channel} / YouTube", "scenes": cuts, "repeats": again}
     dst.with_suffix(".json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         sys.path.insert(0, str(HERE))

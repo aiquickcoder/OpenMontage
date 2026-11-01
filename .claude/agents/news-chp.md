@@ -126,7 +126,9 @@ and a shock-headline thesis on it. `"cold_open": true` opens a digest the same w
      --working-directory=/opt/openmontage .venv/bin/python addons/news/clean_footage.py projects/<slug> --plan`.
      It finds watermarks by itself on a moving camera and known logos anywhere (`addons/news/watermarks/`); a still
      camera (CCTV, a traffic camera) or a photo needs boxes: `--grid <file>` → open `qa/grid_<file>.jpg` → write
-     `media/wm.json` `{"<file>": [[x, y, w, h], ...]}` (`[]` = clean). Open every `qa/wm_<file>.jpg` (left a frame,
+     `media/wm.json` `{"<file>": [[x, y, w, h], ...]}` (`[]` = clean — only for a photo or a still camera: a list
+     replaces the auto mask; a moving camera, a drone or YouTube clip, gets `{"add": []}` so the auto mask stays —
+     01.11 `[]` threw away a semi-transparent «www.wary-copter.de» it had found). Open every `qa/wm_<file>.jpg` (left a frame,
      right the clip average where a fixed logo stays sharp; the mask in red): every logo, channel name, link and
      caption burnt into the picture covered, nothing else. **Never let a logo through** (owner 2026-10-29, after
      «фонтанка.ру» on Nevsky): a slow camera blinds the auto mask, so `--plan` marks such files **NEEDS A LOOK** and

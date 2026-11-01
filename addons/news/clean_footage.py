@@ -119,6 +119,15 @@ def hand_mask(shape: tuple[int, int], entry, auto: np.ndarray) -> np.ndarray:
     return boxes_mask(shape, entry)
 
 
+def replaced_note(entry, auto_area: float, moving: float) -> str:
+    """A list in media/wm.json replaces the auto mask. On a moving camera that mask may have found what a thumbnail
+    hides — 01.11 «[]» on a drone clip threw away the semi-transparent «www.wary-copter.de» it had found. Say so; {"add":
+    [...]} keeps it."""
+    if isinstance(entry, list) and moving >= STILL_SHIFT and auto_area > 0.002:
+        return f" — ⚠ the hand list replaces an auto mask that found {auto_area:.1%}: look at qa/wm_*.jpg ({{\"add\": []}} keeps it)"
+    return ""
+
+
 def preview(fr: list[np.ndarray], mask: np.ndarray) -> np.ndarray:
     """qa/wm_<file>.jpg: a middle frame and the clip's average side by side, the mask in red. On the average the
     picture smears and a fixed overlay stays sharp, so a logo the mask misses shows up there."""
@@ -405,6 +414,7 @@ def main() -> None:
         elif blind:
             how += f", steady background over {blind:.0%} of the frame — the auto mask is blind there"
         if entry is not None:
+            how += replaced_note(entry, float((mask > 0).mean()), moving)
             mask = hand_mask(fr[0].shape[:2], entry, mask)
             how += " + hand boxes" if isinstance(entry, dict) else " → hand boxes"
         elif needs_look(moving, blind):

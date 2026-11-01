@@ -1007,3 +1007,25 @@ def test_a_thesis_over_a_picture_that_goes_on_below_fades_out(tmp_path: Path):
     items = [{"path": tall, "fit": True, "start": 0.0, "dur": 5.0, "thesis": "*Награда* от МЧС", "w": 0}]
     html, _, _ = build.theses(items, not_before=0.0)
     assert 'class="clip thesis over"' in html[0] and ".thesis.over" in build.THESIS_CSS
+
+
+def test_a_piece_whose_scene_repeats_is_flagged(tmp_path: Path):
+    from addons.news import yt_footage as yt
+
+    clip = tmp_path / "alike.mp4"   # a take, another one, then the first again: «4 videos» of alike takes (01.11)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=2",
+                    "-f", "lavfi", "-i", "color=c=red:size=320x240:rate=25:duration=2",
+                    "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=2",
+                    "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1[v]", "-map", "[v]", "-pix_fmt", "yuv420p", str(clip)],
+                   check=True)
+    cuts = yt.scenes(clip)
+    assert [round(c) for c in cuts] == [2, 4]
+    assert [(round(a), round(b)) for a, b in yt.repeats(clip, cuts)] == [(0, 4)]
+
+
+def test_a_hand_list_over_a_found_mask_is_called_out():
+    from addons.news import clean_footage as cf
+
+    assert "⚠" in cf.replaced_note([], 0.012, 2.1)           # a drone clip marked «[]» that had a watermark
+    assert cf.replaced_note({"add": []}, 0.012, 2.1) == ""     # the auto mask is kept
+    assert cf.replaced_note([], 0.012, 0.2) == ""              # a still camera: its auto mask is not trusted anyway
