@@ -378,3 +378,13 @@ def test_primary_source_bonus_is_soft_and_configurable():
     with_primary = judge.score(v, {**SIG, "channels": 1, "reach": 3000, "video": False})
     assert with_primary < 6.0  # still under the main channel's bar
     assert judge.score(v, {**SIG, "channels": 1}, primary_bonus=2.0) > judge.score(v, {**SIG, "channels": 1}, primary_bonus=0)
+
+
+def test_json_of_takes_the_whole_array_and_salvages_a_cut_one():
+    from addons.channels import llm
+
+    assert llm.json_of('```json\n[{"id": 1}, {"id": 2, "t": "a]b{"}]\n```') == [{"id": 1}, {"id": 2, "t": "a]b{"}]
+    assert llm.json_of('Вот ответ: {"ok": true, "list": [1, 2]} конец') == {"ok": True, "list": [1, 2]}
+    assert llm.json_of('[{"id": 1}, {"id": 2}, {"id": 3, "tit') == [{"id": 1}, {"id": 2}]
+    with pytest.raises(llm.LLMError):
+        llm.json_of("нет json")

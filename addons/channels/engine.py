@@ -203,9 +203,9 @@ def judge_pending(db, batch: int = 10) -> int:
     return done
 
 
-def write_drafts(db, limit: int = 4) -> int:
+def write_drafts(db, limit: int = 6) -> int:
     rows = db.q("SELECT * FROM posts WHERE status='draft' ORDER BY urgent DESC, score DESC, id LIMIT ?", (limit,))
-    n = 0
+    jobs = []
     for p in rows:
         ch = db.channel(p["channel"])
         st = db.one("SELECT * FROM stories WHERE id=?", (p["story_id"],))
@@ -214,14 +214,26 @@ def write_drafts(db, limit: int = 4) -> int:
         if time.time() - st["first_ts"] > float(ch.get("max_age_h") or 8) * 3600:
             db.update("posts", "id", p["id"], status="expired", error="устарело до написания", updated=time.time())
             continue
-        posts = story_posts(db, p["story_id"])
+        jobs.append((p, ch, st))
+
+    def work(job):
+        p, ch, st = job
+        own = config.db()  # a thread's own connection
+        posts = story_posts(own, p["story_id"])
         try:
-            res = rewrite.write(db, ch, posts, st["title"])
-        except llm.BudgetExceeded as e:
-            db.event("budget", str(e))
-            return n
-        except llm.LLMError as e:
-            db.update("posts", "id", p["id"], error=f"ИИ: {e}"[:300], updated=time.time())
+            return posts, rewrite.write(own, ch, posts, st["title"])
+        except (llm.BudgetExceeded, llm.LLMError) as e:
+            return posts, e
+
+    with ThreadPoolExecutor(3) as ex:
+        results = list(ex.map(work, jobs))
+    n = 0
+    for (p, ch, st), (posts, res) in zip(jobs, results):
+        if isinstance(res, llm.BudgetExceeded):
+            db.event("budget", str(res))
+            continue
+        if isinstance(res, Exception):
+            db.update("posts", "id", p["id"], error=f"ИИ: {res}"[:300], updated=time.time())
             continue
         n += 1
         links = [x["link"] for x in sorted(posts, key=lambda x: (x["kind"] != "primary", -x["views"]))][:8]

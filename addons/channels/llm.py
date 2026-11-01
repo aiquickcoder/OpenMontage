@@ -107,35 +107,61 @@ def chat(db, purpose: str, model: str, system: str, user: Any, *, max_tokens: in
     raise LLMError(str(last))
 
 
+def _balanced(t: str, i: int) -> str | None:
+    """The bracketed JSON value starting at t[i], strings respected; None when it never closes."""
+    opener = t[i]
+    closer = "}" if opener == "{" else "]"
+    depth, in_str, esc = 0, False, False
+    for j in range(i, len(t)):
+        ch = t[j]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                return t[i:j + 1] if ch == closer else None
+    return None
+
+
 def json_of(text: str) -> Any:
-    """The first JSON object or array in a reply (models wrap it in ```json fences or prose)."""
+    """The JSON value in a reply (models wrap it in ```json fences or prose): the outermost one that comes first —
+    an array of objects is the array, not its first object. A broken or cut array gives the objects that parse."""
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.M)
-    for opener, closer in (("{", "}"), ("[", "]")):
-        i = t.find(opener)
-        while i != -1:
-            depth, j, in_str, esc = 0, i, False, False
-            while j < len(t):
-                ch = t[j]
-                if in_str:
-                    if esc:
-                        esc = False
-                    elif ch == "\\":
-                        esc = True
-                    elif ch == '"':
-                        in_str = False
-                elif ch == '"':
-                    in_str = True
-                elif ch == opener:
-                    depth += 1
-                elif ch == closer:
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(t[i:j + 1])
-                        except ValueError:
-                            break
-                j += 1
-            i = t.find(opener, i + 1)
+    starts = [i for i in (t.find("{"), t.find("[")) if i != -1]
+    if not starts:
+        raise LLMError(f"no JSON in the answer: {text[:200]!r}")
+    i = min(starts)
+    chunk = _balanced(t, i)
+    if chunk is not None:
+        try:
+            return json.loads(chunk)
+        except ValueError:
+            pass
+    if t[i] == "[":  # salvage the array's objects one by one
+        items, k = [], i + 1
+        while True:
+            k = t.find("{", k)
+            if k == -1:
+                break
+            obj = _balanced(t, k)
+            if obj is None:
+                break
+            try:
+                items.append(json.loads(obj))
+            except ValueError:
+                pass
+            k += len(obj)
+        if items:
+            return items
     raise LLMError(f"no JSON in the answer: {text[:200]!r}")
 
 
