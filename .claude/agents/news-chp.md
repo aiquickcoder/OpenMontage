@@ -26,8 +26,10 @@ words in as a sound bite only where its representative speaks on camera (`[bite]
 shot, README; never an off-screen agency narrator — its facts go into our text); say the maximum term when the article
 is known («Ему грозит до пятнадцати лет», sanction checked in the УК); end with a comment bait, then the subscribe line
 (owner 2026-11-01, README «Конец ролика»): «Как думаете, <a provocative question from this film's own conflict, two
-sides people will argue over>? <an easy one-word way to answer: «Пишите: запретить или оставить», «Пишите цифру»,
-«Расскажите — предупредите других»>. И подписывайтесь, чтобы первыми знать, что происходит в городе.» — question up to
+sides people will argue over>? Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что происходит в
+городе.» — the invitation in a presenter's own words («А вы на чьей стороне?», «Вам звонили с такой схемой? Расскажите —
+предупредите других»), never dictating the word to write («Пишите: А или Б», «Пишите цифру»: unprofessional, and
+Facebook demotes comment baiting); question up to
 12–14 words, the same question as the caption's last line; honest: no new facts, no «он виновен?» before a verdict, no
 blaming the victim, no violence, nationality, religion or war. Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
