@@ -10,7 +10,7 @@ reader account has joined them, then in real time (owner 2026-11-01: «перв�
 новость появлялась у нас раньше всех»).
 
 Left out on purpose: media marked foreign agents or undesirable, the war-correspondent channels, anonymous «ЧП»
-copies with a few hundred readers, RT (opinion more than events). MAX channels are not read (see README «MAX»).
+copies with a few hundred readers, RT (opinion more than events). MAX channels are not read: no public channel API for an outside reader (MAX needs a logged-in web session).
 """
 from __future__ import annotations
 

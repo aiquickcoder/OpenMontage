@@ -235,9 +235,15 @@ def loop() -> None:
     db.event("engine", "редактор запущен")
     while True:
         try:
-            cl.run()
-            judge_pending(db)
-            write_drafts(db)
+            t0 = time.time()
+            a = cl.run()
+            t1 = time.time()
+            b = judge_pending(db)
+            t2 = time.time()
+            c = write_drafts(db)
+            if a or b or c:
+                log.info("tick: clustered %d (%.1fs), judged %d (%.1fs), written %d (%.1fs)", a, t1 - t0, b, t2 - t1, c,
+                         time.time() - t2)
         except Exception as e:  # noqa: BLE001 — one bad tick must not stop the editor
             log.exception("tick failed")
             db.event("engine", f"сбой: {type(e).__name__}: {e}"[:300])
