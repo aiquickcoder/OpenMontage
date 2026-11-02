@@ -15,6 +15,13 @@ video is downloaded: the words from YouTube's own transcript, the picture from i
     .venv/bin/python addons/news/yt_footage.py cut <id|url> <from> <to> projects/<slug>/media/<name>.mp4 [--tags …]
         only that part (≤720p, H.264); <name>.json keeps the source, the channel, the times and what is said; the
         piece goes to the base of pictures (library.py) with the tags
+    .venv/bin/python addons/news/yt_footage.py tt-search "Frankfurt Demo Polizei" [--n 8] [--when THIS_WEEK]
+        [--sort RELEVANCE|MOST_LIKED|DATE_POSTED]   TikTok through Apify: url, length, views, date, @author, caption
+    .venv/bin/python addons/news/yt_footage.py tt-peek <tiktok url> <sheet.jpg>
+        the whole video as a contact sheet, a frame a second (tile i = second i) — pick a piece without the author's
+        burned-in captions
+    .venv/bin/python addons/news/yt_footage.py tt-cut <tiktok url> <from> <to> projects/<slug>/media/tt/<name>.mp4
+        ≤ 4 s, no sound, edges cropped 8 %; credit «Видео: @author / TikTok» in <name>.json (README «Кадры из TikTok»)
 
 The transcript is YouTube's own captions (the «Расшифровка видео» panel: a channel's or the automatic ones), fetched as
 a small json3 file. Short news clips often have none — find --listen then downloads the clip (a few MB) and
@@ -285,6 +292,155 @@ def scout(query: str, words: str, n: int = 8, fresh: bool = False, lang: str = "
     return sorted(out, key=lambda v: -(v["moment"]["score"] if v["moment"] else -1 if not v["captions"] else 0))
 
 
+# -- TikTok -------------------------------------------------------------------------------------------------------------
+# Owner 2026-11-02: «а что если находить так футажи нам нужные?» — yes, with «самое критичное 3-е»: TikTok knows its
+# own videos and cuts the reach of «unoriginal» re-uploads. So every TikTok piece is ≤ 4 s, without its sound, its
+# edges cropped 8 %, inside our layout among other sources; a film takes ≤ 3 of them and never opens on one (build.py
+# refuses); official media accounts (hessenschau, ITV…) before eyewitnesses, and an eyewitness only when the date and
+# the place match the agencies. Search through Apify (APIFY_TOKEN, the actor the viral pick uses); the file comes from
+# the CDN link Apify returns — yt-dlp cannot reach TikTok from the server (02.11). A month cap keeps the spend in the
+# owner's Apify plan (with the pick's TikTok look: ≈ $4.4 of the free $5).
+TT_ACTOR = "apidojo~tiktok-scraper-api"
+TT_MAX_PIECE = 4.0
+TT_CROP = 0.92
+TT_CACHE = CACHE.parent / "tiktok"
+
+
+def _apify(payload: dict, timeout: int = 150) -> list[dict]:
+    token = os.environ.get("APIFY_TOKEN", "")
+    if not token:
+        sys.exit("no APIFY_TOKEN in the environment (/opt/openmontage/.env)")
+    req = urllib.request.Request(
+        f"https://api.apify.com/v2/acts/{TT_ACTOR}/run-sync-get-dataset-items?timeout={timeout}",
+        data=json.dumps(payload).encode(), method="POST",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout + 30) as r:
+        items = json.loads(r.read())
+    return [it for it in items if isinstance(it, dict)] if isinstance(items, list) else []
+
+
+def _tt_spend(n: int = 1) -> None:
+    """Count this month's TikTok searches; stop past NEWS_TIKTOK_FOOTAGE_MONTH (default 120 ≈ $1)."""
+    TT_CACHE.mkdir(parents=True, exist_ok=True)
+    f = TT_CACHE / "month.json"
+    month = time.strftime("%Y-%m", time.gmtime())
+    try:
+        c = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        c = {}
+    if c.get("month") != month:
+        c = {"month": month, "queries": 0}
+    if c["queries"] + n > int(os.environ.get("NEWS_TIKTOK_FOOTAGE_MONTH", "120")):
+        sys.exit(f"the month's TikTok searches are spent ({c['queries']}); use YouTube or the agencies")
+    c["queries"] += n
+    f.write_text(json.dumps(c), encoding="utf-8")
+
+
+def _tt_id(url: str) -> str:
+    m = re.search(r"/video/(\d+)", url)
+    return m.group(1) if m else re.sub(r"\W+", "_", url)[-40:]
+
+
+def _tt_row(it: dict) -> dict:
+    ch = it.get("channel") if isinstance(it.get("channel"), dict) else {}
+    v = it.get("video") if isinstance(it.get("video"), dict) else {}
+
+    def num(x) -> int:
+        try:
+            return int(float(x or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    return {"url": str(it.get("postPage") or ""), "id": str(it.get("id") or ""), "author": str(ch.get("username") or ""),
+            "name": str(ch.get("name") or ""), "verified": bool(ch.get("verified")), "views": num(it.get("views")),
+            "ts": num(it.get("uploadedAt")), "duration": float(v.get("duration") or 0),
+            "title": " ".join(str(it.get("title") or "").split()), "video": str(v.get("url") or "")}
+
+
+def tt_search(query: str, n: int = 8, sort: str = "RELEVANCE", when: str = "THIS_WEEK") -> list[dict]:
+    _tt_spend()
+    rows = [_tt_row(it) for it in _apify({"keywords": [query], "maxItems": n, "dateRange": when, "sortType": sort,
+                                          "includeSearchKeywords": True})]
+    TT_CACHE.mkdir(parents=True, exist_ok=True)
+    for r in rows:
+        if r["url"]:
+            (TT_CACHE / f"{_tt_id(r['url'])}.json").write_text(json.dumps({**r, "fetched": time.time()},
+                                                                         ensure_ascii=False), encoding="utf-8")
+    return rows
+
+
+def tt_item(url: str, fresh: bool = False) -> dict:
+    """The video's row: from the search cache while its CDN link is young (< 3 h), else asked again."""
+    f = TT_CACHE / f"{_tt_id(url)}.json"
+    try:
+        row = json.loads(f.read_text(encoding="utf-8"))
+        if not fresh and time.time() - row.get("fetched", 0) < 3 * 3600 and row.get("video"):
+            return row
+    except (OSError, ValueError):
+        pass
+    rows = [_tt_row(it) for it in _apify({"startUrls": [url], "maxItems": 1})]
+    if not rows or not rows[0]["video"]:
+        sys.exit(f"TikTok: no video for {url}")
+    TT_CACHE.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({**rows[0], "fetched": time.time()}, ensure_ascii=False), encoding="utf-8")
+    return {**rows[0], "fetched": time.time()}
+
+
+def tt_video(url: str) -> Path:
+    dst = TT_CACHE / f"{_tt_id(url)}.mp4"
+    if dst.is_file() and dst.stat().st_size > 10_000:
+        return dst
+    for fresh in (False, True):
+        row = tt_item(url, fresh)
+        for px in [None] + EGRESSES:
+            opener = urllib.request.build_opener(*([urllib.request.ProxyHandler({"https": px, "http": px})] if px else []))
+            try:
+                req = urllib.request.Request(row["video"], headers={"User-Agent": "Mozilla/5.0"})
+                with opener.open(req, timeout=120) as r:
+                    data = r.read()
+                if len(data) > 10_000:
+                    dst.write_bytes(data)
+                    return dst
+            except OSError:
+                continue
+    sys.exit(f"TikTok: could not download {url}")
+
+
+def tt_peek(url: str, sheet: Path) -> Path:
+    src = tt_video(url)
+    sheet.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", "fps=1,scale=180:-2,tile=6x5",
+                    "-frames:v", "1", str(sheet)], check=True)
+    return sheet
+
+
+def tt_cut(url: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None) -> Path:
+    if t1 - t0 > TT_MAX_PIECE + 1e-6:
+        sys.exit(f"a TikTok piece is ≤ {TT_MAX_PIECE:g} s (owner 2026-11-02: TikTok cuts the reach of re-uploads) — "
+                 f"{t1 - t0:.1f} s asked")
+    if dst.parent.name != "tt":  # build.py counts the TikTok pieces by this folder
+        dst = dst.parent / "tt" / dst.name
+    row, src = tt_item(url), tt_video(url)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    crop = f"crop=trunc(iw*{TT_CROP}/2)*2:trunc(ih*{TT_CROP}/2)*2"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}", "-vf", crop,
+                    "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart", str(dst)], check=True)
+    who = f"@{row['author']}" if row.get("author") else (row.get("name") or "TikTok")
+    out = {"source": url, "channel": who, "name": row.get("name"), "title": row.get("title"),
+           "uploaded": time.strftime("%Y-%m-%d", time.gmtime(row["ts"])) if row.get("ts") else None,
+           "views": row.get("views"), "from": t0, "to": t1, "credit": f"Видео: {who} / TikTok", "tiktok": True}
+    dst.with_suffix(".json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        sys.path.insert(0, str(HERE))
+        import library
+
+        library.add(dst, (tags or []) + ["tiktok", who], out["credit"], "TikTok", url)
+    except OSError as e:
+        print("library:", e, file=sys.stderr)
+    return dst
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -315,6 +471,20 @@ def main() -> None:
     c_.add_argument("t1", type=float)
     c_.add_argument("dst", type=Path)
     c_.add_argument("--tags", default="")
+    ts_ = sub.add_parser("tt-search")
+    ts_.add_argument("query")
+    ts_.add_argument("--n", type=int, default=8)
+    ts_.add_argument("--sort", default="RELEVANCE", choices=["RELEVANCE", "MOST_LIKED", "DATE_POSTED"])
+    ts_.add_argument("--when", default="THIS_WEEK", choices=["YESTERDAY", "THIS_WEEK", "THIS_MONTH", "ALL_TIME"])
+    tp_ = sub.add_parser("tt-peek")
+    tp_.add_argument("url")
+    tp_.add_argument("dst", type=Path)
+    tc_ = sub.add_parser("tt-cut")
+    tc_.add_argument("url")
+    tc_.add_argument("t0", type=float)
+    tc_.add_argument("t1", type=float)
+    tc_.add_argument("dst", type=Path)
+    tc_.add_argument("--tags", default="")
     a = ap.parse_args()
     if a.cmd == "scout":
         for v in scout(a.query, a.words, a.n, a.fresh, a.lang):
@@ -334,6 +504,15 @@ def main() -> None:
             print(f'{m["from"]:7.1f}–{m["to"]:7.1f}  [{m["score"]}]  {m["text"][:160]}')
     elif a.cmd == "peek":
         print(peek(a.ref, a.t0, a.t1, a.dst))
+    elif a.cmd == "tt-search":
+        for v in tt_search(a.query, a.n, a.sort, a.when):
+            day = time.strftime("%d.%m %H:%M", time.gmtime(v["ts"] + 3 * 3600)) if v["ts"] else "?"
+            print(f'{v["url"]}  {v["duration"]:.0f}s  {v["views"]:,} просм.  {day}  @{v["author"]} ({v["name"]})'
+                  f'{" ✓" if v["verified"] else ""}\n    {v["title"][:150]}')
+    elif a.cmd == "tt-peek":
+        print(tt_peek(a.url, a.dst))
+    elif a.cmd == "tt-cut":
+        print(tt_cut(a.url, a.t0, a.t1, a.dst, [t for t in a.tags.split(",") if t]))
     else:
         print(cut(a.ref, a.t0, a.t1, a.dst, [t for t in a.tags.split(",") if t]))
 

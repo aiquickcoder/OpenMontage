@@ -1448,3 +1448,43 @@ def test_viral_tiktok_check_searches_the_best_stories_once_a_day(tmp_path, monke
     monkeypatch.setenv("NEWS_TIKTOK_MONTH_QUERIES", "2")
     assert viral.tiktok_check([{"key": "new", "place": "", "region": "russia", "posts": [{"views": 1, "plain": "x"}]}]) == 0
     assert asked == []
+
+
+def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, monkeypatch):
+    """Owner 2026-11-02: footage from TikTok, «самое критичное 3-е» — TikTok cuts the reach of re-uploads."""
+    import json as _json
+    import subprocess
+    import sys as _sys
+    import types
+
+    from addons.news import build, yt_footage
+
+    src = tmp_path / "src.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=576x1024:rate=25", "-f", "lavfi",
+                    "-i", "sine=frequency=440", "-t", "6", "-shortest", "-c:v", "libx264", "-c:a", "aac", str(src)],
+                   check=True)
+    row = {"url": "https://www.tiktok.com/@hessenschau/video/77", "author": "hessenschau", "name": "hessenschau",
+           "title": "Gen-Z-Proteste in Frankfurt", "ts": 1793600000, "views": 248599}
+    monkeypatch.setattr(yt_footage, "tt_item", lambda url, fresh=False: row)
+    monkeypatch.setattr(yt_footage, "tt_video", lambda url: src)
+    monkeypatch.setitem(_sys.modules, "library", types.SimpleNamespace(add=lambda *a, **k: None))
+    out = yt_footage.tt_cut(row["url"], 1.0, 4.0, tmp_path / "media" / "frankfurt.mp4")
+    assert out == tmp_path / "media" / "tt" / "frankfurt.mp4"                     # always in media/tt/
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "json",
+                            str(out)], capture_output=True, text=True).stdout
+    streams = _json.loads(probe)["streams"]
+    assert [s["codec_type"] for s in streams] == ["video"]                          # no sound
+    assert streams[0]["width"] < 576 and streams[0]["height"] < 1024                # the edges cropped
+    meta = _json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
+    assert meta["credit"] == "Видео: @hessenschau / TikTok" and meta["tiktok"] is True
+    with pytest.raises(SystemExit):
+        yt_footage.tt_cut(row["url"], 0.0, 5.0, tmp_path / "media" / "long.mp4")      # > 4 s
+
+    def story(*srcs):
+        return {"shots": [({"src": s} if not s.startswith("clean:") else
+                           {"src": "media/clean/x.clean.mp4", "src_orig": s[6:]}) for s in srcs]}
+
+    assert build.tiktok_problems(story("media/post.mp4", "media/tt/a.mp4", "clean:media/tt/b.mp4")) == []
+    assert any("opens on a TikTok" in w for w in build.tiktok_problems(story("media/tt/a.mp4", "media/post.mp4")))
+    four = story("media/post.mp4", "media/tt/a.mp4", "media/tt/b.mp4", "clean:media/tt/c.mp4", "media/tt/d.mp4")
+    assert any("4 TikTok pieces" in w for w in build.tiktok_problems(four))

@@ -671,6 +671,27 @@ def ai_budget(story: dict) -> tuple[int, int, float]:
     return ai, len(shots), float(limit)
 
 
+TT_MAX_SHOTS = 3
+
+
+def tiktok_shots(story: dict) -> list[int]:
+    """Indexes of the shots cut from TikTok (yt_footage.py tt-cut puts them in media/tt/; cleaned, src_orig keeps it)."""
+    shots = [s for st in stories(story) for s in st.get("shots", [])]
+    return [i for i, s in enumerate(shots) if "/tt/" in f"/{s.get('src', '')}" or "/tt/" in f"/{s.get('src_orig', '')}"]
+
+
+def tiktok_problems(story: dict) -> list[str]:
+    """Owner 2026-11-02 («самое критичное 3-е»: TikTok cuts the reach of re-uploads): ≤ 3 TikTok pieces, never the
+    first shot."""
+    tt = tiktok_shots(story)
+    out = []
+    if tt and tt[0] == 0:
+        out.append("the film opens on a TikTok piece — open on the post's or an agency's footage")
+    if len(tt) > TT_MAX_SHOTS:
+        out.append(f"{len(tt)} TikTok pieces, at most {TT_MAX_SHOTS}")
+    return out
+
+
 def _font(size: int):
     from PIL import ImageFont
 
@@ -1538,7 +1559,8 @@ def main() -> None:
     print(f"AI pictures: {ai} of {total} shots, allowed {limit:.0%} (cities.json ai_max_share)"
           + (" — OVER: use the post's footage at other in-points, crops of its photos, Commons photos of the very "
              "place, or drop the story" if over else ""), flush=True)
-    for warning in picture_warnings(story) + thesis_warnings(story) + unused_post_media(proj, story):
+    for warning in picture_warnings(story) + thesis_warnings(story) + unused_post_media(proj, story) + [
+            "TikTok: " + w for w in tiktok_problems(story)]:
         print("warning:", warning, flush=True)
     if a.storyboard:
         items = film_items(proj, story, timing, phrases, strict=False)
@@ -1546,6 +1568,8 @@ def main() -> None:
         return
     if over:
         sys.exit(f"{ai} of {total} shots are AI pictures, the limit is {limit:.0%} (owner 2026-10-29: as few as possible)")
+    if tt_bad := tiktok_problems(story):
+        sys.exit("TikTok footage (README «Кадры из TikTok»): " + "; ".join(tt_bad))
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
     items = film_items(proj, story, timing, phrases)
