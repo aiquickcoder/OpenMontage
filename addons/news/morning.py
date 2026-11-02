@@ -70,10 +70,26 @@ def telegram(text: str) -> None:
                    env={**os.environ, "PYTHONPATH": str(REPO)}, check=False)
 
 
-def viral_turn(stop: datetime, film: str):
+def films_in_work(exclude: set[str], idle_min: float = 15) -> list[str]:
+    """Other films an agent is making right now: a project whose story.json, assets, logs or renders changed in the
+    last idle_min minutes and that is not delivered since (kinescope.json older than that)."""
+    now, out = time.time(), []
+    for d in (REPO / "projects").glob("news-*"):
+        if d.name in exclude or not (d / "story.json").is_file():
+            continue
+        files = [d / "story.json", d / "events.jsonl", *d.glob("assets/*"), *d.glob("logs/*"), *d.glob("renders/*")]
+        latest = max((f.stat().st_mtime for f in files if f.is_file()), default=0)
+        k = d / "kinescope.json"
+        if now - latest < idle_min * 60 and not (k.is_file() and k.stat().st_mtime >= latest - 120):
+            out.append(d.name)
+    return out
+
+
+def viral_turn(stop: datetime, film: str, films: list[str] | None = None):
     """Wait for our turn (owner 2026-11-01: one heavy job at a time on this server): the viral lock (the slot before
-    may still be at work), then for another film's produce.py, render or cleaning (another agent's film) to end.
-    Past an hour before the deadline there is no time left for a film — tell the owner and stop."""
+    may still be at work), then for another film to be done — its produce.py, render or cleaning, or an agent still
+    making it (its project changing; the Frankfurt film, 02.11). Past an hour before the deadline there is no time
+    left for a film — tell the owner and stop."""
     import fcntl
 
     import produce
@@ -92,7 +108,7 @@ def viral_turn(stop: datetime, film: str):
             late("предыдущий слот работает до сих пор")
             time.sleep(60)
     told = False
-    while jobs := produce.heavy_jobs():
+    while jobs := produce.heavy_jobs() or films_in_work(set(films or [film])):
         if not told:
             print("waiting for another film: " + "; ".join(jobs[:3]), flush=True)
             told = True
@@ -178,7 +194,7 @@ def main() -> None:
         if not films:
             print("MORNING_RESULT: READY (the slot's films are out already)", flush=True)
             return
-        lock = viral_turn(stop, films[0])
+        lock = viral_turn(stop, films[0], films)
         proj = REPO / "projects" / films[0]
         proj.mkdir(parents=True, exist_ok=True)
         picked = viral_pick(a.slot, acc, films, proj)

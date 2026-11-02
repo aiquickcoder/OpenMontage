@@ -972,7 +972,7 @@ def main() -> None:
     posts = gather(a.hours)
     made = made_texts(REPO)
     links, keys = pick.made_already(REPO)
-    claims = load_claims()
+    claims = [c for c in load_claims() if c.get("film") != a.claim]  # a slot run again keeps its own pick free
     ranked = rank(posts, now, load_weights(), made, claims, links, keys, ai=0 if a.no_ai else a.ai,
                   max_age_h=a.max_age)
     live = [s for s in ranked if not s["skip"]]

@@ -1263,3 +1263,21 @@ def test_one_heavy_job_at_a_time_knows_a_render_and_a_cleaning_from_light_steps(
              "python addons/news/clean_footage.py projects/x --plan", "python addons/news/viral.py pick --slot 1"]
     assert all(produce.HEAVY.search(a) for a in heavy) and not any(produce.HEAVY.search(a) for a in light)
     assert not produce.DIRECT.search(heavy[3])  # produce.py itself waits on the lock, not on the process list
+
+
+def test_a_viral_slot_waits_for_a_film_another_agent_is_making(tmp_path: Path, monkeypatch):
+    import os
+    import time
+    from addons.news import morning
+
+    monkeypatch.setattr(morning, "REPO", tmp_path)
+    for name, age_min, delivered in (("news-de-01-11-1", 2, False), ("news-msk-01-11-1", 2, True),
+                                     ("news-pl-31-10-1", 90, False), ("news-viral-a-02-11-1", 1, False)):
+        d = tmp_path / "projects" / name
+        d.mkdir(parents=True)
+        (d / "story.json").write_text("{}", encoding="utf-8")
+        t = time.time() - age_min * 60
+        os.utime(d / "story.json", (t, t))
+        if delivered:
+            (d / "kinescope.json").write_text("{}", encoding="utf-8")
+    assert morning.films_in_work({"news-viral-a-02-11-1"}) == ["news-de-01-11-1"]  # fresh, not out yet
