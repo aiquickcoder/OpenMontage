@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import email.utils
 import json
 import math
 import os
@@ -56,6 +57,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+import urllib.request
+import xml.etree.ElementTree as ET
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -248,6 +251,64 @@ async def read(channels: Iterable[str], hours: float, per: int = 400) -> list[di
     return fold(rows)
 
 
+# Google's own pick of what people search right now (owner 2026-11-02: «находить виральные новости, которые предлагает
+# сам гугл… давай пробовать делать»): Trends «Trending now» RSS per country — the query, its traffic and the news Google
+# ties to it. Each trend becomes a post (src "google") that joins our posts of the same event or stands as a story of
+# its own in the country's language; the AI weighs it («уже ищут»). No key, reached directly (02.11).
+TREND_GEOS = ("RU", "US", "DE", "GB", "FR", "PL", "IT", "ES", "TR")
+TRENDS_URL = "https://trends.google.com/trending/rss?geo={geo}"
+HT = "{https://trends.google.com/trending/rss}"
+GEO_COUNTRY = {"US": "us", "DE": "de", "GB": "gb", "FR": "fr", "PL": "pl", "IT": "it", "ES": "es", "TR": "tr"}
+
+
+def traffic_of(s: str | None) -> int:
+    m = re.match(r"\s*([\d.,]+)\s*([KkMm]?)", s or "")
+    if not m:
+        return 0
+    n = float(m.group(1).replace(",", ""))
+    return int(n * {"k": 1_000, "m": 1_000_000}.get(m.group(2).lower(), 1))
+
+
+def google_trends(geos: Iterable[str] = TREND_GEOS, timeout: float = 15) -> list[dict]:
+    """The trending searches of each country now: query, traffic, pubDate, Google's news items. [] on any failure."""
+    out = []
+    for geo in geos:
+        try:
+            req = urllib.request.Request(TRENDS_URL.format(geo=geo), headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                root = ET.fromstring(r.read())
+        except Exception as e:  # noqa: BLE001 — a country missing leaves the others
+            print(f"  Google Trends {geo}: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+            continue
+        for i, it in enumerate(root.iter("item"), 1):
+            try:
+                ts = email.utils.parsedate_to_datetime(it.findtext("pubDate") or "").timestamp()
+            except (TypeError, ValueError):
+                ts = time.time()
+            news = [{"title": (n.findtext(HT + "news_item_title") or "").strip(),
+                     "url": (n.findtext(HT + "news_item_url") or "").strip(),
+                     "source": (n.findtext(HT + "news_item_source") or "").strip()} for n in it.findall(HT + "news_item")]
+            out.append({"geo": geo, "rank": i, "query": (it.findtext("title") or "").strip(), "ts": ts,
+                        "traffic": traffic_of(it.findtext(HT + "approx_traffic")),
+                        "picture": bool(it.findtext(HT + "picture")), "news": [n for n in news if n["title"]]})
+    return out
+
+
+def trend_posts(trends: list[dict]) -> list[dict]:
+    """Each trend as a post: the query and Google's news titles as its text (a trend with no news has too little
+    text and drops out as «мало текста»), the traffic apart from views."""
+    posts = []
+    for t in trends:
+        text = ". ".join([t["query"]] + [n["title"] for n in t["news"][:3]])
+        link = next((n["url"] for n in t["news"] if n["url"]), TRENDS_URL.format(geo=t["geo"]))
+        posts.append({"channel": f"Google Trends {t['geo']}", "post": t["rank"], "ts": t["ts"], "views": 0,
+                      "forwards": 0, "replies": 0, "reactions": 0, "text": text, "plain": text, "video_s": 0.0,
+                      "photos": 1 if t["picture"] else 0, "group": 0, "fwd": False, "link": link,
+                      "ref": f"google:{t['geo']}:{t['query']}", "src": "google", "geo": t["geo"],
+                      "traffic": t["traffic"], "news": t["news"][:3]})
+    return posts
+
+
 def engine_posts(hours: float, db_path: Path | None = None) -> list[dict]:
     """The ЗАСНЯЛИ engine's posts of the last hours, read-only: its early views (views at read_at), the RSS of the
     agencies, its AI judge's verdict. [] when there is no DB here."""
@@ -382,7 +443,9 @@ def signals(story: dict, norms: dict, now: float) -> dict:
     return {"velocity": vel, "channels": len(chans), "channels_3h": len(early_chans), "reach": reach,
             "engage": round(eng, 2), "age_h": round((now - first) / 3600, 1),
             "video_s": round(max(p.get("video_s", 0) for p in posts), 1), "photos": max(p.get("photos", 0) for p in posts),
-            "comments": sum(p.get("replies", 0) for p in posts)}
+            "comments": sum(p.get("replies", 0) for p in posts),
+            "google": [f"{p['geo']} {p['traffic']:,}+".replace(",", " ") for p in
+                       sorted((p for p in posts if p.get("src") == "google"), key=lambda p: -p["traffic"])][:4]}
 
 
 def signal_features(sig: dict) -> dict[str, float]:
@@ -474,6 +537,9 @@ def _group_simple(posts: list[dict]) -> list[dict]:
 
 def region_of(story: dict) -> tuple[str, str]:
     """(region, place): world + the country, a city (moscow / kazan / spb) or russia."""
+    geos = {p["geo"] for p in story["posts"] if p.get("src") == "google"}
+    if story["seed"].get("src") == "google" and len(geos) == 1 and next(iter(geos)) in GEO_COUNTRY:
+        return "world", dict((c, n) for c, n, _ in world.COUNTRIES).get(GEO_COUNTRY[next(iter(geos))], "мир")
     codes = [world.country_of(p["text"]) for p in story["posts"][:5]]
     code = world.country_of(story["seed"]["text"])
     if code and codes.count(code) >= len(codes) / 2:  # one post's «в Белоруссии тоже» is not the place (01.11)
@@ -632,6 +698,10 @@ score — твой итоговый балл 0–100: насколько эта 
 в приоритете, но сильная история суток-двух давности, которую ещё не сняли, может стоить больше слабой свежей).
 Флаги в score не учитывай — они отсекают отдельно. Итоговый выбор ролика — по твоему score.
 Строка «фильтры заметили: …» — подсказка грубых словарей, они ошибаются в обе стороны: флаги ставь сам.
+Пометка «Google Trends: DE 200 000+» — тема сейчас в топе поиска Google в этой стране (число — примерные
+запросы): люди уже массово её ищут, это сильный плюс к баллу — особенно в России или в нескольких странах
+сразу. Сюжет только из Google Trends (на языке страны) — тоже кандидат, оцени его так же; матчи, прогнозы
+на спорт, сериалы и шоу без конфликта — низко.
 
 Ответ — только JSON-массив: [{"id": 1, "everyone": 8, "emotion": 7, "debate": 9, "visual": 6, "explain": 8,
 "war": false, "ru_politics": false, "risky": false, "ad": false, "local_only": false, "common_hook": null,
@@ -651,6 +721,11 @@ TRIAGE_SYSTEM = """Ты — шеф-редактор новостного TikTok 
 Иран, выборы и кризисы за рубежом), живые кадры. Низко — отчёты, назначения, рейтинги, спорт без скандала, прогнозы
 погоды, местная мелочь. Новое в приоритете, но сильная история суток-двух давности тоже может стоить много. 0 — война
 России и Украины, бои с жертвами, внутренняя политика России, реклама, сводки.
+
+Пометка «Google Trends: DE 200 000+» — тема сейчас в топе поиска Google в этой стране (число — примерные
+запросы): люди уже массово её ищут, это сильный плюс к баллу — особенно в России или в нескольких странах
+сразу. Сюжет только из Google Trends (на языке страны) — тоже кандидат, оцени его так же; матчи, прогнозы
+на спорт, сериалы и шоу без конфликта — низко.
 
 Ответ — только JSON-массив сюжетов с баллом от 30: [{"id": 4, "s": 72}, {"id": 9, "s": 41}]; остальные — 0."""
 
@@ -680,10 +755,12 @@ def story_block(i: int, st: dict) -> str:
     media = (f"видео {sig['video_s']:.0f} с" if sig["video_s"] else f"фото {sig['photos']}" if sig["photos"] else "нет")
     texts = []
     for p in sorted(st["posts"], key=lambda p: -p["views"])[:3]:
-        texts.append(f"[{p['channel']} · {p['views']} просм.] {(p.get('plain') or plain(p['text']))[:650]}")
+        what = f"{p['traffic']:,}+ запросов".replace(",", " ") if p.get("src") == "google" else f"{p['views']} просм."
+        texts.append(f"[{p['channel']} · {what}] {(p.get('plain') or plain(p['text']))[:650]}")
     return (f"### id={i} · каналов {sig['channels']} · просмотров ~{sig['reach']} · разгон ×{sig['velocity']:g} · "
             f"комментариев {sig['comments']} · медиа {media} · первая запись {sig['age_h']:g} ч назад · "
             f"где: {st['place'] or st['region']}"
+            + (f"\nGoogle Trends — сейчас ищут: {', '.join(sig['google'])}" if sig.get("google") else "")
             + (f"\nфильтры заметили: {', '.join(st['hints'])}" if st.get("hints") else "") + "\n" + "\n".join(texts))
 
 
@@ -732,7 +809,8 @@ def triage_line(i: int, st: dict) -> str:
     best = max(st["posts"], key=lambda p: p["views"])
     text = " ".join((best.get("plain") or plain(best["text"])).split())[:240]
     hints = f" · фильтры: {', '.join(st['hints'])}" if st.get("hints") else ""
-    return f"{i}. [{sig['channels']} кан. · {sig['age_h']:.0f} ч · {media}{hints}] {text}"
+    google = f" · Google Trends {', '.join(sig['google'])}" if sig.get("google") else ""
+    return f"{i}. [{sig['channels']} кан. · {sig['age_h']:.0f} ч · {media}{google}{hints}] {text}"
 
 
 def ai_triage(stories: list[dict], batch: int = 80, workers: int = 3) -> int:
@@ -1043,7 +1121,9 @@ def gather(hours: float, per: int = 400) -> list[dict]:
     print(f"  читаю {len(chans)} каналов за {hours:g} ч", file=sys.stderr)
     tg = asyncio.run(read(chans, hours, per))
     db = engine_posts(hours)
-    return merge(tg, db)
+    trends = trend_posts(google_trends())
+    print(f"  Google Trends: {len(trends)} трендов из {len({p['geo'] for p in trends})} стран", file=sys.stderr)
+    return merge(tg, db) + trends
 
 
 def engine_channels() -> list[str]:

@@ -1356,3 +1356,47 @@ def test_viral_the_ai_sees_our_real_tiktok_numbers(tmp_path, monkeypatch):
     con.commit(); con.close()
     first = [ln for ln in viral.our_results().split("\n") if ln.startswith("- ")][0]
     assert first == "- 250 000 — Тест: залетел (аккаунт a)"
+
+
+GOOGLE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:ht="https://trends.google.com/trending/rss" version="2.0"><channel><title>Daily Search Trends</title>
+<item><title>{q}</title><ht:approx_traffic>{t}</ht:approx_traffic><pubDate>Mon, 2 Nov 2026 11:00:00 -0800</pubDate>
+<ht:picture>https://x/p.jpg</ht:picture>
+<ht:news_item><ht:news_item_title>{n}</ht:news_item_title><ht:news_item_url>https://news.example/{g}</ht:news_item_url>
+<ht:news_item_source>Example</ht:news_item_source></ht:news_item></item>
+<item><title>sport match</title><ht:approx_traffic>500+</ht:approx_traffic><pubDate>Mon, 2 Nov 2026 10:00:00 -0800</pubDate>
+</item></channel></rss>"""
+
+
+def test_viral_google_trends_become_posts_the_ai_sees(monkeypatch):
+    """Owner 2026-11-02: «находить виральные новости, которые предлагает сам гугл»."""
+    import io
+    import urllib.request
+
+    from addons.news import viral
+
+    feeds = {"DE": dict(q="Bundeswehr Wehrpflicht", t="200K+", n="Bundestag beschließt neue Wehrpflicht für Junge", g="de"),
+             "RU": dict(q="тарифы жкх", t="20000+", n="Минстрой предложил ввести надбавки к платежам за ЖКХ", g="ru")}
+
+    def fake_open(req, timeout=0):
+        geo = req.full_url.rsplit("=", 1)[1]
+        return io.BytesIO(GOOGLE_RSS.format(**feeds[geo]).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    trends = viral.google_trends(["DE", "RU"])
+    got = [(t["geo"], t["query"], t["traffic"]) for t in trends]
+    assert len(got) == 4 and ("DE", "Bundeswehr Wehrpflicht", 200_000) in got and ("RU", "тарифы жкх", 20_000) in got
+    posts = viral.trend_posts(trends)
+    de = next(p for p in posts if p["geo"] == "DE" and p["traffic"] == 200_000)
+    assert de["src"] == "google" and de["views"] == 0 and "Wehrpflicht für Junge" in de["text"]
+    assert de["link"] == "https://news.example/de"
+    # a trend with no news has no text to tell — it drops out as «мало текста»
+    now = 1_793_640_000.0
+    posts = [dict(p, ts=now - 3600) for p in posts]
+    filler = [_vpost("feed", i, 1000, t, 5, now) for i, t in enumerate(_filler(110), 1)]
+    ranked = viral.rank(filler + posts, now, viral.WEIGHTS, [], [], set(), set(), use_ai=False)
+    st = next(s for s in ranked if s["seed"].get("geo") == "DE")
+    assert st["region"] == "world" and st["place"] == "Германия" and st["signals"]["google"] == ["DE 200 000+"]
+    assert "Google Trends — сейчас ищут: DE 200 000+" in viral.story_block(1, st)
+    assert "Google Trends DE 200 000+" in viral.triage_line(1, st)
+    assert not any(s["seed"].get("ref", "").endswith("sport match") and not s["skip"] for s in ranked)
