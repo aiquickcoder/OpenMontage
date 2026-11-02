@@ -218,6 +218,10 @@ def seconds(path: Path) -> float:
 
 def prepare(src: Path, start: float, dur: float, dst: Path) -> None:
     """A service-friendly copy: CFR 30, 8-bit 4:2:0, even size, no audio (footage is silent anyway)."""
+    stamp = dst.with_suffix(".input.sha1")
+    key = hashlib.sha1(json.dumps([digest(src), round(start, 3), round(dur, 3), 1]).encode()).hexdigest()
+    if dst.is_file() and stamp.is_file() and stamp.read_text() == key:
+        return
     # setsar=1: a clip with non-square pixels kept its SAR and the service saw another frame size than the mask
     # (the server agent's fix during SPb 28.10, folded in here)
     # the long side at most 1920: a 2160x3840 phone clip (Baza, Kitay-gorod 01.11) ran the service's worker out of
@@ -230,6 +234,7 @@ def prepare(src: Path, start: float, dur: float, dst: Path) -> None:
     else:  # a photo becomes a 2-frame clip
         sh(["ffmpeg", "-v", "error", "-y", "-loop", "1", "-i", str(src), "-frames:v", "2", "-r", "2", "-vf", vf,
             "-c:v", "libx264", "-crf", "12", str(dst)])
+    stamp.write_text(key)
 
 
 class Cleaner:
@@ -254,7 +259,7 @@ class Cleaner:
                      f"Content-Type: {ctype}\r\n\r\n").encode() + data + b"\r\n"
         return body + f"--{b}--\r\n".encode(), f"multipart/form-data; boundary={b}"
 
-    def submit(self, clip: Path, mask: np.ndarray) -> str:
+    def submit(self, clip: Path, mask: np.ndarray, wait_for_slot: bool = True) -> str | None:
         up = json.loads(self.call("/api/uploads", *self.form({}, {"file": (clip.name, clip.read_bytes(), "video/mp4")})))
         if (up["height"], up["width"]) != mask.shape:
             mask = cv2.resize(mask, (up["width"], up["height"]), interpolation=cv2.INTER_NEAREST)
@@ -267,6 +272,8 @@ class Cleaner:
             except urllib.error.HTTPError as e:  # the service keeps at most 10 jobs: wait for a free place
                 if e.code != 429:
                     raise
+                if not wait_for_slot:
+                    return None
                 time.sleep(20)
 
     def status(self, jid: str) -> dict:
@@ -334,6 +341,8 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
+    ap.add_argument("--only", nargs="+", help="plan only these source basenames (for bounded server sessions)")
+    ap.add_argument("--poll", action="store_true", help="submit up to 3 jobs, collect ready results, exit 4 if pending")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--plan", action="store_true")
     g.add_argument("--run", action="store_true")
@@ -374,6 +383,8 @@ def main() -> None:
     masks: dict[str, np.ndarray] = {}  # one mask per source file, from the whole clip (more frames, steadier)
     for key, piece in footage(proj, story).items():
         src = piece["src"]
+        if a.only and Path(src).name not in a.only:
+            continue
         path = proj / src
         is_video = path.suffix.lower() in VIDEO
         dur = 0.0
@@ -409,6 +420,18 @@ def main() -> None:
             plan[key] = {**plan[next(k for k in plan if plan[k]["src"] == src)], "clip": clip, "start": start}
             print(f"{key}: same mask as {src}, window {start:.1f}–{start + length:.1f} s", flush=True)
             continue
+        # Reuse a reviewed plan only for identical source bytes, hand boxes and logo templates.
+        # Long unattended runs can then resume without sampling every clip again.
+        mask_file = work / (tag(src) + ".mask.png")
+        meta_file = work / (tag(src) + ".plan.json")
+        signature = {"source": digest(path), "hand": entry, "templates": templates_changed(), "version": 1}
+        if meta_file.is_file() and mask_file.is_file():
+            meta = json.loads(meta_file.read_text())
+            if meta.get("signature") == signature:
+                masks[src] = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
+                plan[key] = {**meta["plan"], "src": src, "clip": clip, "start": start, "video": is_video}
+                print(f"{key}: cached plan, {plan[key]['how']}, window {start:.1f}–{start + length:.1f} s", flush=True)
+                continue
         fr = frames(path) if is_video else frames(clip)
         mask, moving, blind = auto_mask(fr) if len(fr) > 2 else (np.zeros(fr[0].shape[:2], np.uint8), 0.0, 0.0)
         how = f"auto (camera moves {moving:.1f} px/frame)"
@@ -432,6 +455,8 @@ def main() -> None:
         masks[src] = mask
         plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "mask_area": area, "how": how,
                      "unchecked": entry is None and needs_look(moving, blind)}
+        meta_file.write_text(json.dumps({"signature": signature,
+                                        "plan": {k: v for k, v in plan[key].items() if k != "clip"}}))
         print(f"{key}: {how}, mask {area:.1%}, window {start:.1f}–{start + length:.1f} s", flush=True)
     if a.plan:
         print("look at qa/wm_*.jpg; fix with media/wm.json, then --run")
@@ -444,6 +469,7 @@ def main() -> None:
                  "for coordinates), a plain list of boxes for a still camera ([] = clean). A channel logo that will "
                  "come again: also --save-template <channel>_logo|<channel>_text <file> x y w h.")
     cleaner, jobs, sigs = Cleaner(), {}, {}
+    submitted, pending = 0, False
     for key, p in plan.items():
         src = p["src"]
         if p.get("night"):  # cut from the night pre-clean (or found clean at night)
@@ -461,8 +487,33 @@ def main() -> None:
         # …and only if it is as long as the shot now needs (a phrase can be longer than the old 3.4 s piece)
         if not (p["out_mp4"].is_file() and sig.is_file() and sig.read_text() == sigs[p["out_mp4"]]
                 and (not p["video"] or seconds(p["out_mp4"]) >= seconds(p["clip"]) - 0.1)):
-            jobs[cleaner.submit(p["clip"], mask)] = p["out_mp4"]
+            receipt = p["out_mp4"].with_suffix(".job.json")
+            saved = json.loads(receipt.read_text()) if receipt.is_file() else {}
+            jid = saved.get("id") if saved.get("mask") == sigs[p["out_mp4"]] and saved.get("input") == digest(p["clip"]) else None
+            if jid:
+                status = cleaner.status(jid)
+                if status["status"] == "succeeded":
+                    cleaner.download(jid, p["out_mp4"])
+                    sig.write_text(sigs[p["out_mp4"]])
+                    print(f"  collected {p['out_mp4'].name}", flush=True)
+                    continue
+                if status["status"] not in ("queued", "running"):
+                    raise RuntimeError(f"{p['out_mp4'].name}: {status['status']} {status.get('error')}")
+            elif a.poll and submitted >= 3:
+                pending = True
+                continue
+            else:
+                jid = cleaner.submit(p["clip"], mask, wait_for_slot=not a.poll)
+                if jid is None:
+                    pending = True
+                    break
+                receipt.write_text(json.dumps({"id": jid, "mask": sigs[p["out_mp4"]], "input": digest(p["clip"])}))
+                submitted += 1
+            jobs[jid] = p["out_mp4"]
     print(f"queued {len(jobs)} pieces", flush=True)
+    if a.poll and (jobs or pending):
+        print("PENDING: rerun --run --poll to collect results and submit the next batch", flush=True)
+        sys.exit(4)
     cleaner.wait(jobs)
     for out in jobs.values():
         if out.is_file():

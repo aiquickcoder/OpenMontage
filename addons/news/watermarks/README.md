@@ -10,3 +10,5 @@ strictly (lettering resembles any lettering).
 | `region116_text` | «Телеграм канал Region116 / t.me/region116_kazan» next to it |
 | `fontanka_text` | «фонтанка.ру» with its round emblem across the middle of the frame (SPb, theatre.mp4 28.10): the slow camera kept the buildings steady too, so this template keeps only edges that point the same way in every frame (made by hand, not with --save-template) |
 | `tatarinform_logo` | «ТАТАР ИНФОРМ» wordmark bottom right of tatarstansos photos (`news-kzn-vypusk-30-10`, m7_car.jpg, saved from a photo) |
+| `ap_archive_logo` | AP corner logo, `news-ai-02-11-1/media/yt/worker_tablet.mp4`, AP Archive `c_o1AqpkYWE`, source box 502,2,48,53 |
+| `cnbc_logo` | CNBC peacock corner logo, `news-ai-02-11-1/media/yt/medical_work.mp4`, CNBC `zp9GTOVAyoI`, source box 1170,30,80,65 |

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import math
 import os
@@ -272,6 +273,20 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     audio = A / "narration.mp3"
     text = full_text(story)
     bite = story.get("bite") if "[bite]" in (story.get("narration") or {}).get("text", "") else None
+    # A one-story recut changes pictures, not the already verified voice. Reuse
+    # its word timings only while both the audio and the spoken script match.
+    timing_path = A / "timing.json"
+    if (retime and audio.is_file() and timing_path.is_file() and not bite
+            and not story.get("stories") and not story.get("anchor")
+            and timing_path.stat().st_mtime_ns >= audio.stat().st_mtime_ns):
+        try:
+            cached_timing = json.loads(timing_path.read_text(encoding="utf-8"))
+            cached_text = " ".join(w[0] for w in cached_timing["words"])
+            if cached_text == " ".join(plain(text).split()):
+                print("voice: reusing verified word timings", flush=True)
+                return cached_timing
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
     if not (retime and audio.is_file()):
         if bite:
             sound_bite(proj, story, A)
@@ -854,15 +869,26 @@ def segment(item: dict, dst: Path) -> None:
 def broll(proj: Path, items: list[dict]) -> list[Path]:
     """One silent clip per story window: assets/broll0.mp4, broll1.mp4, …"""
     d = proj / "assets" / "broll"
-    shutil.rmtree(d, ignore_errors=True)
-    d.mkdir(parents=True)
+    d.mkdir(parents=True, exist_ok=True)
+    recipe = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     outs = []
     for w in sorted({it["w"] for it in items}):
         lst = []
         for i, it in enumerate(items):
             if it["w"] == w:
                 seg = d / f"s{i:02d}.mp4"
-                segment(it, seg)
+                stamp = seg.with_suffix(".sha256")
+                src = Path(it["path"])
+                key = hashlib.sha256((recipe + json.dumps(it, sort_keys=True, default=str)
+                                      + str(src.stat().st_size) + str(src.stat().st_mtime_ns)).encode()).hexdigest()
+                if not (seg.is_file() and stamp.is_file() and stamp.read_text() == key):
+                    tmp = seg.with_name(seg.stem + ".tmp.mp4")
+                    segment(it, tmp)
+                    tmp.replace(seg)
+                    stamp.write_text(key)
+                    print(f"broll: made {seg.name}", flush=True)
+                else:
+                    print(f"broll: reusing {seg.name}", flush=True)
                 lst.append(f"file '{seg.name}'")
         (d / f"list{w}.txt").write_text("\n".join(lst) + "\n")
         out = proj / "assets" / f"broll{w}.mp4"
