@@ -1162,6 +1162,51 @@ def test_viral_ai_flags_and_a_local_story_without_a_common_hook_are_dropped(monk
     assert not by["mash"]["skip"] and ranked[0] is by["mash"]
 
 
+
+def test_viral_the_ai_shortlists_every_story_and_its_score_is_final(monkeypatch):
+    """Owner 2026-11-02: «отбор новостей, их оценку и выходной балл — ИИ, а не алгоритмам»."""
+    from addons.news import viral
+
+    now = 1_800_000_000.0
+    posts = [_vpost("feed", i, 1000, t, 5, now) for i, t in enumerate(_filler(110), 1)]
+    posts += [_vpost("mash", 1, 400_000, "Цены на гречку выросли на 30 процентов за месяц: покупатели возмущены", 2, now),
+              _vpost("topor", 2, 2_000, "Нетаньяху потребовал от Трампа возобновить удары по Ирану после выборов в США", 40, now),
+              _vpost("shot_shot", 3, 300_000, "ВСУ атаковали беспилотниками Белгородскую область ночью, повреждены дома", 2, now)]
+    seen = {}
+
+    def fake_triage(stories, batch=80, workers=3):
+        for st in stories:
+            t = st["seed"]["text"]
+            st["triage"] = 90.0 if "Нетаньяху" in t else 60.0 if "гречку" in t else 0.0
+        seen["n"] = len(stories)
+        return len(stories)
+
+    def fake_ai(stories, batch=8, workers=3):
+        seen["deep"] = [st["seed"]["channel"] for st in stories]
+        for st in stories:
+            t = st["seed"]["text"]
+            st["ai"] = {"everyone": 5, "emotion": 5, "debate": 5, "visual": 5, "explain": 8, "war": False,
+                        "ru_politics": False, "risky": False, "ad": False, "local_only": False, "common_hook": None,
+                        "topic": "мир и общество", "ai": True, "score": 88.0 if "Нетаньяху" in t else 61.0}
+        return len(stories)
+
+    monkeypatch.setattr(viral, "ai_triage", fake_triage)
+    monkeypatch.setattr(viral, "ai_score", fake_ai)
+    ranked = viral.rank(posts, now, viral.WEIGHTS, [], [], set(), set(), ai=2)
+    by = {s["seed"]["channel"]: s for s in ranked if s["seed"]["channel"] in ("mash", "topor", "shot_shot")}
+    # the AI looked at every story, war words included; its top two went to the deep pass
+    assert seen["n"] > 100 and seen["deep"][0] == "topor" and "mash" in seen["deep"]
+    # world politics with war words abroad: the AI set no flag — in, and first by the AI's score although it is
+    # 40 h old with few views (its formula is far lower)
+    assert not by["topor"]["skip"] and ranked[0] is by["topor"]
+    assert by["topor"]["score"] == 88.0 and by["topor"]["formula"] != 88.0
+    # the war of Russia and Ukraine: the filters hinted, the AI never cleared it — out
+    assert by["shot_shot"]["hints"] and any("ИИ не проверял" in r for r in by["shot_shot"]["skip"])
+    # without the AI the filters cut as before: the war of Russia and Ukraine out, world politics in
+    plain_ = viral.rank(posts, now, viral.WEIGHTS, [], [], set(), set(), use_ai=False)
+    assert not any(s["seed"]["channel"] == "shot_shot" for s in plain_)
+    assert any(s["seed"]["channel"] == "topor" and not s["skip"] for s in plain_)
+
 def test_viral_slots_share_the_best_stories_out_in_turn_without_repeats():
     from datetime import date
     from addons.news import viral
@@ -1294,3 +1339,20 @@ def test_viral_freshness_keeps_new_first_but_lets_an_older_story_win():
     assert viral.freshness(0) == 1
     assert abs(viral.freshness(24) - 0.85) < 1e-9 and abs(viral.freshness(72) - 0.55) < 1e-9
     assert viral.freshness(100) == viral.freshness(72)
+
+
+def test_viral_the_ai_sees_our_real_tiktok_numbers(tmp_path, monkeypatch):
+    import sqlite3
+
+    from addons.news import viral
+
+    monkeypatch.setattr(viral, "DATA", tmp_path)
+    block = viral.our_results()
+    assert "114 200 — Протесты в Германии" in block and block.index("114 200") < block.index("741")
+    con = sqlite3.connect(tmp_path / "stats.db")
+    con.executescript("CREATE TABLE films(slug TEXT, account TEXT, title TEXT); CREATE TABLE stats(slug TEXT, views INT);"
+                      "INSERT INTO films VALUES('news-viral-a-03-11-1', 'a', 'Тест: залетел'); "
+                      "INSERT INTO stats VALUES('news-viral-a-03-11-1', 250000);")
+    con.commit(); con.close()
+    first = [ln for ln in viral.our_results().split("\n") if ln.startswith("- ")][0]
+    assert first == "- 250 000 — Тест: залетел (аккаунт a)"
