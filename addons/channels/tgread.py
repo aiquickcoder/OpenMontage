@@ -18,33 +18,26 @@ import contextlib
 import fcntl
 import os
 import re
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Iterable
 
 CONF = Path.home() / ".config" / "openmontage"
-MAIN_SESSION = CONF / "telegram.session"
 SESSION = CONF / "telegram-channels.session"
 LOCK = CONF / "channels-telethon.lock"
 PROXY = os.environ.get("TG_CLIENT_PROXY", "http://127.0.0.1:10809")
 MSK = timezone(timedelta(hours=3))
 
 
+NOT_LOGGED = "the channels collector has no Telegram login of its own — the owner runs: tg_client.py login channels"
+
+
 def copy_session(force: bool = False) -> None:
-    if SESSION.exists() and not force:
-        return
-    if not MAIN_SESSION.exists():
-        sys.exit("no Telegram session — the owner logs in once with addons/news/tg_client.py login")
-    SESSION.unlink(missing_ok=True)
-    src = sqlite3.connect(f"file:{MAIN_SESSION}?mode=ro", uri=True, timeout=30)
-    dst = sqlite3.connect(str(SESSION))
-    with dst:
-        src.backup(dst)
-    src.close()
-    dst.close()
-    os.chmod(SESSION, 0o600)
+    """No copies any more: a copy of the news session is the same key, and the copies running at once through exits
+    with different IPs got the key killed (AuthKeyDuplicatedError, 02.11). The collector has its own login."""
+    if not SESSION.exists():
+        raise RuntimeError(NOT_LOGGED)
 
 
 def make_client():
@@ -70,12 +63,7 @@ async def session() -> AsyncIterator[Any]:
         await c.connect()
         if not await c.is_user_authorized():
             await c.disconnect()
-            copy_session(force=True)  # the owner logged in again: take the fresh login
-            c = make_client()
-            await c.connect()
-            if not await c.is_user_authorized():
-                await c.disconnect()
-                raise RuntimeError("Telegram session is not authorised")
+            raise RuntimeError(NOT_LOGGED)
         try:
             yield c
         finally:

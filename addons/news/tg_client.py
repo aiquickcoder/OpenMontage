@@ -25,10 +25,14 @@ import sys
 from pathlib import Path
 
 SESSION = Path.home() / ".config" / "openmontage" / "telegram"
+# One login per consumer, never a copy: three copies of one session (the films, the channels collector, the viral
+# pick) ran at once through exits with different IPs and Telegram killed the key — AuthKeyDuplicatedError, 02.11.
+SESSIONS = {"films": SESSION, "channels": SESSION.parent / "telegram-channels",
+            "viral": SESSION.parent / "telegram-viral"}
 PROXY = os.environ.get("TG_CLIENT_PROXY", "http://127.0.0.1:10809")  # not TG_PROXY: the factory bot's
 
 
-def client():
+def client(path: Path = SESSION):
     from telethon import TelegramClient
 
     api_id, api_hash = os.environ.get("TG_API_ID"), os.environ.get("TG_API_HASH")
@@ -37,19 +41,20 @@ def client():
     SESSION.parent.mkdir(parents=True, exist_ok=True)
     kind, rest = PROXY.split("://", 1)
     host, port = rest.rsplit(":", 1)
-    return TelegramClient(str(SESSION), int(api_id), api_hash, proxy=(kind, host, int(port)))
+    return TelegramClient(str(path), int(api_id), api_hash, proxy=(kind, host, int(port)))
 
 
-async def login() -> None:
+async def login(name: str = "films") -> None:
     import getpass
 
     import qrcode
     from telethon.errors import SessionPasswordNeededError
 
-    c = client()
+    path = SESSIONS[name]
+    c = client(path)
     await c.connect()
     if await c.is_user_authorized():
-        print("already logged in as", (await c.get_me()).username or "(no username)")
+        print(f"[{name}] already logged in as", (await c.get_me()).username or "(no username)")
         return
     from datetime import datetime, timezone
 
@@ -68,8 +73,8 @@ async def login() -> None:
         except SessionPasswordNeededError:
             await c.sign_in(password=getpass.getpass("Облачный пароль Telegram: "))
             break
-    os.chmod(f"{SESSION}.session", 0o600)
-    print("logged in as", (await c.get_me()).username or "(no username)")
+    os.chmod(f"{path}.session", 0o600)
+    print(f"[{name}] logged in as", (await c.get_me()).username or "(no username)")
     await c.disconnect()
 
 
@@ -142,8 +147,8 @@ def city_channels(city: str | None) -> list[str]:
 
 
 def main() -> None:
-    if len(sys.argv) >= 2 and sys.argv[1] == "login":
-        asyncio.run(login())
+    if len(sys.argv) >= 2 and sys.argv[1] == "login":  # login [films|channels|viral] — each its own login
+        asyncio.run(login(sys.argv[2] if len(sys.argv) > 2 else "films"))
     elif len(sys.argv) == 5 and sys.argv[1] == "fetch":
         sys.exit(asyncio.run(fetch(sys.argv[2], int(sys.argv[3]), Path(sys.argv[4]))))
     elif len(sys.argv) >= 3 and sys.argv[1] == "search":

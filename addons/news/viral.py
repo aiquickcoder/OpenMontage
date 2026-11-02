@@ -193,24 +193,17 @@ def fold(rows: list[dict]) -> list[dict]:
     return sorted(out, key=lambda r: r["ts"])
 
 
+NOT_LOGGED = "the viral pick has no Telegram login of its own — the owner runs: tg_client.py login viral"
+
+
 def session_copy(force: bool = False) -> Path:
-    """Our own copy of the factory's Telegram session (the same login, SQLite's backup API, 0600) — as the channels
-    engine does: an agent's tg_client.py and this pick never lock one SQLite file at once."""
+    """The pick's own Telegram login (tg_client.py login viral). Never a copy of the factory's session: copies are the
+    same key, and three of them at once through exits with different IPs got it killed (AuthKeyDuplicatedError, 02.11)."""
     import tg_client
 
-    main = Path(f"{tg_client.SESSION}.session")
-    own = tg_client.SESSION.parent / "telegram-viral.session"
-    if force or not own.exists():
-        if not main.exists():
-            raise RuntimeError("no Telegram session — the owner runs tg_client.py login once")
-        own.unlink(missing_ok=True)
-        src = sqlite3.connect(f"file:{main}?mode=ro", uri=True, timeout=30)
-        dst = sqlite3.connect(str(own))
-        with dst:
-            src.backup(dst)
-        src.close()
-        dst.close()
-        os.chmod(own, 0o600)
+    own = Path(f"{tg_client.SESSIONS['viral']}.session")
+    if not own.exists():
+        raise RuntimeError(NOT_LOGGED)
     return own
 
 
@@ -231,14 +224,10 @@ async def read(channels: Iterable[str], hours: float, per: int = 400) -> list[di
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     c = client()
     await c.connect()
-    if not await c.is_user_authorized():  # the owner logged in again: take the fresh login
-        await c.disconnect()
-        c = client(force=True)
-        await c.connect()
     rows: list[dict] = []
     try:
         if not await c.is_user_authorized():
-            raise RuntimeError("no Telegram session — the owner runs tg_client.py login once")
+            raise RuntimeError(NOT_LOGGED)
         for ch in channels:
             try:
                 async for m in c.iter_messages(ch, limit=per):
