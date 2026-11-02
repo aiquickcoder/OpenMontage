@@ -85,6 +85,10 @@ def films_in_work(exclude: set[str], idle_min: float = 15) -> list[str]:
     return out
 
 
+def delivered_all(films: list[str]) -> bool:
+    return all((REPO / "projects" / f / "kinescope.json").is_file() for f in films)
+
+
 def viral_turn(stop: datetime, film: str, films: list[str] | None = None):
     """Wait for our turn (owner 2026-11-01: one heavy job at a time on this server): the viral lock (the slot before
     may still be at work), then for another film to be done — its produce.py, render or cleaning, or an agent still
@@ -95,6 +99,9 @@ def viral_turn(stop: datetime, film: str, films: list[str] | None = None):
     import produce
 
     def late(why: str) -> None:
+        if delivered_all(films or [film]):  # made by hand meanwhile (the owner's night run, 02.11) — nothing to do
+            print("MORNING_RESULT: READY (the slot's films are out already)", flush=True)
+            sys.exit(0)
         if datetime.now(MSK) >= stop - timedelta(hours=1):
             telegram(f"⚠️ Вирусный ролик {film} не начат: {why}, до срока меньше часа")
             sys.exit(1)
@@ -195,6 +202,10 @@ def main() -> None:
             print("MORNING_RESULT: READY (the slot's films are out already)", flush=True)
             return
         lock = viral_turn(stop, films[0], films)
+        films = [f for f in films if not (REPO / "projects" / f / "kinescope.json").is_file()]
+        if not films:  # another run made them while this one waited for its turn — never a second copy
+            print("MORNING_RESULT: READY (the slot's films are out already)", flush=True)
+            return
         proj = REPO / "projects" / films[0]
         proj.mkdir(parents=True, exist_ok=True)
         picked = viral_pick(a.slot, acc, films, proj)
