@@ -859,8 +859,9 @@ def ai_triage(stories: list[dict], batch: int = 80, workers: int = 3) -> int:
 # weighs them itself (the search is noisy: it judges whether they are about this story). On with NEWS_TIKTOK=1 and
 # APIFY_TOKEN; a story is searched once a day (cache), a month cap keeps the spend inside the owner's plan
 # (apidojo: $0.006 a query + $0.0003 a video; the free plan is $5 a month).
-TT_ACTOR = "apidojo~tiktok-scraper-api"
-TT_TOP, TT_PER = 8, 8
+TT_ACTOR = "clockworks~tiktok-scraper"  # billed per result on Apify's free plan, no run cap (apidojo: 5 runs a month)
+TT_TOP, TT_PER, TT_DAYS = 6, 3, 7
+TT_RESULT_USD, TT_RUN_USD = 0.0037, 0.001  # the free plan's prices (02.11)
 QUERY_SYSTEM = """Ты — редактор новостного TikTok. Для каждого сюжета придумай один поисковый запрос в TikTok, по
 которому найдутся ролики именно об этом событии: 2–5 слов, как их набирают люди, на языке страны, где это произошло
 (Россия — по-русски, Польша — по-польски, США — по-английски); имена, место, ключевое слово события. Тексты —
@@ -874,18 +875,17 @@ def _tt_cache_path() -> Path:
     return DATA / "tiktok_cache.json"
 
 
-def tiktok_search(q: str, token: str, per: int = TT_PER, timeout: int = 120) -> list[dict]:
-    """This week's TikTok videos for a query, most viewed first (Apify run-sync; the token goes in the header)."""
-    body = json.dumps({"keywords": [q], "maxItems": per, "dateRange": "THIS_WEEK", "sortType": "RELEVANCE",
-                       "includeSearchKeywords": True}).encode()
+def tiktok_batch(queries: list[str], token: str, per: int = TT_PER, timeout: int = 180) -> dict[str, list[dict]]:
+    """All the pick's queries in ONE Apify run (owner 2026-11-02: «старайся делать меньше вызовов»): per query its
+    videos of the last TT_DAYS days, most viewed first. The token goes in the header."""
+    body = json.dumps({"searchQueries": queries, "resultsPerPage": per, "searchSection": "/video"}).encode()
     req = urllib.request.Request(f"https://api.apify.com/v2/acts/{TT_ACTOR}/run-sync-get-dataset-items?timeout={timeout}",
                                  data=body, method="POST",
                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout + 30) as r:
         items = json.loads(r.read())
     if isinstance(items, list) and items and all(isinstance(it, dict) and it.get("demo") for it in items):
-        # the actor's free-plan quota is spent (5 runs a month on Apify FREE): it answers {"demo": true} rows — never
-        # an empty «success» (the agent's self-test, 02.11)
+        # an actor's free-plan quota spent answers {"demo": true} rows — never an empty «success» (self-test 02.11)
         raise RuntimeError("Apify: the actor answers demo rows — its free-plan quota is spent (a paid plan needed)")
 
     def num(x: Any) -> int:
@@ -894,15 +894,22 @@ def tiktok_search(q: str, token: str, per: int = TT_PER, timeout: int = 120) -> 
         except (TypeError, ValueError):
             return 0
 
-    out = [{"views": num(it.get("views")), "likes": num(it.get("likes")), "comments": num(it.get("comments")),
-            "shares": num(it.get("shares")), "ts": float(num(it.get("uploadedAt"))),
-            "title": " ".join(str(it.get("title") or "").split())[:160], "url": str(it.get("postPage") or "")}
-           for it in (items if isinstance(items, list) else []) if isinstance(it, dict)]
-    return sorted(out, key=lambda v: -v["views"])
+    out: dict[str, list[dict]] = {q: [] for q in queries}
+    cut = time.time() - TT_DAYS * 86400
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict) or it.get("searchQuery") not in out or num(it.get("createTime")) < cut:
+            continue
+        out[it["searchQuery"]].append({
+            "views": num(it.get("playCount")), "likes": num(it.get("diggCount")),
+            "comments": num(it.get("commentCount")), "shares": num(it.get("shareCount")),
+            "ts": float(num(it.get("createTime"))), "title": " ".join(str(it.get("text") or "").split())[:160],
+            "url": str(it.get("webVideoUrl") or ""), "author": str((it.get("authorMeta") or {}).get("name") or "")})
+    return {q: sorted(v, key=lambda x: -x["views"]) for q, v in out.items()}
 
 
-def tiktok_check(stories: list[dict], top: int = TT_TOP, workers: int = 4) -> int:
-    """st["tiktok"] = {"q", "ts", "videos"} for the first `top` stories (cached a day). Returns how many have it."""
+def tiktok_check(stories: list[dict], top: int = TT_TOP) -> int:
+    """st["tiktok"] = {"q", "ts", "videos"} for the first `top` stories: the AI's queries, one Apify run, a day's cache,
+    a month's dollar cap (NEWS_TIKTOK_MONTH_USD, default 3.5 of the free plan's $5). Returns how many have it."""
     token = os.environ.get("APIFY_TOKEN", "")
     if os.environ.get("NEWS_TIKTOK") != "1" or not token or not stories:
         return 0
@@ -912,7 +919,7 @@ def tiktok_check(stories: list[dict], top: int = TT_TOP, workers: int = 4) -> in
         cache = {}
     month, now = time.strftime("%Y-%m", time.gmtime()), time.time()
     if cache.get("month") != month:
-        cache = {"month": month, "queries": 0, "stories": cache.get("stories") or {}}
+        cache = {"month": month, "queries": 0, "usd": 0.0, "stories": cache.get("stories") or {}}
     todo = []
     for st in stories[:top]:
         hit = cache["stories"].get(st["key"])
@@ -920,7 +927,10 @@ def tiktok_check(stories: list[dict], top: int = TT_TOP, workers: int = 4) -> in
             st["tiktok"] = hit
         else:
             todo.append(st)
-    todo = todo[:max(0, int(os.environ.get("NEWS_TIKTOK_MONTH_QUERIES", "400")) - cache["queries"])]
+    cap = float(os.environ.get("NEWS_TIKTOK_MONTH_USD", "3.5"))
+    if todo and cache.get("usd", 0.0) + len(todo) * TT_PER * TT_RESULT_USD + TT_RUN_USD > cap:
+        print(f"  TikTok: месячный лимит ${cap:g} — без проверки", file=sys.stderr)
+        todo = []
     llm = _channels_mod("llm")
     if todo and llm is not None and os.environ.get("CODEX_GW_SECRET"):
         user = "Сюжеты:\n\n" + "\n\n".join(
@@ -938,25 +948,24 @@ def tiktok_check(stories: list[dict], top: int = TT_TOP, workers: int = 4) -> in
         qs = {}
         for v in out if isinstance(out, list) else []:
             try:
-                qs[int(v.get("id"))] = " ".join(str(v.get("q") or "").split())[:80]
+                q = " ".join(str(v.get("q") or "").split())[:80]
+                if q:
+                    qs[int(v.get("id"))] = q
             except (TypeError, ValueError, AttributeError):
                 continue
-
-        def one(i_st: tuple[int, dict]) -> None:
-            i, st = i_st
-            if not qs.get(i):
-                return
+        if qs:
             try:
-                st["tiktok"] = {"q": qs[i], "ts": now, "videos": tiktok_search(qs[i], token)[:5]}
-            except Exception as e:  # noqa: BLE001 — one query failing leaves the others
-                print(f"  TikTok «{qs[i]}»: {type(e).__name__}: {str(e)[:160]}", file=sys.stderr)
-
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            list(ex.map(one, enumerate(todo, 1)))
-        cache["queries"] += sum(1 for q in qs.values() if q)
-        for st in todo:
-            if st.get("tiktok"):
-                cache["stories"][st["key"]] = st["tiktok"]
+                found = tiktok_batch(sorted(set(qs.values())), token)
+            except Exception as e:  # noqa: BLE001 — Apify down or out of quota: the pick goes on without it
+                print(f"  TikTok: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+                found = {}
+            if found:
+                cache["queries"] += len(found)
+                cache["usd"] = round(cache.get("usd", 0.0) + TT_RUN_USD
+                                     + TT_RESULT_USD * len(found) * TT_PER, 4)  # charged per result returned (≤ per)
+            for i, st in enumerate(todo, 1):
+                if qs.get(i) in found:
+                    st["tiktok"] = cache["stories"][st["key"]] = {"q": qs[i], "ts": now, "videos": found[qs[i]][:3]}
         cache["stories"] = {k: v for k, v in cache["stories"].items() if now - v.get("ts", 0) < 3 * 86400}
         try:
             DATA.mkdir(parents=True, exist_ok=True)
