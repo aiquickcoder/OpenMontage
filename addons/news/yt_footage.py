@@ -243,7 +243,8 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
     dst.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac",
-                    "-b:a", "160k", "-movflags", "+faststart", str(dst)], check=True)
+                    "-b:a", "160k", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",
+                    "-movflags", "+faststart", str(dst)], check=True)
     said = " ".join(w for w, t in captions(ref) if t0 <= t < t1)
     channel = meta.get("channel") or meta.get("uploader") or ""
     cuts = scenes(dst)
@@ -425,6 +426,7 @@ def tt_cut(url: str, t0: float, t1: float, dst: Path, tags: list[str] | None = N
     crop = f"crop=trunc(iw*{TT_CROP}/2)*2:trunc(ih*{TT_CROP}/2)*2"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}", "-vf", crop,
                     "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",  # TikTok's vid / vid_md5 tags
                     "-movflags", "+faststart", str(dst)], check=True)
     who = f"@{row['author']}" if row.get("author") else (row.get("name") or "TikTok")
     # no credit on a TikTok piece, on screen or in the post (owner 2026-11-02: «давай не ставить подпись») — the

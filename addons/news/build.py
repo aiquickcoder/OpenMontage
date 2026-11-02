@@ -687,6 +687,59 @@ def ai_budget(story: dict) -> tuple[int, int, float]:
 
 
 TT_MAX_SHOTS = 3
+# a source's container tags never reach the film (owner 2026-11-02: «заглянуть глубже — в метаданные… чтобы для тт не
+# было тригером»): TikTok's own files carry comment=vid:<its id>, vid_md5 and aigc_info — TikTok knows its file by them
+FOREIGN_TAGS = ("comment", "vid_md5", "aigc_info", "title", "artist", "album", "description", "synopsis", "copyright",
+                "com.apple.quicktime", "location", "creation_time")
+
+
+def tiktok_file(path: Path) -> str:
+    """TikTok's own tag in a file that came from anywhere (a Telegram channel reposts TikTok videos: toporlive_206022,
+    31.10, carried comment=vid:…): the vid, else ''."""
+    if not path.is_file() or path.suffix.lower() not in (".mp4", ".mov", ".m4v"):
+        return ""
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", str(path)],
+                         capture_output=True, text=True).stdout or "{}"
+    tags = {k.lower(): str(v) for k, v in ((json.loads(out).get("format") or {}).get("tags") or {}).items()}
+    if tags.get("comment", "").startswith("vid:"):
+        return tags["comment"][4:]
+    return tags.get("vid_md5", "") or ("aigc_info" if "aigc_info" in tags else "")
+
+
+def reposted_tiktok(proj: Path, story: dict) -> list[str]:
+    """Warnings for post / YouTube footage that is a TikTok file (README «Кадры из TikTok»: TikTok knows it by its
+    picture wherever we got it — ≤ 4 s of it, not the first shot)."""
+    out = []
+    shots = [s for st in stories(story) for s in st.get("shots", [])]
+    for i, s in enumerate(shots):
+        src = s.get("src_orig") or s.get("src", "")
+        if not src.startswith("media/") or "/tt/" in f"/{src}":
+            continue
+        vid = tiktok_file(proj / src)
+        if vid:
+            out.append(f"shot {i + 1}: {src} is a TikTok file (vid {vid[:24]}) reposted by the channel — keep it ≤ 4 s"
+                       + (" and not the first shot" if i == 0 else ""))
+    return out
+
+
+def clean_metadata(path: Path) -> None:
+    """Remux in place without any global, stream or chapter metadata (no re-encode); neutral handler names."""
+    tmp = path.with_name(path.stem + ".meta.mp4")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-map", "0", "-c", "copy", "-map_metadata", "-1",
+                    "-map_metadata:s", "-1", "-map_chapters", "-1", "-metadata:s:v", "handler_name=VideoHandler",
+                    "-metadata:s:a", "handler_name=SoundHandler", "-movflags", "+faststart", str(tmp)], check=True)
+    tmp.replace(path)
+
+
+def foreign_tags(path: Path) -> list[str]:
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json", str(path)],
+                         capture_output=True, text=True).stdout or "{}"
+    d = json.loads(out)
+    tags = dict((d.get("format") or {}).get("tags") or {})
+    for st in d.get("streams") or []:
+        tags.update(st.get("tags") or {})
+    return sorted(k for k in tags if any(k.lower().startswith(f) for f in FOREIGN_TAGS)
+                  or "google" in str(tags[k]).lower())
 
 
 def tiktok_shots(story: dict) -> list[int]:
@@ -1588,7 +1641,7 @@ def main() -> None:
           + (" — OVER: use the post's footage at other in-points, crops of its photos, Commons photos of the very "
              "place, or drop the story" if over else ""), flush=True)
     for warning in picture_warnings(story) + thesis_warnings(story) + unused_post_media(proj, story) + [
-            "TikTok: " + w for w in tiktok_problems(story)]:
+            "TikTok: " + w for w in tiktok_problems(story) + reposted_tiktok(proj, story)]:
         print("warning:", warning, flush=True)
     if a.storyboard:
         items = film_items(proj, story, timing, phrases, strict=False)
@@ -1615,6 +1668,9 @@ def main() -> None:
         return
     out = proj / "renders" / "final.mp4"
     render(ws, out)
+    clean_metadata(out)
+    if bad := foreign_tags(out):
+        sys.exit(f"final.mp4 still carries foreign metadata: {', '.join(bad)}")
     print(json.dumps(qa(proj, out, items), ensure_ascii=False)[:400])
     if a.split and story.get("stories"):
         for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):

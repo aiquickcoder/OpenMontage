@@ -1491,3 +1491,44 @@ def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, m
     # always cleaned: «clean: none» does not let a TikTok piece skip clean_footage.py
     assert build.unclean_footage({"shots": [{"src": "media/tt/a.mp4", "clean": "none"},
                                             {"src": "media/yt/b.mp4", "clean": "none"}]}) == ["media/tt/a.mp4"]
+
+
+def test_no_source_metadata_reaches_a_piece_or_the_film(tmp_path, monkeypatch):
+    """Owner 2026-11-02: «в метаданные… чтобы для тт не было тригером» — TikTok's files carry comment=vid:…, vid_md5,
+    aigc_info; a piece and the final film keep none."""
+    import subprocess
+    import sys as _sys
+    import types
+
+    from addons.news import build, yt_footage
+
+    src = tmp_path / "tiktok.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x568:rate=25", "-t", "5",
+                    "-c:v", "libx264", "-metadata", "comment=vid:v26044gc0000test", "-metadata", "vid_md5=2e20c802",
+                    "-metadata", 'aigc_info={"aigc_label_type":0}', "-movflags", "use_metadata_tags", str(src)],
+                   check=True)
+    assert set(build.foreign_tags(src)) >= {"comment", "vid_md5", "aigc_info"}
+    row = {"url": "https://www.tiktok.com/@x/video/1", "author": "x", "name": "x", "title": "", "ts": 0, "views": 0}
+    monkeypatch.setattr(yt_footage, "tt_item", lambda url, fresh=False: row)
+    monkeypatch.setattr(yt_footage, "tt_video", lambda url: src)
+    monkeypatch.setitem(_sys.modules, "library", types.SimpleNamespace(add=lambda *a, **k: None))
+    piece = yt_footage.tt_cut(row["url"], 0.5, 3.0, tmp_path / "media" / "tt" / "a.mp4")
+    assert build.foreign_tags(piece) == []
+    film = tmp_path / "final.mp4"
+    film.write_bytes(src.read_bytes())
+    build.clean_metadata(film)
+    assert build.foreign_tags(film) == []
+
+
+def test_a_telegram_video_that_is_a_tiktok_file_is_flagged(tmp_path):
+    import subprocess
+
+    from addons.news import build
+
+    (tmp_path / "media").mkdir()
+    for name, tags in (("toporlive_206022.mp4", ["-metadata", "comment=vid:v26044gc0000test"]), ("plain.mp4", [])):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x568:rate=25", "-t", "2",
+                        "-c:v", "libx264", *tags, str(tmp_path / "media" / name)], check=True)
+    story = {"shots": [{"src": "media/toporlive_206022.mp4"}, {"src": "media/plain.mp4"}]}
+    w = build.reposted_tiktok(tmp_path, story)
+    assert len(w) == 1 and "toporlive_206022.mp4 is a TikTok file" in w[0] and "not the first shot" in w[0]
