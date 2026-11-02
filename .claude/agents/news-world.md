@@ -50,7 +50,10 @@ A one-story film plus: `"kind": "world"`, `"country": "<ISO code>"` (world.py ma
 its author named in the text: «„Госпереворот“ в Польше и почему президент *развернул самолёт*»), `"hook_basis"`,
 `"notes"`, `"source"` (the posts and the media links you checked), `"key"` = `<country>-<topic>-<date>`. Up to four
 theses (build.py allows four in a world story), each on a turn of the story. Voice, music, CTA as in the one-story
-format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs, the question, hashtags.
+format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs, the question, hashtags. The hook,
+the caption's first line and `"title"` are an action and a promise, not a rubric or a question (owner 2026-11-02,
+README «Хук»: «Хакеры взломали приложение МЧС — вот что они разослали людям»); thematic clips come from the story's
+own context and go for the emotion (README «Кадры — в эмоцию и в контекст»: a US story — never a Mumbai call centre).
 
 ## Pictures — our footage first
 - **The posts' own media** (dossier `media/tg/`), whole albums. The owner 2026-10-31: «Wikimedia Commons — не

@@ -31,6 +31,12 @@ for the pipeline steps; they all apply here.
 ## The film: «Почему это произошло» (40–70 s; length is a guide, never a limit)
 - **Second one — the hook-conflict:** the strongest honest clash of the story, said and on the hook card
   («Зумеры вышли против армии Мерца: *108 миллиардов* — на оружие или на людей?»). Its hardest picture first.
+  Bait = an action and a promise, not a rubric (owner 2026-11-02): who did what + the detail one wants to see, or the
+  hero's words in quotes — «Хакеры взломали приложение МЧС — вот что они разослали людям», not «Приложение МЧС
+  разослало фейки. Что с системой оповещения?». The same for the caption's first line and `"title"`.
+- **Pictures hit the emotion and keep the context** (owner 2026-11-02, README «Кадры — в эмоцию и в контекст»): show
+  the story's hero — the dog, the people it hit, their things, the place — not neutral façades; a thematic clip from
+  the same context (a US story — never a Mumbai call centre); no blood, wounds or victims' faces.
 - **The gist and the stake:** what happened in one picture-phrase, and what is at stake for an ordinary person
   (money, a home, children, health, fairness).
 - **Why it happened:** the cause in 2–4 plain phrases — the background, the decision, the numbers that explain it;
