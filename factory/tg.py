@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -40,6 +41,10 @@ def video_meta(path: Path) -> dict[str, int]:
         return {}
 
 
+STRIP = ["-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",
+         "-metadata:s:v", "handler_name=VideoHandler", "-metadata:s:a", "handler_name=SoundHandler"]
+
+
 def fit_kbps(duration: float, audio_kbps: int = 128, target: int = FIT_BYTES) -> int:
     """Video kbit/s that keeps a film of this length under the bot's upload limit."""
     return max(300, int(target * 8 / 1000 / max(duration, 1)) - audio_kbps)
@@ -57,8 +62,11 @@ def squeeze(path: Path) -> Path:
                 "-b:v", f"{kbps}k", "-maxrate", f"{kbps * 3 // 2}k", "-bufsize", f"{kbps * 2}k",
                 "-passlogfile", str(Path(tmp) / "pass")]
         subprocess.run(x264 + ["-pass", "1", "-an", "-f", "null", "-"], check=True, timeout=3600)
-        subprocess.run(x264 + ["-pass", "2", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out)],
-                       check=True, timeout=3600)
+        # the copy the owner posts carries no one's markers either (owner 2026-11-02: «теги и внутренние моменты,
+        # которые могут порезать охваты»): the honest minimum — the encoder's own string and the real time
+        now = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime())
+        subprocess.run(x264 + ["-pass", "2", "-c:a", "aac", "-b:a", "128k", *STRIP, "-metadata", f"creation_time={now}",
+                               "-movflags", "+faststart", str(out)], check=True, timeout=3600)
     return out
 
 

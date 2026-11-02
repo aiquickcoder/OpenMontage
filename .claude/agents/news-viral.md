@@ -33,6 +33,7 @@ for the pipeline steps; they all apply here.
   («Зумеры вышли против армии Мерца: *108 миллиардов* — на оружие или на людей?»). Its hardest picture first.
 - **TikTok footage** (owner 2026-11-02, README «Кадры из TikTok»): when the posts, agencies and TV are thin —
   `yt_footage.py tt-search / tt-peek / tt-cut`; ≤ 4 s pieces, ≤ 3 a film, never the first shot (build.py refuses),
+  no crop / mirror / speed tricks,
   official media accounts first, an eyewitness only when date and place match the agencies; always through
   clean_footage.py (the author's burned-in titles; build.py refuses "clean": "none" for them); no credit —
   neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).

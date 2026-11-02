@@ -1450,7 +1450,7 @@ def test_viral_tiktok_check_searches_the_best_stories_once_a_day(tmp_path, monke
     assert asked == []
 
 
-def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, monkeypatch):
+def test_tiktok_pieces_are_short_silent_and_a_film_takes_few(tmp_path, monkeypatch):
     """Owner 2026-11-02: footage from TikTok, «самое критичное 3-е» — TikTok cuts the reach of re-uploads."""
     import json as _json
     import subprocess
@@ -1474,7 +1474,7 @@ def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, m
                             str(out)], capture_output=True, text=True).stdout
     streams = _json.loads(probe)["streams"]
     assert [s["codec_type"] for s in streams] == ["video"]                          # no sound
-    assert streams[0]["width"] < 576 and streams[0]["height"] < 1024                # the edges cropped
+    assert (streams[0]["width"], streams[0]["height"]) == (576, 1024)               # no crop tricks (owner 02.11)
     meta = _json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
     assert meta["credit"] == "" and meta["author"] == "@hessenschau" and meta["tiktok"] is True   # no credit
     with pytest.raises(SystemExit):
@@ -1515,9 +1515,18 @@ def test_no_source_metadata_reaches_a_piece_or_the_film(tmp_path, monkeypatch):
     piece = yt_footage.tt_cut(row["url"], 0.5, 3.0, tmp_path / "media" / "tt" / "a.mp4")
     assert build.foreign_tags(piece) == []
     film = tmp_path / "final.mp4"
-    film.write_bytes(src.read_bytes())
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-f", "lavfi", "-i", "sine=frequency=300", "-t", "3",
+                    "-c:v", "libx264", "-c:a", "aac", "-metadata", "hyperframes_version=0.8.181", "-movflags",
+                    "use_metadata_tags", str(film)], check=True)
+    assert "hyperframes_version" in build.foreign_tags(film)
     build.clean_metadata(film)
     assert build.foreign_tags(film) == []
+    tags = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", str(film)],
+                          capture_output=True, text=True).stdout
+    assert "creation_time" in tags and "encoder" in tags and "hyperframes" not in tags     # the honest minimum
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,nb_read_frames", "-count_frames",
+                            "-of", "csv=p=0", str(film)], capture_output=True, text=True).stdout
+    assert "video" in probe and "audio" in probe                                       # still plays, both streams
 
 
 def test_a_telegram_video_that_is_a_tiktok_file_is_flagged(tmp_path):

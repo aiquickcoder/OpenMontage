@@ -43,6 +43,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -687,10 +688,16 @@ def ai_budget(story: dict) -> tuple[int, int, float]:
 
 
 TT_MAX_SHOTS = 3
-# a source's container tags never reach the film (owner 2026-11-02: «заглянуть глубже — в метаданные… чтобы для тт не
-# было тригером»): TikTok's own files carry comment=vid:<its id>, vid_md5 and aigc_info — TikTok knows its file by them
-FOREIGN_TAGS = ("comment", "vid_md5", "aigc_info", "title", "artist", "album", "description", "synopsis", "copyright",
-                "com.apple.quicktime", "location", "creation_time")
+# no one's markers in the film (owner 2026-11-02: «заглянуть глубже — в метаданные… чтобы для тт не было тригером»;
+# «перепроверь… теги и внутренние моменты»): TikTok's files carry comment=vid:<its id>, vid_md5, aigc_info, YouTube's
+# «produced by Google», HyperFrames writes hyperframes_version / _renderer — all gone. An «honest minimum» stays (the
+# web check 02.11: no platform says a bare file loses reach, but an empty file is atypical — phones and every ffmpeg /
+# HandBrake export carry these): the muxer's own «Lavf…» encoder string, x264's banner in the stream, and creation_time
+# = the real render time. Nothing faked (no phone model, no CapCut tags, no C2PA).
+PLAIN_TAGS = {"major_brand", "minor_version", "compatible_brands", "language", "handler_name", "vendor_id", "encoder",
+              "creation_time"}
+STRIP = ["-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",
+         "-metadata:s:v", "handler_name=VideoHandler", "-metadata:s:a", "handler_name=SoundHandler"]
 
 
 def tiktok_file(path: Path) -> str:
@@ -725,21 +732,24 @@ def reposted_tiktok(proj: Path, story: dict) -> list[str]:
 def clean_metadata(path: Path) -> None:
     """Remux in place without any global, stream or chapter metadata (no re-encode); neutral handler names."""
     tmp = path.with_name(path.stem + ".meta.mp4")
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-map", "0", "-c", "copy", "-map_metadata", "-1",
-                    "-map_metadata:s", "-1", "-map_chapters", "-1", "-metadata:s:v", "handler_name=VideoHandler",
-                    "-metadata:s:a", "handler_name=SoundHandler", "-movflags", "+faststart", str(tmp)], check=True)
+    now = time.strftime("%Y-%m-%dT%H:%M:%S.000000Z", time.gmtime())
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-map", "0", "-c", "copy", *STRIP,
+                    "-metadata", f"creation_time={now}",
+                    "-movflags", "+faststart", str(tmp)], check=True)
     tmp.replace(path)
 
 
 def foreign_tags(path: Path) -> list[str]:
+    """Every marker left: a tag beyond the format's own fields and the honest minimum, a non-neutral handler."""
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json", str(path)],
                          capture_output=True, text=True).stdout or "{}"
     d = json.loads(out)
     tags = dict((d.get("format") or {}).get("tags") or {})
     for st in d.get("streams") or []:
         tags.update(st.get("tags") or {})
-    return sorted(k for k in tags if any(k.lower().startswith(f) for f in FOREIGN_TAGS)
-                  or "google" in str(tags[k]).lower())
+    bad = {k for k in tags if k.lower() not in PLAIN_TAGS}
+    bad |= {f"handler_name={v}" for k, v in tags.items() if k == "handler_name" and v not in ("VideoHandler", "SoundHandler")}
+    return sorted(bad)
 
 
 def tiktok_shots(story: dict) -> list[int]:

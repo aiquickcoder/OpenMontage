@@ -22,8 +22,8 @@ video is downloaded: the words from YouTube's own transcript, the picture from i
         piece without the author's
         burned-in captions
     .venv/bin/python addons/news/yt_footage.py tt-cut <tiktok url> <from> <to> projects/<slug>/media/tt/<name>.mp4
-        ≤ 4 s, no sound, ~4 % cut off each side (92 % of each dimension kept), no credit anywhere (the author and the
-        link stay with us: <name>.json and the base of pictures)
+        ≤ 4 s, no sound, no credit anywhere (the author and the link stay with us: <name>.json and the base of
+        pictures); no crop or other tricks (TikTok forbids «tricks designed to bypass our systems»)
 
 The transcript is YouTube's own captions (the «Расшифровка видео» panel: a channel's or the automatic ones), fetched as
 a small json3 file. Short news clips often have none — find --listen then downloads the clip (a few MB) and
@@ -245,8 +245,7 @@ def cut(ref: str, t0: float, t1: float, dst: Path, tags: list[str] | None = None
     dst.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac",
-                    "-b:a", "160k", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",
-                    "-movflags", "+faststart", str(dst)], check=True)
+                    "-b:a", "160k", *STRIP, "-movflags", "+faststart", str(dst)], check=True)
     said = " ".join(w for w, t in captions(ref) if t0 <= t < t1)
     channel = meta.get("channel") or meta.get("uploader") or ""
     cuts = scenes(dst)
@@ -297,15 +296,19 @@ def scout(query: str, words: str, n: int = 8, fresh: bool = False, lang: str = "
 
 # -- TikTok -------------------------------------------------------------------------------------------------------------
 # Owner 2026-11-02: «а что если находить так футажи нам нужные?» — yes, with «самое критичное 3-е»: TikTok knows its
-# own videos and cuts the reach of «unoriginal» re-uploads. So every TikTok piece is ≤ 4 s, without its sound, its
-# edges cropped 8 %, inside our layout among other sources; a film takes ≤ 3 of them and never opens on one (build.py
+# own videos and cuts the reach of «unoriginal» re-uploads. So every TikTok piece is ≤ 4 s, without its sound, inside
+# our layout among other sources (no crop, mirror or speed tricks: TikTok forbids «tricks designed to bypass our
+# systems»; owner 02.11: «мы же всё равно минимально используем футаж»); a film takes ≤ 3 of them and never opens on one (build.py
 # refuses), no credit on it; official media accounts (hessenschau, ITV…) before eyewitnesses, and an eyewitness only when the date and
 # the place match the agencies. Search through Apify (APIFY_TOKEN, the actor the viral pick uses); the file comes from
 # the CDN link Apify returns — yt-dlp cannot reach TikTok from the server (02.11). A month cap keeps the spend in the
 # owner's Apify plan (with the pick's TikTok look: ≈ $4.4 of the free $5).
 TT_ACTOR = "apidojo~tiktok-scraper-api"
+# a cut piece keeps none of its source's markers (TikTok's vid / vid_md5 / aigc_info, «produced by Google») — as
+# build.py's final film (owner 2026-11-02)
+STRIP = ["-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",
+         "-metadata:s:v", "handler_name=VideoHandler", "-metadata:s:a", "handler_name=SoundHandler"]
 TT_MAX_PIECE = 4.0
-TT_CROP = 0.92
 TT_CACHE = CACHE.parent / "tiktok"
 
 
@@ -436,11 +439,8 @@ def tt_cut(url: str, t0: float, t1: float, dst: Path, tags: list[str] | None = N
         dst = dst.parent / "tt" / dst.name
     row, src = tt_item(url), tt_video(url)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    crop = f"crop=trunc(iw*{TT_CROP}/2)*2:trunc(ih*{TT_CROP}/2)*2"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}", "-vf", crop,
-                    "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-                    "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1",  # TikTok's vid / vid_md5 tags
-                    "-movflags", "+faststart", str(dst)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0}", "-i", str(src), "-t", f"{t1 - t0}", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+                    *STRIP, "-movflags", "+faststart", str(dst)], check=True)
     who = f"@{row['author']}" if row.get("author") else (row.get("name") or "TikTok")
     # no credit on a TikTok piece, on screen or in the post (owner 2026-11-02: «давай не ставить подпись») — the
     # author and the link stay here, for us
