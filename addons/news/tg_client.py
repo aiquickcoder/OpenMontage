@@ -79,11 +79,15 @@ async def login(name: str = "films") -> None:
 
 
 async def login_bot(name: str = "films") -> None:
-    """The same QR login, but the owner taps a button in the factory bot on the phone instead of scanning a code:
-    the button carries the tg://login link, refreshed in the same message while each one lives (~30 s). A cloud
+    """The same QR login, the code sent to the owner's factory-bot chat as a picture and refreshed in place while each
+    code lives (~30 s): the owner opens the chat on a computer and scans it with the phone (Telegram → Settings →
+    Devices → Link Desktop Device). A tg://login button does nothing when tapped (Telegram's guard, 02.11). A cloud
     password still has to be typed by the owner in a terminal (`login <name>`); this never asks for it."""
+    import io
+    import json as _json
     from datetime import datetime, timezone
 
+    import qrcode
     from telethon.errors import SessionPasswordNeededError
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -96,11 +100,17 @@ async def login_bot(name: str = "films") -> None:
     if await c.is_user_authorized():
         print(f"[{name}] already logged in")
         return
-    text = (f"🔑 Подключить сервер новостей к Telegram — вход «{name}». Нажмите кнопку и подтвердите вход "
-            "(кнопка обновляется сама; без облачного пароля).")
+    caption = (f"🔑 Вход «{name}» для сервера новостей. Откройте этот чат на компьютере и отсканируйте код телефоном: "
+               "Telegram → Настройки → Устройства → Подключить устройство. Код обновляется сам каждые ~30 с.")
+
+    def png(url: str) -> bytes:
+        buf = io.BytesIO()
+        qrcode.make(url, border=2, box_size=10).save(buf, format="PNG")
+        return buf.getvalue()
+
     qr = await c.qr_login()
-    msg = tg.call("sendMessage", chat_id=tg.chat, text=text,
-                  reply_markup={"inline_keyboard": [[{"text": "Подключить", "url": qr.url}]]})
+    msg = tg.call("sendPhoto", chat_id=tg.chat, caption=caption, files={"photo": ("qr.png", png(qr.url), "image/png")},
+                  http_timeout=60)
     ok = False
     try:
         for _ in range(24):  # about ten minutes
@@ -111,23 +121,24 @@ async def login_bot(name: str = "films") -> None:
                 break
             except asyncio.TimeoutError:
                 await qr.recreate()
-                tg.call("editMessageReplyMarkup", chat_id=tg.chat, message_id=msg["message_id"],
-                        reply_markup={"inline_keyboard": [[{"text": "Подключить", "url": qr.url}]]})
+                media = {"type": "photo", "media": "attach://qr", "caption": caption}
+                tg.call("editMessageMedia", chat_id=tg.chat, message_id=msg["message_id"], media=_json.dumps(media),
+                        files={"qr": ("qr.png", png(qr.url), "image/png")}, http_timeout=60)
             except SessionPasswordNeededError:
-                tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
-                        text=f"🔑 Вход «{name}»: на аккаунте облачный пароль — этот вход нужно сделать в Терминале "
-                             "(bash ~/Desktop/telegram_login.sh).")
-                return
+                tg.call("editMessageCaption", chat_id=tg.chat, message_id=msg["message_id"],
+                        caption=f"🔑 Вход «{name}»: на аккаунте облачный пароль — этот вход нужно сделать в Терминале "
+                                "(bash ~/Desktop/telegram_login.sh).")
+                break
     finally:
         if ok:
             os.chmod(f"{path}.session", 0o600)
             me = await c.get_me()
-            tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
-                    text=f"✅ Вход «{name}» выполнен ({me.username or me.first_name}).")
+            tg.call("editMessageCaption", chat_id=tg.chat, message_id=msg["message_id"],
+                    caption=f"✅ Вход «{name}» выполнен ({me.username or me.first_name}).")
             print(f"[{name}] logged in as", me.username or "(no username)")
         elif "msg" in locals():
-            tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
-                    text=f"⌛ Вход «{name}» не подтверждён за 10 минут — попросите Claude прислать кнопку снова.")
+            tg.call("editMessageCaption", chat_id=tg.chat, message_id=msg["message_id"],
+                    caption=f"⌛ Вход «{name}» не подтверждён — попросите Claude прислать код снова.")
         await c.disconnect()
     if not ok:  # a chain «login-bot films && login-bot channels» must stop here, not run on as if logged in
         sys.exit(f"[{name}] not logged in")
