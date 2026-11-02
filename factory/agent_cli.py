@@ -25,7 +25,8 @@ def engine(env: dict[str, str]) -> str:
 def codex_command(prompt: str, cwd: Path, last_message: Path, env: dict[str, str], search: bool = False) -> list[str]:
     provider = ('{name="Quillon codex-gateway", base_url="' + env.get("FACTORY_CODEX_GATEWAY", GATEWAY)
                 + '", env_key="CODEX_GW_SECRET", wire_api="responses"}')
-    cmd = ["codex", "exec", "--skip-git-repo-check", "-C", str(cwd), "-s", "workspace-write",
+    # --search belongs to codex itself, not to exec: «codex exec --search» is refused (the first viral run, 02.11)
+    cmd = ["codex"] + (["--search"] if search else []) + ["exec", "--skip-git-repo-check", "-C", str(cwd), "-s", "workspace-write",
            "-c", "sandbox_workspace_write.network_access=true",
            "-c", "model_provider=quillon_gw", "-c", f"model_providers.quillon_gw={provider}",
            "-m", env.get("FACTORY_CODEX_MODEL", MODEL),
@@ -34,7 +35,7 @@ def codex_command(prompt: str, cwd: Path, last_message: Path, env: dict[str, str
     for d in WRITABLE:
         if Path(d).is_dir():
             cmd += ["--add-dir", d]
-    return cmd + (["--search"] if search else []) + [prompt]
+    return cmd + [prompt]
 
 
 def codex_env(env: dict[str, str]) -> dict[str, str]:

@@ -120,6 +120,8 @@ def test_codex_runs_through_the_gateway_in_its_sandbox(tmp_path):
     (tmp_path / "last.txt").write_text("AUTOPILOT_RESULT: READY projects/b1 done", encoding="utf-8")
     assert agent_cli.result_text("user\nEnd with AUTOPILOT_RESULT: READY projects/<id>", tmp_path / "last.txt").startswith("AUTOPILOT_RESULT: READY projects/b1")
     assert agent_cli.result_text("anything", tmp_path / "missing.txt") == ""
+    web = agent_cli.codex_command("P", tmp_path, tmp_path / "l.txt", {}, search=True)
+    assert web[:3] == ["codex", "--search", "exec"]  # «codex exec --search» is refused by the CLI
 
 
 def test_prompt_mentions_addons():
