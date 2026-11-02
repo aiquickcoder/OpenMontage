@@ -129,6 +129,8 @@ async def login_bot(name: str = "films") -> None:
             tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
                     text=f"⌛ Вход «{name}» не подтверждён за 10 минут — попросите Claude прислать кнопку снова.")
         await c.disconnect()
+    if not ok:  # a chain «login-bot films && login-bot channels» must stop here, not run on as if logged in
+        sys.exit(f"[{name}] not logged in")
 
 
 async def fetch(channel: str, post: int, dst: Path) -> int:
