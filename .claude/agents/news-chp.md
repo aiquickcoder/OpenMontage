@@ -67,7 +67,9 @@ watch on («*Жёсткое задержание* СОБР», «*Новая сх
 guilt before a verdict — and a second one, a fact, may come on the outcome; the pictures follow the story without
 added drama — what it is about is on screen when it matters (a dog attack — the dog), not only façades and maps
 (owner 2026-11-02, README «Кадры — по смыслу истории»); each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
-marker, ≤44 characters (README «Тезисы на кадрах»). Official agency footage — МВД России on Rutube,
+marker, ≤44 characters (README «Тезисы на кадрах»). When the post's, the agency's and TV footage are thin, short
+pieces of the event from TikTok (`yt_footage.py tt-search / tt-peek / tt-cut`, README «Кадры из TikTok»: ≤ 4 s
+each, ≤ 3 a film, never the first shot, no credit). Official agency footage — МВД России on Rutube,
 НАК on YouTube, ГАИ, СК — is cleaned like any other (owner 2026-10-31), facts from the agency's own description;
 a news site's article video (tnv.ru) comes with `article_video.py`. A ministry video marked «Видео сгенерировано ИИ»
 is not footage. Before writing about the hurt, look for a later report (29.10: «выжила» in one channel, died in
