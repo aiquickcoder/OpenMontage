@@ -11,7 +11,8 @@ still cameras go into media/wm.json before this (see addons/news/README.md «О�
 2. In parallel: gen_shots.py (Flow, the browser) and clean_footage.py --run (the watermark-cleaner, CPU).
 3. build.py --retime. Steps 2–4 run under one lock shared by every project (owner 2026-11-01: one heavy job at a time
    on this server — two films cleaning and rendering at once drove the load to ~300 and took sshd down); a second
-   produce.py waits for the first.
+   produce.py waits for the first, and a render or a cleaning started by hand (build.py, clean_footage.py --run)
+   is waited for too.
 4. A digest also gives one short per story for TikTok (build.py --split: 15–25 s, the hook in the first frame, a loop,
    no cat by default — owner 2026-10-30, the TikTok review); "tiktok": {"split": false} in story.json skips them.
 5. --send: the render to the owner's Telegram (caption from --caption; a viral TikTok film's caption opens with the
@@ -25,14 +26,22 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PY = str(REPO / ".venv" / "bin" / "python")
 RESERVE_FLOW_PROXY = "socks5://127.0.0.1:20900"  # the pinned xray exit: images work through it, Veo does not
 BUILD_LOCK = Path("/tmp/news_build.lock")
+# a film's heavy work outside produce.py's lock: a render (build.py without --voice-only / --storyboard), cleaning
+# (clean_footage.py --run) — an agent may run them by hand; and another film's produce.py (for morning.py)
+RENDER_OR_CLEAN = r"addons/news/build\.py(?![^\n]*--(?:voice-only|storyboard))|clean_footage\.py[^\n]*--run"
+HEAVY = re.compile(r"addons/news/produce\.py|" + RENDER_OR_CLEAN)
+DIRECT = re.compile(RENDER_OR_CLEAN)
+OTHERS_MAX_WAIT_S = 3 * 3600
 
 
 def speed(proxy: str) -> float:
@@ -81,6 +90,33 @@ def viral_line(story: dict) -> str:
     return f"📱 TikTok: {acc['name']} · ролик {n} из 2" + (f" · выложить в {when} МСК" if when else "")
 
 
+def heavy_jobs(rx: re.Pattern = HEAVY, skip: set[int] | None = None) -> list[str]:
+    """Other films' heavy work running now (one heavy job at a time on this server, owner 2026-11-01)."""
+    skip = (skip or set()) | {os.getpid(), os.getppid()}
+    out = subprocess.run(["ps", "-eo", "pid=,args="], capture_output=True, text=True).stdout
+    jobs = []
+    for line in out.splitlines():
+        pid, _, args = line.strip().partition(" ")
+        if pid.isdigit() and int(pid) not in skip and rx.search(args) and not args.lstrip().startswith(("ps ", "pgrep")):
+            jobs.append(f"{pid} {args[:160]}")
+    return jobs
+
+
+def wait_for_others(rx: re.Pattern, max_s: float, say=print) -> bool:
+    """Wait while another film renders or cleans; False when it is still at it after max_s."""
+    t0, told = time.time(), False
+    while True:
+        jobs = heavy_jobs(rx)
+        if not jobs:
+            return True
+        if not told:
+            say("waiting for another film's heavy job: " + "; ".join(jobs[:3]))
+            told = True
+        if time.time() - t0 > max_s:
+            return False
+        time.sleep(30)
+
+
 def run(cmd: list[str], env: dict | None = None, log: Path | None = None) -> subprocess.Popen:
     out = log.open("w") if log else None
     return subprocess.Popen(cmd, cwd=REPO, env={**os.environ, **(env or {}), "PYTHONUNBUFFERED": "1"},
@@ -110,6 +146,9 @@ def main() -> None:
     print("heavy lock: waiting", flush=True)
     fcntl.flock(lock, fcntl.LOCK_EX)  # held through cleaning, the render, the shorts and the bot's squeeze
     print("heavy lock: taken", flush=True)
+    # another produce.py waits on the lock; a render or a cleaning started by hand does not take it — wait for it too
+    if not wait_for_others(DIRECT, OTHERS_MAX_WAIT_S, lambda m: print(m, flush=True)):
+        fail("server busy: another film's render or cleaning ran for 3 h")
     jobs = {}
     if story.get("illustrations"):
         jobs["pictures"] = run([PY, "addons/news/gen_shots.py", f"{rel}/story.json", f"{rel}/illustrations"],

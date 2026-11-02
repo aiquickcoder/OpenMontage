@@ -71,20 +71,34 @@ def telegram(text: str) -> None:
 
 
 def viral_turn(stop: datetime, film: str):
-    """Wait for the viral lock (the slot before may still be at work: one heavy job at a time on this server, owner
-    2026-11-01); past an hour before the deadline there is no time left for a film — tell the owner and stop."""
+    """Wait for our turn (owner 2026-11-01: one heavy job at a time on this server): the viral lock (the slot before
+    may still be at work), then for another film's produce.py, render or cleaning (another agent's film) to end.
+    Past an hour before the deadline there is no time left for a film — tell the owner and stop."""
     import fcntl
+
+    import produce
+
+    def late(why: str) -> None:
+        if datetime.now(MSK) >= stop - timedelta(hours=1):
+            telegram(f"⚠️ Вирусный ролик {film} не начат: {why}, до срока меньше часа")
+            sys.exit(1)
 
     f = VIRAL_LOCK.open("w")
     while True:
         try:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return f
+            break
         except BlockingIOError:
-            if datetime.now(MSK) >= stop - timedelta(hours=1):
-                telegram(f"⚠️ Вирусный ролик {film} не начат: предыдущий слот работает до сих пор, до срока меньше часа")
-                sys.exit(1)
+            late("предыдущий слот работает до сих пор")
             time.sleep(60)
+    told = False
+    while jobs := produce.heavy_jobs():
+        if not told:
+            print("waiting for another film: " + "; ".join(jobs[:3]), flush=True)
+            told = True
+        late("на сервере всё ещё собирается другой ролик")
+        time.sleep(60)
+    return f
 
 
 def viral_pick(slot: int, acc: dict, films: list[str], proj: Path) -> str:

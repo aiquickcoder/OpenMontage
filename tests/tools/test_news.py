@@ -1250,3 +1250,16 @@ def test_viral_one_event_told_two_ways_is_folded_by_meaning_and_a_taken_one_is_s
     assert top[1]["skip"] == ["тот же сюжет, что рейв в библиотеке"]
     assert top[0]["signals"]["channels"] == 2 and not top[0]["skip"]
     assert top[2]["skip"][0].startswith("занято по смыслу")
+
+
+def test_one_heavy_job_at_a_time_knows_a_render_and_a_cleaning_from_light_steps():
+    """Owner 2026-11-01: two films cleaning and rendering at once took the server down — produce.py and the viral
+    slots wait for another film's render (build.py), cleaning (clean_footage.py --run) or produce.py."""
+    from addons.news import produce
+
+    heavy = ["python addons/news/build.py projects/x --retime", "python addons/news/build.py projects/x",
+             "python addons/news/clean_footage.py projects/x --run", "python addons/news/produce.py projects/x --send"]
+    light = ["python addons/news/build.py projects/x --voice-only", "python addons/news/build.py projects/x --storyboard",
+             "python addons/news/clean_footage.py projects/x --plan", "python addons/news/viral.py pick --slot 1"]
+    assert all(produce.HEAVY.search(a) for a in heavy) and not any(produce.HEAVY.search(a) for a in light)
+    assert not produce.DIRECT.search(heavy[3])  # produce.py itself waits on the lock, not on the process list
