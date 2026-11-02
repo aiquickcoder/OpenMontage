@@ -8,7 +8,7 @@ two TikTok accounts, no story shared between them.
     .venv/bin/python addons/news/viral.py plan [--hours 20]        # the day's four picks, nothing claimed (dry run)
     .venv/bin/python addons/news/viral.py windows [--days 14]      # when our channels' posts collect the most views
 
-1. Posts. Telethon (tg_client: the factory's session, through 10809) reads the last --hours of the federal aggregators
+1. Posts. Telethon (the factory's session — our own copy of it, through 10809) reads the last --hours of the federal aggregators
    and media and the big city channels (CHANNELS plus the ЗАСНЯЛИ engine's own Telegram sources): text, views,
    reposts, comments, reactions, media. The engine's DB (addons/channels, opened read-only, never written) adds what
    it read early — a post's views minutes after it came out — the agencies' RSS (more carriers of one story) and its
@@ -193,12 +193,48 @@ def fold(rows: list[dict]) -> list[dict]:
     return sorted(out, key=lambda r: r["ts"])
 
 
-async def read(channels: Iterable[str], hours: float, per: int = 400) -> list[dict]:
+def session_copy(force: bool = False) -> Path:
+    """Our own copy of the factory's Telegram session (the same login, SQLite's backup API, 0600) — as the channels
+    engine does: an agent's tg_client.py and this pick never lock one SQLite file at once."""
     import tg_client
 
+    main = Path(f"{tg_client.SESSION}.session")
+    own = tg_client.SESSION.parent / "telegram-viral.session"
+    if force or not own.exists():
+        if not main.exists():
+            raise RuntimeError("no Telegram session — the owner runs tg_client.py login once")
+        own.unlink(missing_ok=True)
+        src = sqlite3.connect(f"file:{main}?mode=ro", uri=True, timeout=30)
+        dst = sqlite3.connect(str(own))
+        with dst:
+            src.backup(dst)
+        src.close()
+        dst.close()
+        os.chmod(own, 0o600)
+    return own
+
+
+def client(force: bool = False):
+    import tg_client
+    from telethon import TelegramClient
+
+    api_id, api_hash = os.environ.get("TG_API_ID"), os.environ.get("TG_API_HASH")
+    if not api_id or not api_hash:
+        raise RuntimeError("TG_API_ID / TG_API_HASH are not in the environment (EnvironmentFile=/opt/openmontage/.env)")
+    kind, rest = tg_client.PROXY.split("://", 1)
+    host, port = rest.rsplit(":", 1)
+    return TelegramClient(str(session_copy(force).with_suffix("")), int(api_id), api_hash,
+                          proxy=(kind, host, int(port)), flood_sleep_threshold=60)
+
+
+async def read(channels: Iterable[str], hours: float, per: int = 400) -> list[dict]:
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    c = tg_client.client()
+    c = client()
     await c.connect()
+    if not await c.is_user_authorized():  # the owner logged in again: take the fresh login
+        await c.disconnect()
+        c = client(force=True)
+        await c.connect()
     rows: list[dict] = []
     try:
         if not await c.is_user_authorized():
