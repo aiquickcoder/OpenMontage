@@ -1476,7 +1476,7 @@ def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, m
     assert [s["codec_type"] for s in streams] == ["video"]                          # no sound
     assert streams[0]["width"] < 576 and streams[0]["height"] < 1024                # the edges cropped
     meta = _json.loads(out.with_suffix(".json").read_text(encoding="utf-8"))
-    assert meta["credit"] == "Видео: @hessenschau / TikTok" and meta["tiktok"] is True
+    assert meta["credit"] == "" and meta["author"] == "@hessenschau" and meta["tiktok"] is True   # no credit
     with pytest.raises(SystemExit):
         yt_footage.tt_cut(row["url"], 0.0, 5.0, tmp_path / "media" / "long.mp4")      # > 4 s
 

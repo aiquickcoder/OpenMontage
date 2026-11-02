@@ -21,7 +21,7 @@ video is downloaded: the words from YouTube's own transcript, the picture from i
         the whole video as a contact sheet, a frame a second (tile i = second i) — pick a piece without the author's
         burned-in captions
     .venv/bin/python addons/news/yt_footage.py tt-cut <tiktok url> <from> <to> projects/<slug>/media/tt/<name>.mp4
-        ≤ 4 s, no sound, edges cropped 8 %; credit «Видео: @author / TikTok» in <name>.json (README «Кадры из TikTok»)
+        ≤ 4 s, no sound, edges cropped 8 %, no credit anywhere (the author and the link stay in <name>.json for us)
 
 The transcript is YouTube's own captions (the «Расшифровка видео» panel: a channel's or the automatic ones), fetched as
 a small json3 file. Short news clips often have none — find --listen then downloads the clip (a few MB) and
@@ -296,7 +296,7 @@ def scout(query: str, words: str, n: int = 8, fresh: bool = False, lang: str = "
 # Owner 2026-11-02: «а что если находить так футажи нам нужные?» — yes, with «самое критичное 3-е»: TikTok knows its
 # own videos and cuts the reach of «unoriginal» re-uploads. So every TikTok piece is ≤ 4 s, without its sound, its
 # edges cropped 8 %, inside our layout among other sources; a film takes ≤ 3 of them and never opens on one (build.py
-# refuses); official media accounts (hessenschau, ITV…) before eyewitnesses, and an eyewitness only when the date and
+# refuses), no credit on it; official media accounts (hessenschau, ITV…) before eyewitnesses, and an eyewitness only when the date and
 # the place match the agencies. Search through Apify (APIFY_TOKEN, the actor the viral pick uses); the file comes from
 # the CDN link Apify returns — yt-dlp cannot reach TikTok from the server (02.11). A month cap keeps the spend in the
 # owner's Apify plan (with the pick's TikTok look: ≈ $4.4 of the free $5).
@@ -427,15 +427,17 @@ def tt_cut(url: str, t0: float, t1: float, dst: Path, tags: list[str] | None = N
                     "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
                     "-movflags", "+faststart", str(dst)], check=True)
     who = f"@{row['author']}" if row.get("author") else (row.get("name") or "TikTok")
+    # no credit on a TikTok piece, on screen or in the post (owner 2026-11-02: «давай не ставить подпись») — the
+    # author and the link stay here, for us
     out = {"source": url, "channel": who, "name": row.get("name"), "title": row.get("title"),
            "uploaded": time.strftime("%Y-%m-%d", time.gmtime(row["ts"])) if row.get("ts") else None,
-           "views": row.get("views"), "from": t0, "to": t1, "credit": f"Видео: {who} / TikTok", "tiktok": True}
+           "views": row.get("views"), "from": t0, "to": t1, "credit": "", "author": who, "tiktok": True}
     dst.with_suffix(".json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         sys.path.insert(0, str(HERE))
         import library
 
-        library.add(dst, (tags or []) + ["tiktok", who], out["credit"], "TikTok", url)
+        library.add(dst, (tags or []) + ["tiktok", who], f"TikTok {who}", "TikTok", url)
     except OSError as e:
         print("library:", e, file=sys.stderr)
     return dst

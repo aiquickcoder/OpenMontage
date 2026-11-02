@@ -33,7 +33,8 @@ for the pipeline steps; they all apply here.
   («Зумеры вышли против армии Мерца: *108 миллиардов* — на оружие или на людей?»). Its hardest picture first.
 - **TikTok footage** (owner 2026-11-02, README «Кадры из TikTok»): when the posts, agencies and TV are thin —
   `yt_footage.py tt-search / tt-peek / tt-cut`; ≤ 4 s pieces, ≤ 3 a film, never the first shot (build.py refuses),
-  official media accounts first, an eyewitness only when date and place match the agencies.
+  official media accounts first, an eyewitness only when date and place match the agencies; no credit for them —
+  neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).
 - **Pictures follow the story, no added drama** (owner 2026-11-02, README «Кадры — по смыслу истории»): what the
   story is about is on screen when it matters (a dog attack — the dog, a credited thematic clip of the breed), not
   only façades and maps; no mood shots the event does not have; a thematic clip from the same context (a US story —
