@@ -1167,7 +1167,8 @@ def describe(b: dict) -> str:
     pickup = f" · подхватили {s['channels']} кан." + (f" ({s['channels_3h']} за 3 ч)" if s["channels"] > 1 else "")
     lines = [f"[{b['score']:5.1f}] {b['place'] or b['region']} · {b.get('topic') or '?'}{flags}{pickup} · "
              f"охват {s['reach']:,} · комм. {s['comments']} · {media} · {s['age_h']:g} ч"
-             + ("" if b["ai"] else " · ИИ-оценки нет"),
+             + ("" if b["ai"] else " · ИИ-оценки нет")
+             + (f" · Google Trends {', '.join(s['google'])}" if s.get("google") else ""),
              f"   признаки: каждого {f['everyone']} · эмоция {f['emotion']} · спор {f['debate']} · кадры "
              f"{f['visual']} · объяснимо {f['explain']} | сигналы: " + " ".join(
                  f"{k} {v:.2f}" for k, v in b["signal_features"].items())]
