@@ -1400,3 +1400,51 @@ def test_viral_google_trends_become_posts_the_ai_sees(monkeypatch):
     assert "Google Trends — сейчас ищут: DE 200 000+" in viral.story_block(1, st)
     assert "Google Trends DE 200 000+" in viral.triage_line(1, st)
     assert not any(s["seed"].get("ref", "").endswith("sport match") and not s["skip"] for s in ranked)
+
+
+def test_viral_tiktok_check_searches_the_best_stories_once_a_day(tmp_path, monkeypatch):
+    """Owner 2026-11-02: «находить новость, которая залетела… может apify» — Apify's TikTok search, off by default."""
+    import io
+    import json as _json
+    import types
+    import urllib.request
+
+    from addons.news import viral
+
+    monkeypatch.setattr(viral, "DATA", tmp_path)
+    now = 1_793_640_000.0
+    stories = [{"key": f"k{i}", "place": "Россия", "region": "russia",
+                "posts": [{"views": 10, "plain": f"Сюжет {i}: блокировки VPN"}]} for i in range(1, 4)]
+    assert viral.tiktok_check(stories) == 0 and "tiktok" not in stories[0]           # off without NEWS_TIKTOK
+    monkeypatch.setenv("NEWS_TIKTOK", "1")
+    monkeypatch.setenv("APIFY_TOKEN", "test-token")
+    monkeypatch.setenv("CODEX_GW_SECRET", "x")
+    asked = []
+    fake_llm = types.SimpleNamespace(chat_json=lambda *a, **k: [{"id": 1, "q": "блокировка VPN"}, {"id": 2, "q": "тарифы ЖКХ"}])
+    real = viral._channels_mod
+    monkeypatch.setattr(viral, "_channels_mod", lambda name: fake_llm if name == "llm" else real(name))
+
+    def fake_open(req, timeout=0):
+        body = _json.loads(req.data)
+        asked.append((body["keywords"][0], req.headers.get("Authorization")))
+        items = [{"views": "954551", "likes": "1", "comments": "2", "shares": "3", "uploadedAt": str(int(now - 7200)),
+                  "title": "Что делать, если глушат интернет", "postPage": "https://www.tiktok.com/@x/video/1"},
+                 {"views": "1200", "uploadedAt": str(int(now - 3600)), "title": "другое", "postPage": ""}]
+        return io.BytesIO(_json.dumps(items).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    assert viral.tiktok_check(stories, top=2) == 2
+    assert sorted(asked) == [("блокировка VPN", "Bearer test-token"), ("тарифы ЖКХ", "Bearer test-token")]
+    assert stories[0]["tiktok"]["videos"][0]["views"] == 954_551
+    assert "TikTok за неделю по запросу «блокировка VPN»: 954 551 просм., 2 ч назад" in viral.tiktok_lines(stories[0], now)
+    assert "tiktok" not in stories[2]                                                 # only the best `top`
+    # the next pick within a day reuses the cache: no new query
+    again = [dict(st, tiktok=None) for st in stories[:2]]
+    for st in again:
+        st.pop("tiktok")
+    asked.clear()
+    assert viral.tiktok_check(again, top=2) == 2 and asked == []
+    # the month cap stops new queries
+    monkeypatch.setenv("NEWS_TIKTOK_MONTH_QUERIES", "2")
+    assert viral.tiktok_check([{"key": "new", "place": "", "region": "russia", "posts": [{"views": 1, "plain": "x"}]}]) == 0
+    assert asked == []
