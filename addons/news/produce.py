@@ -87,6 +87,12 @@ def viral_line(story: dict) -> str:
     slot = int(v.get("slot") or 1)
     n = (slot - 1) // max(1, len(conf["accounts"])) + 1
     when = next((s.get("post_at") for s in conf.get("slots", []) if s.get("slot") == slot), "")
+    if when:
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone(timedelta(hours=3)))
+        if now.strftime("%H:%M") > when:  # a late film (a slot run again): its window has passed
+            return f"📱 TikTok: {acc['name']} · ролик {n} из 2 · окно {when} прошло — выложить сразу"
     return f"📱 TikTok: {acc['name']} · ролик {n} из 2" + (f" · выложить в {when} МСК" if when else "")
 
 
