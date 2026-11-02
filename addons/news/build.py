@@ -1543,7 +1543,9 @@ def unclean_footage(story: dict) -> list[str]:
     for s in stories(story):
         for sh_ in s.get("shots", []):
             src = sh_.get("src", "")
-            if (src.startswith("media/") and not src.startswith("media/clean/") and sh_.get("clean") != "none"
+            # a TikTok piece is always cleaned — its author's burned-in titles and captions (owner 2026-11-02)
+            if (src.startswith("media/") and not src.startswith("media/clean/")
+                    and (sh_.get("clean") != "none" or "/tt/" in f"/{src}")
                     and "Wikimedia" not in (sh_.get("credit") or "")):
                 bad.append(src)
     return sorted(set(bad))

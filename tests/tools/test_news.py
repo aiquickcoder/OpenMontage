@@ -1488,3 +1488,6 @@ def test_tiktok_pieces_are_short_silent_cropped_and_a_film_takes_few(tmp_path, m
     assert any("opens on a TikTok" in w for w in build.tiktok_problems(story("media/tt/a.mp4", "media/post.mp4")))
     four = story("media/post.mp4", "media/tt/a.mp4", "media/tt/b.mp4", "clean:media/tt/c.mp4", "media/tt/d.mp4")
     assert any("4 TikTok pieces" in w for w in build.tiktok_problems(four))
+    # always cleaned: «clean: none» does not let a TikTok piece skip clean_footage.py
+    assert build.unclean_footage({"shots": [{"src": "media/tt/a.mp4", "clean": "none"},
+                                            {"src": "media/yt/b.mp4", "clean": "none"}]}) == ["media/tt/a.mp4"]
