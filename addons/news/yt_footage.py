@@ -18,10 +18,12 @@ video is downloaded: the words from YouTube's own transcript, the picture from i
     .venv/bin/python addons/news/yt_footage.py tt-search "Frankfurt Demo Polizei" [--n 8] [--when THIS_WEEK]
         [--sort RELEVANCE|MOST_LIKED|DATE_POSTED]   TikTok through Apify: url, length, views, date, @author, caption
     .venv/bin/python addons/news/yt_footage.py tt-peek <tiktok url> <sheet.jpg>
-        the whole video as a contact sheet, a frame a second (tile i = second i) — pick a piece without the author's
+        the whole video as a contact sheet, a frame a second (a longer one than 60 s: every n s, printed) — pick a
+        piece without the author's
         burned-in captions
     .venv/bin/python addons/news/yt_footage.py tt-cut <tiktok url> <from> <to> projects/<slug>/media/tt/<name>.mp4
-        ≤ 4 s, no sound, edges cropped 8 %, no credit anywhere (the author and the link stay in <name>.json for us)
+        ≤ 4 s, no sound, ~4 % cut off each side (92 % of each dimension kept), no credit anywhere (the author and the
+        link stay with us: <name>.json and the base of pictures)
 
 The transcript is YouTube's own captions (the «Расшифровка видео» panel: a channel's or the automatic ones), fetched as
 a small json3 file. Short news clips often have none — find --listen then downloads the clip (a few MB) and
@@ -317,6 +319,10 @@ def _apify(payload: dict, timeout: int = 150) -> list[dict]:
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout + 30) as r:
         items = json.loads(r.read())
+    if isinstance(items, list) and items and all(isinstance(it, dict) and it.get("demo") for it in items):
+        # the actor's free-plan quota is spent (5 runs a month on Apify FREE): it answers {"demo": true} rows — never
+        # an empty «success» (the agent's self-test, 02.11)
+        sys.exit("Apify: the actor answers demo rows — its free-plan quota is spent (a paid plan needed)")
     return [it for it in items if isinstance(it, dict)] if isinstance(items, list) else []
 
 
@@ -379,6 +385,7 @@ def tt_item(url: str, fresh: bool = False) -> dict:
             return row
     except (OSError, ValueError):
         pass
+    _tt_spend()
     rows = [_tt_row(it) for it in _apify({"startUrls": [url], "maxItems": 1})]
     if not rows or not rows[0]["video"]:
         sys.exit(f"TikTok: no video for {url}")
@@ -408,10 +415,16 @@ def tt_video(url: str) -> Path:
 
 
 def tt_peek(url: str, sheet: Path) -> Path:
+    """The whole video on one sheet: a frame a second up to 60 s, a longer one every `step` s (printed)."""
     src = tt_video(url)
     sheet.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", "fps=1,scale=180:-2,tile=6x5",
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                str(src)], capture_output=True, text=True).stdout.strip() or 0)
+    step = max(1, -(-int(dur) // 60))
+    rows = max(1, -(-int(dur / step + 1) // 6))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", f"fps=1/{step},scale=180:-2,tile=6x{rows}",
                     "-frames:v", "1", str(sheet)], check=True)
+    print(f"{dur:.1f} s: tile i (left to right, top to bottom, from 0) = second i×{step}", file=sys.stderr)
     return sheet
 
 

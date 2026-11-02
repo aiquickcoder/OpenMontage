@@ -1532,3 +1532,19 @@ def test_a_telegram_video_that_is_a_tiktok_file_is_flagged(tmp_path):
     story = {"shots": [{"src": "media/toporlive_206022.mp4"}, {"src": "media/plain.mp4"}]}
     w = build.reposted_tiktok(tmp_path, story)
     assert len(w) == 1 and "toporlive_206022.mp4 is a TikTok file" in w[0] and "not the first shot" in w[0]
+
+
+def test_apify_demo_rows_are_an_error_not_an_empty_success(monkeypatch):
+    """The agent's self-test 02.11: past the free plan's 5 runs the actor answers {"demo": true} rows."""
+    import io
+    import json as _json
+    import urllib.request
+
+    from addons.news import viral, yt_footage
+
+    monkeypatch.setenv("APIFY_TOKEN", "t")
+    monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=0: io.BytesIO(_json.dumps([{"demo": True}] * 3).encode()))
+    with pytest.raises(RuntimeError, match="demo"):
+        viral.tiktok_search("x", "t")
+    with pytest.raises(SystemExit):
+        yt_footage._apify({"keywords": ["x"]})

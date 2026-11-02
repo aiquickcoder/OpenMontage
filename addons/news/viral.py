@@ -883,6 +883,10 @@ def tiktok_search(q: str, token: str, per: int = TT_PER, timeout: int = 120) -> 
                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout + 30) as r:
         items = json.loads(r.read())
+    if isinstance(items, list) and items and all(isinstance(it, dict) and it.get("demo") for it in items):
+        # the actor's free-plan quota is spent (5 runs a month on Apify FREE): it answers {"demo": true} rows — never
+        # an empty «success» (the agent's self-test, 02.11)
+        raise RuntimeError("Apify: the actor answers demo rows — its free-plan quota is spent (a paid plan needed)")
 
     def num(x: Any) -> int:
         try:
