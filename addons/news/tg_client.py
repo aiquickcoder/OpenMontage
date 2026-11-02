@@ -78,6 +78,59 @@ async def login(name: str = "films") -> None:
     await c.disconnect()
 
 
+async def login_bot(name: str = "films") -> None:
+    """The same QR login, but the owner taps a button in the factory bot on the phone instead of scanning a code:
+    the button carries the tg://login link, refreshed in the same message while each one lives (~30 s). A cloud
+    password still has to be typed by the owner in a terminal (`login <name>`); this never asks for it."""
+    from datetime import datetime, timezone
+
+    from telethon.errors import SessionPasswordNeededError
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from factory.tg import Telegram
+
+    tg = Telegram(os.environ["TG_TOKEN"], os.environ["TG_CHAT"], os.environ.get("TG_PROXY", ""))
+    path = SESSIONS[name]
+    c = client(path)
+    await c.connect()
+    if await c.is_user_authorized():
+        print(f"[{name}] already logged in")
+        return
+    text = (f"🔑 Подключить сервер новостей к Telegram — вход «{name}». Нажмите кнопку и подтвердите вход "
+            "(кнопка обновляется сама; без облачного пароля).")
+    qr = await c.qr_login()
+    msg = tg.call("sendMessage", chat_id=tg.chat, text=text,
+                  reply_markup={"inline_keyboard": [[{"text": "Подключить", "url": qr.url}]]})
+    ok = False
+    try:
+        for _ in range(24):  # about ten minutes
+            left = max(5.0, (qr.expires - datetime.now(timezone.utc)).total_seconds())
+            try:
+                await qr.wait(left)
+                ok = True
+                break
+            except asyncio.TimeoutError:
+                await qr.recreate()
+                tg.call("editMessageReplyMarkup", chat_id=tg.chat, message_id=msg["message_id"],
+                        reply_markup={"inline_keyboard": [[{"text": "Подключить", "url": qr.url}]]})
+            except SessionPasswordNeededError:
+                tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
+                        text=f"🔑 Вход «{name}»: на аккаунте облачный пароль — этот вход нужно сделать в Терминале "
+                             "(bash ~/Desktop/telegram_login.sh).")
+                return
+    finally:
+        if ok:
+            os.chmod(f"{path}.session", 0o600)
+            me = await c.get_me()
+            tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
+                    text=f"✅ Вход «{name}» выполнен ({me.username or me.first_name}).")
+            print(f"[{name}] logged in as", me.username or "(no username)")
+        elif "msg" in locals():
+            tg.call("editMessageText", chat_id=tg.chat, message_id=msg["message_id"],
+                    text=f"⌛ Вход «{name}» не подтверждён за 10 минут — попросите Claude прислать кнопку снова.")
+        await c.disconnect()
+
+
 async def fetch(channel: str, post: int, dst: Path) -> int:
     c = client()
     await c.connect()
@@ -149,6 +202,8 @@ def city_channels(city: str | None) -> list[str]:
 def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "login":  # login [films|channels|viral] — each its own login
         asyncio.run(login(sys.argv[2] if len(sys.argv) > 2 else "films"))
+    elif len(sys.argv) >= 2 and sys.argv[1] == "login-bot":  # the same, by a button in the owner's bot
+        asyncio.run(login_bot(sys.argv[2] if len(sys.argv) > 2 else "films"))
     elif len(sys.argv) == 5 and sys.argv[1] == "fetch":
         sys.exit(asyncio.run(fetch(sys.argv[2], int(sys.argv[3]), Path(sys.argv[4]))))
     elif len(sys.argv) >= 3 and sys.argv[1] == "search":
