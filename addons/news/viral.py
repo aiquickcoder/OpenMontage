@@ -97,6 +97,11 @@ TOPICS = ("деньги", "цены", "зарплаты", "налоги и шт�
 
 # -- boundaries ---------------------------------------------------------------------------------------------------------
 WS = r"(?<![а-яёa-z])"
+# the war that is always out (owner 2026-11-01 «без войны и СВО»): Russia and Ukraine. World politics — leaders'
+# statements, threats, talks, sanctions abroad (Trump and Iran) — is in (owner 2026-11-02: «с акцентом на политику —
+# тоже ок, про трампа например»); a foreign story with war words goes on to the AI, whose «war» flag keeps combat out
+SVO = re.compile(r"Украин|украинск|Зеленск|Киев|\bВСУ\b|\bСВО\b|\bфронт|Херсон|Запорож|Донбас|Донецк|Луганск|\bДНР\b|"
+                 r"\bЛНР\b|Алешк|Курск\w* област|Белгородск|мобилиз|военкомат", re.I)
 PROTEST = re.compile(WS + r"(?:митинг|протест|пикет|забастов|бастую|бастуют|бастовал|акци\w* протеста|несогласн|"
                      r"шестви\w* (?:против|в защиту)|демонстрант|манифестац)", re.I)
 # Russia's internal politics (owner 2026-11-01: «внутренняя политика РФ и протесты в России — не берём»). Laws,
@@ -125,9 +130,9 @@ def boundaries(text: str) -> list[str]:
     why: list[str] = []
     t = text or ""
     filters = _channels_mod("filters")
-    if world.WAR.search(t) or (filters and filters.is_war(t)):
-        why.append("война/СВО")
     foreign = world.country_of(t)
+    if SVO.search(t) or ((world.WAR.search(t) or (filters and filters.is_war(t))) and not foreign):
+        why.append("война/СВО")
     if PROTEST.search(t) and not foreign:
         why.append("протесты в России")
     if RU_POLITICS.search(t) or (POLITICS_HOME.search(t) and not foreign):
@@ -390,7 +395,9 @@ def signal_features(sig: dict) -> dict[str, float]:
 
 
 def freshness(age_h: float) -> float:
-    return 1 - 0.3 * clamp(age_h / 24)
+    """New first, but an older story we have not made can still win on its score (owner 2026-11-02): −15 % a day
+    over three days (it was −30 % in the first day)."""
+    return 1 - 0.45 * clamp(age_h / 72)
 
 
 def heuristic(story: dict) -> dict:
@@ -501,7 +508,7 @@ def made_texts(root: Path, days: float = 3) -> list[dict]:
     return out
 
 
-def load_claims(hours: float = 30) -> list[dict]:
+def load_claims(hours: float = 72) -> list[dict]:
     """The day's viral films (claims.json): the story each film of either account took — written when its pick
     runs (the #1) and corrected to the story it was made of when it is delivered (claim_made)."""
     try:
@@ -596,7 +603,9 @@ SYSTEM = """Ты — шеф-редактор новостного TikTok для 
   общеизвестна, без домыслов).
 
 Флаги — true значит «не берём»:
-- war — война, СВО, армия и фронт, удары, дроны, ракеты, оружие, мобилизация, военкоматы, НАТО, теракты.
+- war — СВО и всё о войне России и Украины (фронт, удары, дроны и ракеты, мобилизация, военкоматы), теракты, бои
+  и удары с жертвами где угодно. Мировая политика — заявления, угрозы и решения лидеров, переговоры, санкции,
+  выборы за рубежом (Трамп и Иран, Израиль, НАТО) — НЕ война: это политика, её берём.
   Протесты, беспорядки и стычки с полицией за рубежом, нападение с ножом, драка, стрельба бандитов — НЕ война.
 - ru_politics — внутренняя политика России: выборы, партии, оппозиция, иноагенты, протесты, митинги и забастовки в
   России, критика власти, заявления Кремля и чиновников как сам сюжет. Законы, цены, налоги, штрафы и запреты как
@@ -612,9 +621,6 @@ common_hook — для региональной истории: общий кр�
 topic — одно из: """ + ", ".join(TOPICS) + """.
 emotion_kind — одно из: возмущение, страх, восхищение, абсурд, сочувствие, нет.
 hook — хук-конфликт на первую секунду, 6–12 слов, только факты из текстов, без «шок» и без вины до приговора.
-Байт — действие и обещание, а не рубрика: кто что сделал + деталь, которую хочется увидеть («Хакеры взломали
-приложение МЧС — вот что они разослали людям»), или слова героя в кавычках; не вопрос и не канцелярит («Приложение
-МЧС разослало фейки. Что с системой оповещения?» — плохо).
 why — почему это произошло, одной фразой: причина из текстов или общеизвестный контекст; не выдумывай, если причины
 не видно — так и напиши «причина неясна».
 question — вопрос в конце ролика: «Как думаете, …?», до 14 слов, две стороны, из конфликта этой истории; без вины до
@@ -784,7 +790,7 @@ def load_weights() -> dict[str, float]:
 
 
 def rank(posts: list[dict], now: float, weights: dict[str, float], made: list[dict], claims: list[dict],
-         done_links: set[str], done_keys: set[str], ai: int = 30, use_ai: bool = True, max_age_h: float = 30) -> list[dict]:
+         done_links: set[str], done_keys: set[str], ai: int = 30, use_ai: bool = True, max_age_h: float = 72) -> list[dict]:
     """Stories from posts, scored best first; the dropped ones keep "skip" with the reason."""
     norms = channel_norms(posts, now)
     kept = []
@@ -979,8 +985,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("pick", "plan"):
         s = sub.add_parser(name)
-        s.add_argument("--hours", type=float, default=20, help="how far back the posts are read")
-        s.add_argument("--max-age", type=float, default=30, help="a story older than this (its first post) is out")
+        s.add_argument("--hours", type=float, default=48, help="how far back the posts are read")
+        s.add_argument("--max-age", type=float, default=72, help="a story older than this (its first post) is out")
         s.add_argument("--ai", type=int, default=30, help="how many stories the AI scores")
         s.add_argument("--no-ai", action="store_true")
         s.add_argument("--json", type=Path)

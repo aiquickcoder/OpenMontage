@@ -1070,6 +1070,10 @@ def test_viral_boundaries_keep_the_war_and_russian_politics_out_but_protests_abr
     assert "заявления власти" in viral.boundaries("Песков заявил, что цены на бензин стабильны")
     assert "политика РФ" in viral.boundaries("Кандидаты в губернаторы начали предвыборную кампанию, оппозиция против")
     assert viral.boundaries("Выборы в Чехии: оппозиция Бабиша победила") == []     # another country's politics
+    # world politics is in (owner 2026-11-02), the war of Russia and Ukraine stays out
+    assert viral.boundaries("Нетаньяху потребовал от Трампа возобновить удары по Ирану после выборов") == []
+    assert "война/СВО" in viral.boundaries("Трамп обсудил с Зеленским поставки ракет")
+    assert "война/СВО" in viral.boundaries("Ночью над областью сбили беспилотники, повреждён дом")
     assert "политика РФ" in viral.boundaries("Суд признал иноагентом блогера")
     assert "дети-жертвы" in viral.boundaries("Школьник погиб, упав с крыши гаража")
     assert "реклама" in viral.boundaries("Розыгрыш iPhone среди подписчиков, промокод внутри")
@@ -1102,7 +1106,8 @@ def test_viral_score_weighs_the_topic_the_signals_and_fades_with_age():
     assert viral.score(full, sigf, 0, w) == 100.0
     dull = dict(full, everyone=2)
     assert viral.score(dull, sigf, 0, w) < viral.score(full, sigf, 0, w)
-    assert viral.score(full, sigf, 24, w) == 70.0                     # a day old: × 0.7
+    assert viral.score(full, sigf, 24, w) == 85.0                     # a day old: × 0.85 (owner 2026-11-02)
+    assert viral.score(full, sigf, 72, w) == 55.0                     # three days: × 0.55, still in
     assert viral.score(full, sigf, 0, w, regional=True) == 85.0       # a city story with a common hook
 
 
@@ -1281,3 +1286,11 @@ def test_a_viral_slot_waits_for_a_film_another_agent_is_making(tmp_path: Path, m
         if delivered:
             (d / "kinescope.json").write_text("{}", encoding="utf-8")
     assert morning.films_in_work({"news-viral-a-02-11-1"}) == ["news-de-01-11-1"]  # fresh, not out yet
+
+
+def test_viral_freshness_keeps_new_first_but_lets_an_older_story_win():
+    from addons.news import viral
+
+    assert viral.freshness(0) == 1
+    assert abs(viral.freshness(24) - 0.85) < 1e-9 and abs(viral.freshness(72) - 0.55) < 1e-9
+    assert viral.freshness(100) == viral.freshness(72)

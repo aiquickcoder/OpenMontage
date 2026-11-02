@@ -64,10 +64,9 @@ next to what is counted («у дома девяносто три мужчину�
 
 Theses (owner, 2026-10-30): every story opens with a **hook** on its first shot — a 2–5-word bait that makes one
 watch on («*Жёсткое задержание* СОБР», «*Новая схема* обмана»), true to the footage and the source, no «шок», no
-guilt before a verdict — and a second one, a fact, may come on the outcome; the hook card is an action and a
-promise, not a rubric or a question (owner 2026-11-02, README «Хук»: «„Взяла собаку и убежала“: казанчанка на ИВЛ
-после нападения стаффорда»), and the pictures go for the emotion within the story's context — its hero (the dog,
-the people, their things), not neutral façades (README «Кадры — в эмоцию и в контекст»); each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
+guilt before a verdict — and a second one, a fact, may come on the outcome; the pictures go for the emotion
+within the story's context — its hero (the dog, the people, their things), not neutral façades (owner 2026-11-02,
+README «Кадры — в эмоцию и в контекст»); each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
 marker, ≤44 characters (README «Тезисы на кадрах»). Official agency footage — МВД России on Rutube,
 НАК on YouTube, ГАИ, СК — is cleaned like any other (owner 2026-10-31), facts from the agency's own description;
 a news site's article video (tnv.ru) comes with `article_video.py`. A ministry video marked «Видео сгенерировано ИИ»
