@@ -64,7 +64,10 @@ for the pipeline steps; they all apply here.
   only what the sources say; a loaded word only with its author and the other side's words next to it.
 - **The end** (README «Конец ролика»): a question with two sides from this story's own conflict, then the account's
   closing line — «Как думаете, <вопрос>? Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что
-  происходит.» (no «в городе»); never dictate the word to write; no guilt before a verdict, no blaming the victim, no
+  происходит.» (no «в городе»); the strongest question lets a knowing viewer show he knows (owner 03.11: «чтобы
+  считал себя образованным и хотел написать — сумничать»): «объясни» (a real riddle of the story — «кто разбирается
+  — объясните»), «предскажи» (a fork time will settle), «рассуди» (two sides with arguments); never a planted factual
+  mistake; never dictate the word to write; no guilt before a verdict, no blaming the victim, no
   nationality, religion or war. The same question ends `caption.txt`, before the hashtags.
 
 ## story.json
