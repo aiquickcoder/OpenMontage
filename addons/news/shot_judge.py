@@ -56,12 +56,17 @@ SYSTEM = """Ты — строгий выпускающий редактор ве
 
 
 def _meter():
-    class Meter:  # what addons.channels.llm needs of a DB: settings defaults and a call counter
+    class Meter:  # what addons.channels.llm needs of a DB (as viral._Meter): settings defaults, a call counter
+        calls = 0
+
         def setting(self, key, default=None):
             return default
 
+        def one(self, sql, args=()):
+            return {"c": self.calls if "calls" in sql else 0}
+
         def usage(self, *a, **k):
-            pass
+            self.calls += 1
 
     return Meter()
 
