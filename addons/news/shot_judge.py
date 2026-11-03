@@ -184,11 +184,18 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
     return out
 
 
-def judge(proj: Path, use_ai: bool = True) -> dict:
+def judge(proj: Path, use_ai: bool = True, save_strips: bool = False) -> dict:
     story, items = shots_of(proj)
     imgs = [frames(it) for it in items]
     mids = [dhash(f[len(f) // 2]) if f else None for f in imgs]
     strips = [strip(f) if f else None for f in imgs]
+    if save_strips:  # what the judge saw, shot by shot: qa/shots/NN.jpg (for a review or a before/after)
+        import cv2
+
+        (proj / "qa" / "shots").mkdir(parents=True, exist_ok=True)
+        for i, im in enumerate(strips):
+            if im is not None:
+                cv2.imwrite(str(proj / "qa" / "shots" / f"{i + 1:02d}.jpg"), im, [cv2.IMWRITE_JPEG_QUALITY, 82])
     hard = hard_rules(items, mids)
     scores = ai_scores(items, strips) if use_ai else {}
     qa = proj / "qa"
@@ -225,9 +232,10 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
     ap.add_argument("--no-ai", action="store_true", help="the hard rules only")
+    ap.add_argument("--save-strips", action="store_true", help="write what the judge saw to qa/shots/NN.jpg")
     a = ap.parse_args()
     proj = a.project if a.project.is_absolute() else REPO / a.project
-    r = judge(proj, not a.no_ai)
+    r = judge(proj, not a.no_ai, a.save_strips)
     head = (f"SHOTS: {'OK' if r['ok'] else 'FAILED'} · round {r['round']} · {r['videos']} video, {r['stills']} stills"
             + (f" · mean {r['mean']}/10" if r["mean"] is not None else ""))
     print(head)
