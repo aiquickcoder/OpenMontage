@@ -63,7 +63,7 @@ def story_block(s: dict, posts: list[dict]) -> str:
     reach = sum(max((q["views"] for q in posts if q["channel"] == c), default=0) for c in chans)
     media = sorted({m.get("kind", "") for p in posts for m in (p.get("media") or []) if m.get("kind")})
     kinds = sorted({p.get("kind", "") for p in posts if p.get("kind")})
-    age = (time.time() - min(p["ts"] for p in posts)) / 3600
+    age = max(0.0, (time.time() - min(p["ts"] for p in posts)) / 3600)  # a future date is «now», not a multiplier
     texts = []
     for p in sorted(posts, key=lambda p: (p.get("kind") != "primary", -p["views"]))[:3]:
         texts.append(f"[{p['channel']} · {p.get('kind') or 'канал'}] {(p.get('plain') or '')[:700]}")
@@ -91,7 +91,7 @@ def ask(db, stories: list[tuple[dict, list[dict]]], recent: list[dict]) -> list[
 def signals(posts: list[dict], trust: dict[str, float] | None = None) -> dict[str, float]:
     chans = {p["channel"] for p in posts}
     reach = sum(max((q["views"] for q in posts if q["channel"] == c), default=0) for c in chans)
-    age = (time.time() - min(p["ts"] for p in posts)) / 3600
+    age = max(0.0, (time.time() - min(p["ts"] for p in posts)) / 3600)  # a future date is «now», not a multiplier
     has_video = any(m.get("kind") == "video" for p in posts for m in (p.get("media") or []))
     has_photo = any(m.get("kind") == "photo" for p in posts for m in (p.get("media") or []))
     primary = any(p.get("kind") == "primary" for p in posts)
@@ -117,11 +117,18 @@ def score(v: dict, sig: dict[str, float], primary_bonus: float = 0.8, city: bool
     return round((ai + cross + reach + media + first_hand + trust) * fresh, 2)
 
 
+AI_FLOOR = 3.0
+
+
 def channels_for(v: dict, s: float, chans: list[dict], city_s: float | None = None) -> list[str]:
     """Which of our channels take a story: its region in the channel's regions and the score over its bar (the main
     channel's score for @zasnyali_news, the residents' score city_s for the city channels). The main channel also
     takes a city story or another region's when it is big (bar + 1)."""
     if not s:
+        return []
+    # the AI's own marks are a floor no signal can lift (03.11: events listing items the AI marked 0–1 of 10 «только
+    # название, нет новостного повода» went out on the feed's signals): a story none of whose marks reaches 3 is not news
+    if max(float(v.get(k) or 0) for k in ("relevance", "significance", "local", "virality")) < AI_FLOOR:
         return []
     region = v.get("region") or "russia"
     out = []

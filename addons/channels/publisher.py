@@ -35,6 +35,11 @@ def expire(db, ch: dict) -> None:
     for p in db.q("SELECT p.id FROM posts p JOIN stories s ON s.id=p.story_id WHERE p.channel=? AND "
                   "p.status IN ('ready','media','draft') AND s.first_ts<?", (ch["key"], horizon)):
         db.update("posts", "id", p["id"], status="expired", error="устарело", updated=time.time())
+    # a story «from the future» is an events listing, not news (mos.ru afisha, 03.11)
+    for p in db.q("SELECT p.id FROM posts p JOIN stories s ON s.id=p.story_id WHERE p.channel=? AND "
+                  "p.status IN ('ready','media','draft') AND s.first_ts>?", (ch["key"], time.time() + 600)):
+        db.update("posts", "id", p["id"], status="rejected", error="дата в будущем — афиша, не новость",
+                  updated=time.time())
 
 
 def note_for(db, p: dict, ch: dict, live: bool) -> str:

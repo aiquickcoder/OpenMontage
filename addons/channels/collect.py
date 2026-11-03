@@ -106,6 +106,12 @@ def rss_items(raw: bytes) -> list[dict]:
                 datetime.fromisoformat(when.replace("Z", "+00:00")).timestamp()
         except (TypeError, ValueError):
             ts = time.time()
+        # a feed item is never from the future: mos.ru's feed carries its events listing (afisha) dated by the event —
+        # 18.12, 07.01 — and a «−1500 h old» story outscored everything (03.11: «Новогоднее сияние» 45.9 with the AI's
+        # 0/10). An events listing is not news at all.
+        if "/afisha/" in (link or ""):
+            continue
+        ts = min(ts, time.time())
         img = ""
         for child in it:
             tag = child.tag.split("}")[-1]

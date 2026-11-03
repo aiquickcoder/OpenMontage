@@ -74,6 +74,9 @@ def plain(h: str) -> str:
     return html.unescape(TAG.sub("", h or ""))
 
 
+MIN_BODY = 25  # one sentence of fact at least (a Topor-style post may be one line; 03.11's had none)
+
+
 def problems(h: str, ch: dict) -> list[str]:
     """What breaks the format (empty list = fine)."""
     out = []
@@ -96,6 +99,8 @@ def problems(h: str, ch: dict) -> list[str]:
     paras = [b for b in blocks[1:-1] if not b.startswith("<i>")]
     if len(paras) > 3:
         out.append("больше трёх абзацев")
+    if len(plain("\n\n".join(paras)).strip()) < MIN_BODY:  # 03.11: «Новогоднее сияние.» went out as a whole post
+        out.append("нет текста новости — только заголовок: что случилось, где, когда, почему это важно")
     if len(text) > MAX_PLAIN:
         out.append(f"слишком длинно: {len(text)} знаков (до {MAX_PLAIN})")
     if SHOCK.search(body_plain):

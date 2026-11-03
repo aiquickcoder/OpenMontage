@@ -253,11 +253,36 @@ def test_score_zero_for_flags_and_higher_for_spread():
 
 def test_channels_for_routes_by_region():
     chans = [dict(c) for c in config.CHANNELS]
-    assert judge.channels_for({"region": "moscow"}, 7.1, chans) == ["news", "moscow"]
-    assert judge.channels_for({"region": "moscow"}, 5.5, chans) == ["moscow"]
-    assert judge.channels_for({"region": "kazan"}, 5.0, chans) == ["kazan"]
-    assert judge.channels_for({"region": "world"}, 7.0, chans) == ["news"]
-    assert judge.channels_for({"region": "world"}, 0, chans) == []
+    news = {"relevance": 7, "significance": 6, "virality": 5, "local": 6}
+    assert judge.channels_for({"region": "moscow", **news}, 7.1, chans) == ["news", "moscow"]
+    assert judge.channels_for({"region": "moscow", **news}, 5.5, chans) == ["moscow"]
+    assert judge.channels_for({"region": "kazan", **news}, 5.0, chans) == ["kazan"]
+    assert judge.channels_for({"region": "world", **news}, 7.0, chans) == ["news"]
+    assert judge.channels_for({"region": "world", **news}, 0, chans) == []
+
+
+def test_an_events_listing_from_the_future_never_reaches_a_channel():
+    """03.11: mos.ru's feed carried its afisha dated by the event (18.12, 07.01); a «−1500 h old» story scored 45–62
+    with the AI's 0/10 and «Новогоднее сияние.» went out as a whole post."""
+    import time as _time
+
+    from addons.channels import collect
+
+    future = _time.strftime("%a, %d %b %Y %H:%M:%S +0000", _time.gmtime(_time.time() + 40 * 86400))
+    rss = (f"<rss><channel><item><title>Новогоднее сияние</title><link>https://www.mos.ru/afisha/event/1/</link>"
+           f"<pubDate>{future}</pubDate></item><item><title>Собянин открыл станцию метро</title>"
+           f"<link>https://www.mos.ru/news/item/2/</link><pubDate>{future}</pubDate>"
+           f"<description>Станция «Новая» приняла первых пассажиров.</description></item></channel></rss>").encode()
+    items = collect.rss_items(rss)
+    assert [i["link"] for i in items] == ["https://www.mos.ru/news/item/2/"]               # no events listing
+    assert items[0]["ts"] <= _time.time()                                                   # never from the future
+    sig = judge.signals([{"channel": "mos.ru", "views": 0, "ts": _time.time() + 40 * 86400, "kind": "primary"}],
+                        {"mos.ru": 0.9})
+    assert sig["age_h"] == 0
+    zero = {"relevance": 0, "significance": 0, "virality": 0, "local": 1, "region": "moscow"}
+    assert judge.channels_for(zero, 9.0, [dict(c) for c in config.CHANNELS], 9.0) == []   # the AI's floor
+    h = rewrite.render(_post(headline="Новогоднее сияние", who="", paragraphs=[]), NEWS)
+    assert any("только заголовок" in p for p in rewrite.problems(h, NEWS))
 
 
 # -- feeds and albums ---------------------------------------------------------------------------------------------------------
