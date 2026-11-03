@@ -47,7 +47,8 @@ for the pipeline steps; they all apply here.
 - **Pace and conflict** (owner 2026-11-03, README «Темп и кадры конфликта», «Перевод цитат»): the picture changes every
   2–3 s — a phrase longer than ~3.5 s gets "extra" pieces (another moment, another clip, a quote), mean ≤ 3.5 s,
   none > 6 s; a conflict story shows the conflict (troops, jets, ships, launches — real footage of the same sides,
-  role context, never passed off as this strike); a quote not in Russian gets "translation" (shown on screen).
+  role context, never passed off as this strike — no on-screen mark, never "label": it means an AI picture and
+  build.py refuses the film); a quote not in Russian gets "translation" (shown on screen).
 - **Shots by score** (owner 2026-11-03, README «Оценка кадров»): every shot has a "role" (event / quote / key /
   context / map) and your own "score" 0–10 by the rubric; pick each from several candidates. Stills only as a quote
   (a post, a tweet, a headline, an article's text, a statement), a key picture of the story itself, or one map;

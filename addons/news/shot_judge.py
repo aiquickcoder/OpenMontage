@@ -201,6 +201,10 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
     maps = [i for i, it in enumerate(items) if it.get("role") == "map"]
     for i, it in enumerate(items):
         role = it.get("role")
+        if it.get("label"):  # 03.11: «Архивные кадры» put in "label" made build.py take 9 of 14 shots for AI pictures
+            bad.setdefault(i, []).append(f"\"label\" «{it['label']}» — the field is reserved for AI illustrations (none "
+                                         f"allowed) and is never shown; remove it: archive footage needs no mark, the "
+                                         f"voice frames it (README «Темп и кадры конфликта»)")
         if role and role not in ROLES:
             bad.setdefault(i, []).append(f"unknown role «{role}» ({', '.join(sorted(ROLES))})")
         if it["still"] and role not in STILL_ROLES:

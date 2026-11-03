@@ -1646,3 +1646,11 @@ def test_extra_pieces_split_a_phrase_and_are_cleaned_and_checked(tmp_path):
     assert "media/b.mp4" in build.unclean_footage(story)
     assert shot_judge.pace_notes([{"dur": 7.6}, {"dur": 7.0}])[0].startswith("pace: a picture lasts 7.3 s")
     assert shot_judge.pace_notes([{"dur": 2.5}, {"dur": 3.0}]) == []
+
+
+def test_shot_judge_refuses_label_on_real_footage():
+    """03.11: «Архивные кадры» in "label" — build.py took 9 of 14 shots for AI pictures and the test film failed."""
+    from addons.news import shot_judge as sj
+
+    bad = sj.hard_rules([{"src_key": "media/a.mp4", "still": False, "role": "context", "label": "Архивные кадры"}], [1])
+    assert any("reserved for AI illustrations" in w for w in bad[0])
