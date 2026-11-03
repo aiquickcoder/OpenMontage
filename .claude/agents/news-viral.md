@@ -38,7 +38,9 @@ for the pipeline steps; they all apply here.
   clean_footage.py (the author's burned-in titles; build.py refuses "clean": "none" for them); no credit —
   neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).
 - **«Почему так вышло»** (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause between the facts and the
-  question, answering the main question the story raises (an accusation — why them; owner on Tusk: «не понятно,
+  question (2–4 in a political or big story), answering the main question the story raises — broadly, for someone who
+  does not follow the topic: who against whom and over what, what came before, what is at stake for an ordinary
+  person, then the trigger (owner 03.11: «очень узкая и совсем стала непонятная… нужно шире»; on Tusk: «не понятно,
   почему он обвинил Россию»): politics, accusations, disputes — from the sources with the author; plain uncontested
   common knowledge (a breed, how such schemes work) — without a reference. story.json "why" + "why_basis" (the
   sources' words and links, or «общеизвестно: …»); neither → "why_skip"; no one's guilt before a verdict.
