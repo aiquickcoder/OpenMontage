@@ -172,6 +172,15 @@ def main() -> None:
     missing = [i["id"] for i in story.get("illustrations", []) if not (proj / "illustrations" / f"{i['id']}.png").is_file()]
     if missing:
         fail(f"illustrations missing: {', '.join(missing)}")
+    # every shot scored before the render (owner 2026-11-03: «ИИ оценивал кадры по бальной системе»; README «Оценка
+    # кадров»): repeats and stills «around» the story stop the film; low scores too, for MAX_ROUNDS rounds
+    j = subprocess.run([PY, "addons/news/shot_judge.py", rel], cwd=REPO, capture_output=True, text=True)
+    (logs / "shot_judge.log").write_text(j.stdout + j.stderr, encoding="utf-8")
+    print(j.stdout.strip(), flush=True)
+    if j.returncode == 3:
+        fail("shots: " + " | ".join(l.strip() for l in j.stdout.splitlines()[1:6]))
+    if j.returncode != 0:  # the judge itself broke: the film goes on, the log says why
+        print(f"shot judge error (not blocking): {(j.stderr or j.stdout)[-300:]}", flush=True)
     print("build: start", flush=True)
     b = run([PY, "addons/news/build.py", rel, "--retime"],
             {"https_proxy": os.environ.get("NEWS_HTTPS_PROXY", "http://127.0.0.1:10809"),

@@ -1556,3 +1556,51 @@ def test_apify_demo_rows_are_an_error_not_an_empty_success(monkeypatch):
         viral.tiktok_batch(["x"], "t")
     with pytest.raises(SystemExit):
         yt_footage._apify({"keywords": ["x"]})
+
+
+def test_shot_judge_hard_rules_no_repeats_stills_only_as_quote_key_map():
+    """Owner 2026-11-03: «Повторов быть не должно. Статичный кадр — для цитат… или если прямо новость… для около —
+    футаж из движка»."""
+    from addons.news import shot_judge as sj
+
+    def it(src, still, role=None, at=0.0):
+        return {"src_key": src, "still": still, "role": role, "in": at}
+
+    items = [it("media/a.mp4", False, "event"), it("media/x_post.png", True, "quote"), it("media/a.mp4", False, "event", 8.0),
+             it("media/minfin.jpg", True, "context"), it("media/x_post.png", True, "quote"), it("media/a.mp4", False, "event", 9.0),
+             it("media/map1.jpg", True, "map"), it("media/map2.jpg", True, "map"), it("media/b.mp4", False, "context"),
+             it("media/c.mp4", False, "context")]
+    mids = [0x0123456789ABCDEF, 0xF0F0F0F0F0F0F0F0, 0x0F0F0F0F0F0F0F0F, 0xAAAAAAAAAAAAAAAA, 0x5555555555555555,
+            0xFFFF0000FFFF0000, 0x0000FFFF0000FFFF, 0x00FF00FF00FF00FF, 0x1234123412341234, 0x1234123412341235]
+    bad = sj.hard_rules(items, mids)
+    assert 2 not in bad                                                                # same clip, another moment: fine
+    assert any("a still as «context»" in w for w in bad[3])                           # a photo «around» the story
+    assert any("repeats shot 2" in w for w in bad[4])                                  # a still twice
+    assert any("repeats shot 3" in w for w in bad[5])                                  # the same moment of a clip
+    assert any("second map" in w for w in bad[7])
+    assert any("looks the same as shot 9" in w for w in bad[9])
+    assert 0 not in bad and 1 not in bad and 8 not in bad
+
+
+def test_shot_judge_reads_the_ai_scores_and_caps_them(monkeypatch):
+    import sys as _sys
+    import types
+
+    import numpy as np
+
+    from addons.news import shot_judge as sj
+
+    answer = [{"shot": 1, "meaning": 4, "role": 2, "context": 2, "clean": 2, "problem": "", "fix": ""},
+              {"shot": 2, "meaning": 9, "role": 0, "context": 1, "clean": 1, "problem": "фото здания Минфина «около»",
+               "fix": "видео Минфина или Силуанова с YouTube"}]
+    fake = types.SimpleNamespace(chat_json=lambda *a, **k: answer, image_part_array=lambda img, side: {"type": "image", "url": "x"})
+    import addons.channels as channels_pkg
+
+    monkeypatch.setitem(_sys.modules, "addons.channels.llm", fake)
+    monkeypatch.setattr(channels_pkg, "llm", fake, raising=False)
+    items = [{"still": False, "dur": 3.0, "role": "event", "src_key": "media/a.mp4", "said": "Минфин предложил"},
+             {"still": True, "dur": 2.0, "role": "context", "src_key": "media/minfin.jpg", "said": "законопроект"}]
+    img = np.zeros((40, 30, 3), np.uint8)
+    got = sj.ai_scores(items, [img, img])
+    assert got[0]["total"] == 10
+    assert got[1]["meaning"] == 4 and got[1]["total"] == 6 and "Силуанова" in got[1]["fix"]   # 9 is capped at 4

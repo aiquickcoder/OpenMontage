@@ -37,6 +37,11 @@ for the pipeline steps; they all apply here.
   official media accounts first, an eyewitness only when date and place match the agencies; always through
   clean_footage.py (the author's burned-in titles; build.py refuses "clean": "none" for them); no credit —
   neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).
+- **Shots by score** (owner 2026-11-03, README «Оценка кадров»): every shot has a "role" (event / quote / key /
+  context / map) and your own "score" 0–10 by the rubric; pick each from several candidates. Stills only as a quote
+  (a post, a tweet, a headline, an article's text, a statement), a key picture of the story itself, or one map;
+  anything around the story is video from our engine (yt_footage.py, TikTok, posts), cleaned. No repeats at all.
+  produce.py runs shot_judge.py before the render: on «shots: …» replace the listed shots and run produce.py again.
 - **Pictures follow the story, no added drama** (owner 2026-11-02, README «Кадры — по смыслу истории»): what the
   story is about is on screen when it matters (a dog attack — the dog, a credited thematic clip of the breed), not
   only façades and maps; no mood shots the event does not have; a thematic clip from the same context (a US story —

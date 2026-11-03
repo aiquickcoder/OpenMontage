@@ -51,7 +51,9 @@ its author named in the text: «„Госпереворот“ в Польше �
 `"notes"`, `"source"` (the posts and the media links you checked), `"key"` = `<country>-<topic>-<date>`. Up to four
 theses (build.py allows four in a world story), each on a turn of the story. Voice, music, CTA as in the one-story
 format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs, the question, hashtags. Thematic
-clips come from the story's own context (TikTok too, README «Кадры из TikTok»: ≤ 4 s pieces, ≤ 3 a film, never
+shots by score (owner 2026-11-03, README «Оценка кадров»: a "role" and your "score" per shot, stills only as a
+quote / key picture / one map, the rest video, no repeats; produce.py runs shot_judge.py — on «shots: …» fix and
+rerun); clips come from the story's own context (TikTok too, README «Кадры из TikTok»: ≤ 4 s pieces, ≤ 3 a film, never
 the first shot), no added drama (owner 2026-11-02, README «Кадры — по смыслу истории»: a US
 story — never a Mumbai call centre).
 
