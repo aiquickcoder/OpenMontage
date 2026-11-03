@@ -435,7 +435,7 @@ def main() -> None:
         # Long unattended runs can then resume without sampling every clip again.
         mask_file = work / (tag(src) + ".mask.png")
         meta_file = work / (tag(src) + ".plan.json")
-        signature = {"source": digest(path), "hand": entry, "templates": templates_changed(), "version": 1}
+        signature = {"source": digest(path), "hand": entry, "templates": templates_changed(), "version": 2}
         if meta_file.is_file() and mask_file.is_file():
             meta = json.loads(meta_file.read_text())
             if meta.get("signature") == signature:
@@ -450,16 +450,19 @@ def main() -> None:
             mask, how = np.zeros_like(mask), f"still camera ({moving:.1f} px)"
         elif blind:
             how += f", steady background over {blind:.0%} of the frame — the auto mask is blind there"
+        # Template matches are automatic too. Apply them before the reviewed hand
+        # decision: a list replaces automatic masks; {"add": [...]} keeps them.
+        # Otherwise false template matches can erase a quote even after [] review.
+        known = template_mask(fr)
+        if np.any(known):
+            how += " + known logos"
+        mask = np.maximum(mask, known)
         if entry is not None:
             how += replaced_note(entry, float((mask > 0).mean()), moving)
             mask = hand_mask(fr[0].shape[:2], entry, mask)
             how += " + hand boxes" if isinstance(entry, dict) else " → hand boxes"
         elif needs_look(moving, blind):
             how += " — NEEDS A LOOK"
-        known = template_mask(fr)
-        if np.any(known):
-            how += " + known logos"
-        mask = np.maximum(mask, known)
         area = float((mask > 0).mean())
         cv2.imwrite(str(qa_dir / f"wm_{tag(src)}.jpg"), preview(fr, mask))
         cv2.imwrite(str(work / (tag(src) + ".mask.png")), mask)

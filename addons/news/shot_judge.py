@@ -154,9 +154,15 @@ def shots_of(proj: Path) -> tuple[dict, list[dict]]:
 def frames(it: dict) -> list:
     import cv2
 
+    def framed(img):
+        if img is not None and it.get("crop"):
+            x, y, w, h = map(int, it["crop"])
+            return img[max(0, y):min(img.shape[0], y + h), max(0, x):min(img.shape[1], x + w)]
+        return img
+
     path = str(it["path"])
     if it["still"]:
-        img = cv2.imread(path)
+        img = framed(cv2.imread(path))
         return [img] if img is not None else []
     cap, out = cv2.VideoCapture(path), []
     t0, dur = float(it.get("in") or 0), float(it["dur"])
@@ -164,7 +170,7 @@ def frames(it: dict) -> list:
         cap.set(cv2.CAP_PROP_POS_MSEC, (t0 + f * dur) * 1000)
         ok, img = cap.read()
         if ok:
-            out.append(img)
+            out.append(framed(img))
     cap.release()
     return out
 
