@@ -195,6 +195,33 @@ def dhash(img) -> int:
     return int("".join("1" if g[r, c] > g[r, c + 1] else "0" for r in range(8) for c in range(8)), 2)
 
 
+def same_paper_quote(a: dict, b: dict) -> bool:
+    """Confirm coarse-hash matches on white text cards using their actual ink.
+
+    A 9x8 hash sees the white margins and paragraph position, not the words:
+    unrelated quotations often collide. Keep the ordinary image check for other
+    pictures; paper quotations must also match after cropping the blank margins.
+    """
+    import cv2
+    import numpy as np
+
+    masks = []
+    for it in (a, b):
+        if not it.get("still") or it.get("role") != "quote":
+            return True
+        g = cv2.imread(str(it.get("path") or ""), cv2.IMREAD_GRAYSCALE)
+        if g is None or float((g > 230).mean()) < 0.65:
+            return True
+        ink = g < 200
+        ys, xs = np.where(ink)
+        if not len(xs):
+            return True
+        ink = ink[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.uint8)
+        masks.append(cv2.resize(ink, (192, 128), interpolation=cv2.INTER_AREA) > 0)
+    union = np.logical_or(*masks).sum()
+    return not union or float(np.logical_and(*masks).sum() / union) >= 0.85
+
+
 def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
     """Index → what breaks the rules no score can buy back."""
     bad: dict[int, list[str]] = {}
@@ -219,7 +246,9 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
                                                   < REPEAT_GAP_S):
                 bad.setdefault(i, []).append(f"repeats shot {j + 1} ({Path(it['src_key']).name})")
                 break
-            if mids[i] is not None and mids[j] is not None and bin(mids[i] ^ mids[j]).count("1") <= SAME_PICTURE:
+            if (mids[i] is not None and mids[j] is not None
+                    and bin(mids[i] ^ mids[j]).count("1") <= SAME_PICTURE
+                    and same_paper_quote(it, o)):
                 bad.setdefault(i, []).append(f"looks the same as shot {j + 1}")
                 break
     for i in maps[1:]:

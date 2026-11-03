@@ -1394,10 +1394,11 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             k += 1
         # a quote or a news text not in Russian carries its translation on screen (owner 2026-11-03: «сделай перевод
         # кадров, где есть новость текстовая или цитата, но она не на русском»): a card under the picture, above the
-        # captions (they start at 1500)
+        # captions grow upward from SAFE_BOTTOM: reserve their full two-line room,
+        # and anchor translations by their bottom so longer text cannot run into them.
         if it.get("translation"):
-            tr_top = min(1330, (BOX_Y + bh // 2 + 16) if not full else 1150)
-            chips.append(f'    <div id="chip{k}" class="clip chip tr" style="top:{tr_top}px" data-start="{it["start"]}" '
+            tr_bottom = H - (SAFE_BOTTOM - CAP_ROOM - 18)
+            chips.append(f'    <div id="chip{k}" class="clip chip tr" style="bottom:{tr_bottom}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="5">{esc(it["translation"])}</div>')
             k += 1
         # source credits stay in story.json and the post text, not on screen (owner 2026-10-28); a story can opt back in
