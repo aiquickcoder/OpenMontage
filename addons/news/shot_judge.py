@@ -209,7 +209,9 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
                                          f"the story — video from our engine (yt_footage.py, TikTok, posts), cleaned")
         for j in range(i):
             o = items[j]
-            if it["src_key"] == o["src_key"] and (it["still"] or abs(float(it.get("in") or 0) - float(o.get("in") or 0))
+            # Cleaned pieces start at zero locally; compare their positions in the shared original source.
+            if it["src_key"] == o["src_key"] and (it["still"] or abs(float(it.get("in_orig", it.get("in")) or 0)
+                                                                  - float(o.get("in_orig", o.get("in")) or 0))
                                                   < REPEAT_GAP_S):
                 bad.setdefault(i, []).append(f"repeats shot {j + 1} ({Path(it['src_key']).name})")
                 break
