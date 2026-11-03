@@ -27,8 +27,8 @@ case (the article, date, place, how it happened) and transcribe the agency video
 words in as a sound bite only where its representative speaks on camera (`[bite]` + `"bite"` + a `"bite": true`
 shot, README; never an off-screen agency narrator — its facts go into our text); say the maximum term when the article
 is known («Ему грозит до пятнадцати лет», sanction checked in the УК); end with a comment bait, then the subscribe line
-(owner 2026-11-01, README «Конец ролика»; 03.11: the strongest lets a knowing viewer show he knows — «объясни» /
-«предскажи» / «рассуди», the question alone — no «кто разбирается — объясните» tail, never a planted mistake): «Как думаете, <a provocative question from this film's own conflict, two
+(owner 2026-11-01, README «Конец ролика»; 03.11: the strongest lets a knowing viewer show he knows — two named versions
+«А или Б», no open «почему…?» — «предскажи» / «рассуди» / «объясни», no «кто разбирается — объясните» tail, never a planted mistake): «Как думаете, <a provocative question from this film's own conflict, two
 sides people will argue over>? Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что происходит в
 городе.» — the invitation in a presenter's own words («А вы на чьей стороне?», «Вам звонили с такой схемой? Расскажите —
 предупредите других»), never dictating the word to write («Пишите: А или Б», «Пишите цифру»: unprofessional, and
