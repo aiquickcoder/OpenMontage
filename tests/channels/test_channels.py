@@ -615,3 +615,37 @@ def test_image_token_from_upload_answer():
 
     assert max_api.image_token(b'{"photos": {"abc": {"token": "T1"}}}') == "T1"
     assert max_api.image_token(b"<retval>1</retval>") is None
+
+
+def test_read_new_heals_a_stale_access_hash_after_a_new_login():
+    """02.11: the session was logged in anew; the cached access hashes were the old login's and all 75 channels failed
+    «ChannelInvalidError» for a day — only RSS came in."""
+    import asyncio
+    import types
+    from datetime import datetime, timezone
+
+    pytest.importorskip("telethon")
+    from telethon.errors import ChannelInvalidError
+    from telethon.tl.types import InputPeerChannel
+
+    from addons.channels import tgread
+
+    msg = types.SimpleNamespace(id=7, date=datetime.now(timezone.utc), views=100, forwards=0, text="Новость", message="Новость",
+                                photo=None, video=None, gif=None, grouped_id=0, fwd_from=None, reactions=None, file=None,
+                                action=None)
+    ent = types.SimpleNamespace(id=111, access_hash=999, title="Топор", left=True)
+
+    class Client:
+        async def get_entity(self, peer):
+            return ent
+
+        def iter_messages(self, peer, limit=0, min_id=0):
+            async def gen():
+                if isinstance(peer, InputPeerChannel):
+                    raise ChannelInvalidError(request=None)
+                yield msg
+            return gen()
+
+    rows, info = asyncio.run(tgread.read_new(Client(), "toporlive", {"tg_id": 111, "tg_hash": 123}, 0, 2))
+    assert [r["post"] for r in rows] == [7]
+    assert info["tg_hash"] == 999 and info["member"] is False          # the new hash, and «not in the channel»

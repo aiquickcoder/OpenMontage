@@ -201,6 +201,8 @@ class Collector:
         fields = {"last_id": last, "last_read": time.time(), "error": ""}
         if info:
             fields.update(tg_id=info["tg_id"], tg_hash=info["tg_hash"])
+            if joined and not info.get("member", True):  # this login is not in the channel: back to the join queue
+                fields.update(joined=0, join_tried=0)
         self.db.update("sources", "id", src["id"], **fields)
         if info:
             self.refresh_ids()

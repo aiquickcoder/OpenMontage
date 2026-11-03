@@ -108,18 +108,34 @@ async def read_new(c, username: str, cached: dict | None, min_id: int, hours: fl
     if isinstance(peer, str):
         ent = await c.get_entity(peer)
         peer = ent
-    rows: list[dict] = []
-    async for m in c.iter_messages(peer, limit=limit, min_id=min_id or 0):
-        if m.date < since:
-            break
-        if getattr(m, "action", None):  # service message
-            continue
-        rows.append(message_row(username, m))
+
+    async def take(peer) -> list[dict]:
+        out = []
+        async for m in c.iter_messages(peer, limit=limit, min_id=min_id or 0):
+            if m.date < since:
+                break
+            if getattr(m, "action", None):  # service message
+                continue
+            out.append(message_row(username, m))
+        return out
+
+    try:
+        rows = await take(peer)
+    except Exception as e:  # noqa: BLE001
+        from telethon.errors import ChannelInvalidError
+
+        # the cached access hash belongs to another login (02.11: the session was logged in anew and all 75 channels
+        # failed «ChannelInvalidError» for a day — only RSS came in): resolve the username for this account and go on
+        if ent is not None or not isinstance(e, ChannelInvalidError):
+            raise
+        ent = await c.get_entity(username)
+        rows = await take(ent)
     rows.reverse()
     out = fold_albums(rows)
     info = {}
     if ent is not None:
-        info = {"tg_id": ent.id, "tg_hash": getattr(ent, "access_hash", 0) or 0, "title": getattr(ent, "title", "")}
+        info = {"tg_id": ent.id, "tg_hash": getattr(ent, "access_hash", 0) or 0, "title": getattr(ent, "title", ""),
+                "member": getattr(ent, "left", True) is False}
     return out, info
 
 
