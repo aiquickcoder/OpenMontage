@@ -1225,10 +1225,15 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
     of its story ("span", 2 by default) in one place — on the edge of its first picture, so it does not jump at the
     cut; the running captions give way to it (it says the same phrases shorter) and come back after it."""
     html, js, spans = [], [], []
-    marked = [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]
-    for k, (n, it) in enumerate(marked):
+    # a translated quote holds the bottom of the frame (README «Перевод цитат»; the Qeshm test 03.11 failed the layout
+    # check on a translation card over a thesis): a thesis waits for the translated shot to end, and one already on
+    # screen leaves when a translated shot comes
+    tr = [(x["start"], round(x["start"] + x["dur"], 3)) for x in items if x.get("translation") and x.get("path")]
+    plan = []
+    for n, it in [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]:
         story = [x for x in items[n:] if x.get("w") == it.get("w")]
         a = max(it["start"], not_before)  # a hook holds the first seconds
+        a = next((e for s, e in tr if s - 0.05 <= a < e - 0.05), a)
         if it.get("span"):
             run = story[:int(it["span"])]
             d = round(run[-1]["start"] + run[-1]["dur"] - a, 3)
@@ -1236,6 +1241,15 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
             end = next((x["start"] + x["dur"] for x in story if x["start"] + x["dur"] - a >= THESIS_MIN_S),
                        story[-1]["start"] + story[-1]["dur"])
             d = round(min(end - a, THESIS_MAX_S), 3)
+        d = round(min([d] + [s - a for s, _ in tr if a + 0.05 < s < a + d]), 3)
+        if d >= 1.0:  # a thesis squeezed under a second by translations would only flash
+            plan.append((it, round(a, 3), d))
+    # a thesis gives way to the next one of its story: never two on screen
+    for k in range(len(plan) - 1):
+        (it, a, d), (nxt, b, _) = plan[k], plan[k + 1]
+        if it.get("w") == nxt.get("w") and a + d > b:
+            plan[k] = (it, a, round(b - a, 3))
+    for k, (it, a, d) in enumerate(plan):
         tb, over = thesis_bottom(it), thesis_over(it)
         cls = "clip thesis over" if over else "clip thesis"
         html.append(f'    <div id="th{k}" class="{cls}" data-start="{a}" data-duration="{d}" '
@@ -1249,12 +1263,6 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
                   f'  tl.from("#th{k} em", {{backgroundSize: "0% 100%", duration: 0.35, ease: "power2.out", '
                   f'stagger: 0.1}}, {a + 0.35:.2f});')
         spans.append((a, round(a + d, 3)))
-    # a thesis gives way to the next one of its story: never two on screen
-    for k in range(len(marked) - 1):
-        (n, it), (_, nxt) = marked[k], marked[k + 1]
-        if it.get("w") == nxt.get("w") and spans[k][1] > nxt["start"]:
-            spans[k] = (spans[k][0], nxt["start"])
-            html[k] = re.sub(r'data-duration="[0-9.]+"', f'data-duration="{round(nxt["start"] - it["start"], 3)}"', html[k], 1)
     return html, js, spans
 
 

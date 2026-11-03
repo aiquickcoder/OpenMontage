@@ -1648,6 +1648,24 @@ def test_extra_pieces_split_a_phrase_and_are_cleaned_and_checked(tmp_path):
     assert shot_judge.pace_notes([{"dur": 2.5}, {"dur": 3.0}]) == []
 
 
+def test_a_thesis_gives_way_to_a_translation_card(monkeypatch):
+    from addons.news import build
+
+    monkeypatch.setattr(build, "thesis_bottom", lambda it: 1300)
+    monkeypatch.setattr(build, "thesis_over", lambda it: False)
+    items = [{"w": 0, "start": 0.0, "dur": 2.0, "path": "a.mp4", "thesis": "ПЕРВЫЙ"},
+             {"w": 0, "start": 2.0, "dur": 2.0, "path": "q.png", "translation": "перевод"},
+             {"w": 0, "start": 4.0, "dur": 3.0, "path": "b.mp4"},
+             {"w": 0, "start": 7.0, "dur": 2.0, "path": "q2.png", "translation": "ещё", "thesis": "ВТОРОЙ"},
+             {"w": 0, "start": 9.0, "dur": 3.0, "path": "c.mp4"}]
+    html, _, spans = build.theses(items)
+    assert spans[0] == (0.0, 2.0)        # leaves when the translated quote comes
+    assert spans[1] == (9.0, 12.0)       # its own shot is translated: it waits for the next one
+    assert 'data-start="9.0"' in html[1]
+    tr = [(x["start"], x["start"] + x["dur"]) for x in items if x.get("translation")]
+    assert not any(a < e and s < b for a, b in spans for s, e in tr)
+
+
 def test_shot_judge_wants_the_strongest_picture_under_the_hook():
     from addons.news import shot_judge as sj
 
