@@ -532,34 +532,44 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
         edges = [t0, *cut_points(window, n, list(words), LAST_PIECE_S if len(shots) <= n else PIECE_S), window[1]]
     used: dict[str, float] = {}
     out, t = [], 0.0
-    for i, s in enumerate(shots[:n]):
-        d = round((edges[i + 1] if i < min(n, len(shots)) - 1 else window[1]) - edges[i], 3)
-        src = (proj / s["src"]).resolve() if not Path(s["src"]).is_absolute() else Path(s["src"])
-        if not src.is_file():
-            if strict:
-                sys.exit(f"shot {i}: {src} not found")
-            out.append({**s, "path": None, "start": round(t0 + t, 3), "dur": d, "video": False})  # storyboard only
+    for i, shot in enumerate(shots[:n]):
+        d_all = round((edges[i + 1] if i < min(n, len(shots)) - 1 else window[1]) - edges[i], 3)
+        # «extra» pieces share the phrase (owner 2026-11-03: «кадры сменяются редко, что для рилс формата очень
+        # критично»): the shot, then each extra in turn, every piece at least MIN_PIECE_S; no extra — as before
+        pieces = [{k: v for k, v in shot.items() if k != "extra"}] + [dict(e) for e in shot.get("extra") or []
+                                                                      if isinstance(e, dict) and e.get("src")]
+        k_n = max(1, min(len(pieces), int(d_all // MIN_PIECE_S)))
+        parts = [round(d_all / k_n, 3)] * (k_n - 1)
+        parts.append(round(d_all - sum(parts), 3))
+        for s, d in zip(pieces[:k_n], parts):
+            src = (proj / s["src"]).resolve() if not Path(s["src"]).is_absolute() else Path(s["src"])
+            if not src.is_file():
+                if strict:
+                    sys.exit(f"shot {i}: {src} not found")
+                out.append({**s, "path": None, "start": round(t0 + t, 3), "dur": d, "video": False})  # storyboard only
+                t += d
+                continue
+            item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT,
+                    "n": i}
+            if item["video"]:
+                w, h, length = probe(src)
+                a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
+                if not s.get("bite"):  # the last frames of the scene before would flash (Moscow 30.10: a TV anchor)
+                    a = next((c + 0.04 for c in scene_cuts(src) if a < c < a + SNAP_S), a)
+                if a + d > length:  # clip too short for this cut: loop back to its start
+                    a = max(0.0, min(0.3, length - d))
+                if d > length + 0.1:  # segment() holds the last frame
+                    print(f"warning: shot {i} {src.name} is {length:.1f}s for a {d:.1f}s cut — its last frame is held "
+                          f"{d - length:.1f}s", flush=True)
+                item["in"] = round(a, 3)
+                used[str(src)] = a + d
+            out.append(item)
             t += d
-            continue
-        item = {**s, "path": src, "start": round(t0 + t, 3), "dur": d, "video": src.suffix.lower() in VIDEO_EXT, "n": i}
-        if item["video"]:
-            w, h, length = probe(src)
-            a = float(s["in"]) if "in" in s else used.get(str(src), 0.3)
-            if not s.get("bite"):  # the last frames of the scene before would flash (Moscow 30.10: a TV anchor)
-                a = next((c + 0.04 for c in scene_cuts(src) if a < c < a + SNAP_S), a)
-            if a + d > length:  # clip too short for this cut: loop back to its start
-                a = max(0.0, min(0.3, length - d))
-            if d > length + 0.1:  # segment() holds the last frame
-                print(f"warning: shot {i} {src.name} is {length:.1f}s for a {d:.1f}s cut — its last frame is held "
-                      f"{d - length:.1f}s", flush=True)
-            item["in"] = round(a, 3)
-            used[str(src)] = a + d
-        out.append(item)
-        t += d
     return out
 
 
 SNAP_S = 0.8
+MIN_PIECE_S = 1.2  # an «extra» piece is never shorter
 _CUTS: dict[str, list[float]] = {}
 
 
@@ -752,9 +762,15 @@ def foreign_tags(path: Path) -> list[str]:
     return sorted(bad)
 
 
+def all_pieces(story: dict) -> list[dict]:
+    """Every picture of the film in order: each shot, then its «extra» pieces."""
+    return [p for st in stories(story) for s in st.get("shots", [])
+            for p in [s] + [e for e in s.get("extra") or [] if isinstance(e, dict) and e.get("src")]]
+
+
 def tiktok_shots(story: dict) -> list[int]:
     """Indexes of the shots cut from TikTok (yt_footage.py tt-cut puts them in media/tt/; cleaned, src_orig keeps it)."""
-    shots = [s for st in stories(story) for s in st.get("shots", [])]
+    shots = all_pieces(story)
     return [i for i, s in enumerate(shots) if "/tt/" in f"/{s.get('src', '')}" or "/tt/" in f"/{s.get('src_orig', '')}"]
 
 
@@ -1360,7 +1376,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     runs: list[dict] = []  # consecutive cuts with the same credit and box share one chip
     for it in items:
         if runs and runs[-1].get("credit") == it.get("credit") and runs[-1]["path"] == it["path"] \
-                and runs[-1].get("label") == it.get("label"):
+                and runs[-1].get("label") == it.get("label") and runs[-1].get("translation") == it.get("translation"):
             runs[-1] = {**runs[-1], "dur": round(runs[-1]["dur"] + it["dur"], 3)}
         else:
             runs.append(dict(it))
@@ -1375,6 +1391,14 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         if it.get("label") and story.get("show_ai_label"):
             chips.append(f'    <div id="chip{k}" class="clip chip label" data-layout-ignore style="bottom:{bottom + 14}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="4">{esc(it["label"])}</div>')
+            k += 1
+        # a quote or a news text not in Russian carries its translation on screen (owner 2026-11-03: «сделай перевод
+        # кадров, где есть новость текстовая или цитата, но она не на русском»): a card under the picture, above the
+        # captions (they start at 1500)
+        if it.get("translation"):
+            tr_top = min(1330, (BOX_Y + bh // 2 + 16) if not full else 1150)
+            chips.append(f'    <div id="chip{k}" class="clip chip tr" style="top:{tr_top}px" data-start="{it["start"]}" '
+                         f'data-duration="{it["dur"]}" data-track-index="5">{esc(it["translation"])}</div>')
             k += 1
         # source credits stay in story.json and the post text, not on screen (owner 2026-10-28); a story can opt back in
         if it.get("credit") and story.get("show_credits"):
@@ -1469,6 +1493,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .chip.label {{ right: 22px; font-size: 20px; font-weight: 400; color: rgba(255,255,255,.42);
                    text-shadow: 0 1px 2px rgba(0,0,0,.35); }}
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
+    .chip.tr {{ left: 120px; right: 120px; font-size: 34px; line-height: 1.25; color: #111; background: rgba(255,255,255,.94);
+               padding: 14px 22px; border-radius: 10px; text-align: center; max-height: 150px; overflow: hidden; }}
     .cap {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; bottom: {H - SAFE_BOTTOM}px; text-align: center;
             z-index: 7; }}
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
@@ -1603,7 +1629,7 @@ def unclean_footage(story: dict) -> list[str]:
     if story.get("footage_clean") is False:
         return []
     bad = []
-    for s in stories(story):
+    for s in [{"shots": all_pieces(story)}]:
         for sh_ in s.get("shots", []):
             src = sh_.get("src", "")
             # a TikTok piece is always cleaned — its author's burned-in titles and captions (owner 2026-11-02)

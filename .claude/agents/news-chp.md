@@ -69,7 +69,8 @@ added drama — what it is about is on screen when it matters (a dog attack — 
 (owner 2026-11-02, README «Кадры — по смыслу истории»); each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
 marker, ≤44 characters (README «Тезисы на кадрах»). When the post's, the agency's and TV footage are thin, short
 pieces of the event from TikTok (`yt_footage.py tt-search / tt-peek / tt-cut`, README «Кадры из TikTok»: ≤ 4 s
-each, ≤ 3 a film, never the first shot, no credit). «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
+each, ≤ 3 a film, never the first shot, no credit). A new picture every 2–3 s (owner 2026-11-03, README «Темп и кадры конфликта»: "extra" pieces in a long phrase);
+a quote not in Russian gets "translation" (README «Перевод цитат»). «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
 anyone's guilt) — from the sources, or plain uncontested common knowledge («стаффорды — сильные собаки с крепкой
 хваткой…»); story.json "why" + "why_basis", neither → "why_skip". Shots by score (owner
 2026-11-03, README «Оценка кадров»): a

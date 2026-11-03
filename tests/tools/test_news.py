@@ -1615,3 +1615,34 @@ def test_shot_judge_why_block_rests_on_its_sources():
     hard, _ = sj.why_problems({"why": "WSJ пишет, что удары идут месяцами"}, use_ai=False)
     assert hard and "why_basis" in hard[0]
     assert sj.why_problems({"why": "WSJ пишет…", "why_basis": ["WSJ: … (https://wsj.com/…)"]}, use_ai=False) == ([], [])
+
+
+def test_extra_pieces_split_a_phrase_and_are_cleaned_and_checked(tmp_path):
+    """Owner 2026-11-03: «кадры сменяются редко, что для рилс формата очень критично»."""
+    import subprocess
+
+    from addons.news import build, clean_footage, shot_judge
+
+    (tmp_path / "media").mkdir()
+    for name in ("a.mp4", "b.mp4"):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x568:rate=25", "-t", "8",
+                        "-c:v", "libx264", str(tmp_path / "media" / name)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=640x360", "-frames:v", "1",
+                    str(tmp_path / "media" / "q.png")], check=True)
+    story = {"shots": [{"src": "media/a.mp4", "role": "event", "extra": [{"src": "media/b.mp4", "in": 1, "role": "context"}]},
+                       {"src": "media/q.png", "role": "quote", "translation": "WSJ: удары идут месяцами"}]}
+    phrases = [{"start": 0.0, "end": 4.0, "text": "один"}, {"start": 4.0, "end": 6.0, "text": "два"}]
+    items = build.slots(story, [0.0, 6.0], tmp_path, [], phrases)
+    assert [i["path"].name for i in items] == ["a.mp4", "b.mp4", "q.png"]
+    assert [i["dur"] for i in items] == [2.0, 2.0, 2.0] and items[1]["in"] >= 1.0
+    assert "extra" not in items[0] and items[2]["translation"].startswith("WSJ")
+    # a short phrase keeps one piece (≥ 1.2 s each)
+    tiny = build.slots(story, [0.0, 3.0], tmp_path, [], [{"start": 0.0, "end": 2.0, "text": "раз"},
+                                                         {"start": 2.0, "end": 3.0, "text": "два"}])
+    assert [i["path"].name for i in tiny] == ["a.mp4", "q.png"]
+    # the extras are cleaned and checked like shots
+    use = clean_footage.footage(tmp_path, story)
+    assert {u["src"] for u in use.values()} >= {"media/a.mp4", "media/b.mp4", "media/q.png"}
+    assert "media/b.mp4" in build.unclean_footage(story)
+    assert shot_judge.pace_notes([{"dur": 7.6}, {"dur": 7.0}])[0].startswith("pace: a picture lasts 7.3 s")
+    assert shot_judge.pace_notes([{"dur": 2.5}, {"dur": 3.0}]) == []

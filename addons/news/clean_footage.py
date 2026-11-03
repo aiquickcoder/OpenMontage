@@ -322,6 +322,17 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
         for j, sh_ in enumerate(shots):
             if bs is not None and j >= len(bs):  # past the last phrase: never shown
                 continue
+            extras = [e for e in sh_.get("extra") or [] if isinstance(e, dict) and e.get("src")]
+            plen = round(bs[j]["end"] - bs[j]["start"] + 0.3, 2) if bs is not None else SHOT_S
+            for e in extras:  # «extra» pieces share the phrase (README «Темп»): each its share of it, plus a margin
+                esrc = e.get("src_orig") or e.get("src", "")
+                if (not esrc.startswith("media/") or "/clean/" in esrc or "Wikimedia" in (e.get("credit") or "")
+                        or (e.get("clean") == "none" and not e.get("src_orig"))):
+                    continue
+                evid = Path(esrc).suffix.lower() in VIDEO
+                et = float(e.get("in_orig", e.get("in", 0.0))) if evid else 0.0
+                eu = use.setdefault(f"{esrc}@{et:g}", {"src": esrc, "start": et, "len": 0.0})
+                eu["len"] = max(eu["len"], round(plen / (len(extras) + 1) + 0.6, 2) if evid else 0.0)
             src = sh_.get("src_orig") or sh_.get("src", "")
             if not src.startswith("media/") or "Wikimedia" in (sh_.get("credit") or "") or "/clean/" in src:
                 continue
@@ -529,7 +540,9 @@ def main() -> None:
         p["out"] = out.relative_to(proj).as_posix()
     shutil.copy2(proj / "story.json", proj / "story.json.pre-clean")
     for st in story.get("stories") or [story]:
-        for s in st.get("shots", []):
+        pieces = [x for sh_ in st.get("shots", []) for x in [sh_] + [e for e in sh_.get("extra") or []
+                                                                      if isinstance(e, dict) and e.get("src")]]
+        for s in pieces:  # each shot and its «extra» pieces (README «Темп»)
             src = s.get("src_orig") or s.get("src")
             if not src:  # a map before build.py has made it: not post media
                 continue

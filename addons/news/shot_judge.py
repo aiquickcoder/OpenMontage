@@ -35,6 +35,9 @@ ROLES = {"event", "quote", "key", "context", "map"}
 STILL_ROLES = {"quote", "key", "map"}
 STILL_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 MIN_SHOT, MIN_AVG, MAX_ROUNDS = 6, 7.5, 2
+# the pace of a reel (owner 2026-11-03: «футажей стало меньше, сейчас кадры сменяются редко, что для рилс формата очень
+# критично»): the picture changes every 2–3 s — the mean piece ≤ PACE_MEAN, none longer than PACE_MAX
+PACE_MEAN, PACE_MAX = 3.5, 6.0
 REPEAT_GAP_S, SAME_PICTURE = 3.0, 4  # seconds between two moments of one clip; dhash bits that still mean «the same»
 RUBRIC = """Балл плана 0–10 = сумма четырёх оценок:
 - meaning 0–4 — кадр показывает то, о чём говорится в эти секунды: 4 — само событие, человек, место, документ из
@@ -56,8 +59,12 @@ yt_footage.py search, TikTok — tt-search, посты Telegram-каналов, 
 другой момент уже скачанного видео; поставить скриншот поста или статьи как цитату. Не предлагай снимать самим,
 записывать скринкаст, запрашивать видео у людей.
 
+foreign_text — true, если в кадре читается новость, заголовок, цитата или пост НЕ на русском (а на экране, по данным
+плана, перевода нет) — такой кадр нужно перевести; надписи на вывесках и логотипы не в счёт.
+
 Ответ — только JSON-массив по одному объекту на план: [{"shot": 3, "meaning": 3, "role": 2, "context": 2, "clean": 1,
-"total": 8, "problem": "коротко, что не так (или пусто)", "fix": "что поставить вместо: какое видео искать, где"}]."""
+"total": 8, "foreign_text": false, "problem": "коротко, что не так (или пусто)",
+"fix": "что поставить вместо: какое видео искать, где"}]."""
 
 
 # «почему так вышло» (owner 2026-11-03: «к новостям добавлять небольшой анализ первопричины… так интереснее» — «да,
@@ -202,6 +209,24 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
     return bad
 
 
+def pace_notes(items: list[dict]) -> list[str]:
+    """README «Темп»: the picture changes every 2–3 s."""
+    durs = [float(it["dur"]) for it in items]
+    if not durs:
+        return []
+    out = []
+    mean = sum(durs) / len(durs)
+    if mean > PACE_MEAN + 1e-9:
+        out.append(f"pace: a picture lasts {mean:.1f} s on average (≤ {PACE_MEAN:g} s for a reel) — give "
+                   f"the long phrases \"extra\" pieces: another moment of the clip, another clip of the story "
+                   f"(README «Темп»)")
+    long = [(i, d) for i, d in enumerate(durs) if d > PACE_MAX + 1e-9]
+    if long:
+        out.append("pace: " + ", ".join(f"shot {i + 1} {d:.1f} s" for i, d in long[:4])
+                   + f" — longer than {PACE_MAX:g} s, cut it with \"extra\"")
+    return out
+
+
 def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict]:
     from addons.channels import llm
 
@@ -215,6 +240,7 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
                 continue
             parts.append({"type": "text", "text": f"\n### план {i + 1} · {'фото' if it['still'] else 'видео'} · "
                                                   f"{it['dur']:.1f} с · роль: {it.get('role') or 'не указана'} · "
+                                                  f"перевод на экране: {'есть' if it.get('translation') else 'нет'} · "
                                                   f"источник: {it.get('credit') or Path(it['src_key']).name}\n"
                                                   f"говорится: «{it['said'][:300]}»"})
             parts.append(llm.image_part_array(strips[i], 1024))
@@ -229,7 +255,7 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
                 parts_ = {x: max(0, min(hi, int(v.get(x) or 0))) for x, hi in
                           (("meaning", 4), ("role", 2), ("context", 2), ("clean", 2))}
                 out[i] = {**parts_, "total": sum(parts_.values()), "problem": str(v.get("problem") or "")[:300],
-                          "fix": str(v.get("fix") or "")[:300]}
+                          "fix": str(v.get("fix") or "")[:300], "foreign_text": bool(v.get("foreign_text"))}
             except (TypeError, ValueError, AttributeError):
                 continue
     return out
@@ -265,6 +291,11 @@ def judge(proj: Path, use_ai: bool = True, save_strips: bool = False) -> dict:
                      **({"ai": s} if s else {})})
         if s and s["total"] < MIN_SHOT:
             soft.append(f"shot {i + 1} {s['total']}/10: {s['problem']} → {s['fix']}")
+    for i, it in enumerate(items):  # a quote not in Russian is translated on screen (README «Перевод цитат»)
+        if (scores.get(i) or {}).get("foreign_text") and not it.get("translation"):
+            soft.append(f"shot {i + 1}: its text is not in Russian — give the shot a \"translation\" (README «Перевод "
+                        f"цитат»)")
+    soft += pace_notes(items)
     totals = [scores[i]["total"] for i in scores]
     mean = round(sum(totals) / len(totals), 2) if totals else None
     if mean is not None and mean < MIN_AVG:
