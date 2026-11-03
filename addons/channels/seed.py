@@ -28,6 +28,13 @@ SOURCES: list[tuple] = [
     ("telegram", "ostorozhno_novosti", "Осторожно, новости", "russia", "aggregator", 0.65, 3),
     ("telegram", "bbbreaking", "Раньше всех. Ну почти", "russia", "aggregator", 0.6, 3),
     ("telegram", "ru2ch", "Ньюсач/Двач", "russia", "aggregator", 0.45, 10),
+    # --- show business (owner 2026-11-03: «может попса / звёзды что-то сильно обсуждаемое нужно» — «добавляй»):
+    # the biggest public channels found by Telegram search (subscribers 03.11); gossip pages and «Дом-2» left out
+    ("telegram", "novostishowbiz", "Новости Шоу-Бизнеса", "russia", "aggregator", 0.5, 10),
+    ("telegram", "zvezdacch", "Звездач | Новости", "russia", "aggregator", 0.45, 10),
+    ("telegram", "starhitru", "Starhit.ru", "russia", "media", 0.55, 10),
+    ("telegram", "BreakingNews_beauty", "BREAKING NEWS BEAUTY (селебрити)", "russia", "aggregator", 0.45, 15),
+    ("telegram", "selebrty", "СЕЛЕБРИТИ", "russia", "aggregator", 0.45, 15),
     ("telegram", "varlamov_news", "Varlamov News", "russia", "aggregator", 0.6, 10),
     ("telegram", "signal112_news", "СИГНАЛ 112", "russia", "aggregator", 0.5, 10),
     ("telegram", "novostifacti", "Лента новостей", "russia", "aggregator", 0.45, 15),
