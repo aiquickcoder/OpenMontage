@@ -69,7 +69,9 @@ added drama — what it is about is on screen when it matters (a dog attack — 
 (owner 2026-11-02, README «Кадры — по смыслу истории»); each stays at least two cuts (`"span"`, default 2), key fact in figures, `*starred*` words on the red
 marker, ≤44 characters (README «Тезисы на кадрах»). When the post's, the agency's and TV footage are thin, short
 pieces of the event from TikTok (`yt_footage.py tt-search / tt-peek / tt-cut`, README «Кадры из TikTok»: ≤ 4 s
-each, ≤ 3 a film, never the first shot, no credit). Shots by score (owner 2026-11-03, README «Оценка кадров»): a
+each, ≤ 3 a film, never the first shot, no credit). «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
+anyone's guilt) from the sources, story.json "why" + "why_basis", none → "why_skip". Shots by score (owner
+2026-11-03, README «Оценка кадров»): a
 "role" and your "score" per shot, stills only as a quote / key picture / one map, the rest video, no repeats;
 produce.py runs shot_judge.py — on «shots: …» fix and rerun. Official agency footage — МВД России on Rutube,
 НАК on YouTube, ГАИ, СК — is cleaned like any other (owner 2026-10-31), facts from the agency's own description;

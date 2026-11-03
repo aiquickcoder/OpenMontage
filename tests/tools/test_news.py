@@ -1604,3 +1604,14 @@ def test_shot_judge_reads_the_ai_scores_and_caps_them(monkeypatch):
     got = sj.ai_scores(items, [img, img])
     assert got[0]["total"] == 10
     assert got[1]["meaning"] == 4 and got[1]["total"] == 6 and "Силуанова" in got[1]["fix"]   # 9 is capped at 4
+
+
+def test_shot_judge_why_block_rests_on_its_sources():
+    """Owner 2026-11-03: «добавлять небольшой анализ первопричины» — from the sources, never a guess."""
+    from addons.news import shot_judge as sj
+
+    assert sj.why_problems({}, use_ai=False)[1] and not sj.why_problems({}, use_ai=False)[0]          # a note
+    assert sj.why_problems({"why_skip": "в источниках причины нет"}, use_ai=False) == ([], [])
+    hard, _ = sj.why_problems({"why": "WSJ пишет, что удары идут месяцами"}, use_ai=False)
+    assert hard and "why_basis" in hard[0]
+    assert sj.why_problems({"why": "WSJ пишет…", "why_basis": ["WSJ: … (https://wsj.com/…)"]}, use_ai=False) == ([], [])
