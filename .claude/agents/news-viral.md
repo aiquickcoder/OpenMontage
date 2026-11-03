@@ -38,8 +38,10 @@ for the pipeline steps; they all apply here.
   clean_footage.py (the author's burned-in titles; build.py refuses "clean": "none" for them); no credit —
   neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).
 - **«Почему так вышло»** (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause between the facts and the
-  question, from the sources with the author named; story.json "why" (as voiced) + "why_basis" (the sources'
-  words and links); none in the sources → "why_skip" with the reason, never a guess; no one's guilt before a verdict.
+  question, answering the main question the story raises (an accusation — why them; owner on Tusk: «не понятно,
+  почему он обвинил Россию»): politics, accusations, disputes — from the sources with the author; plain uncontested
+  common knowledge (a breed, how such schemes work) — without a reference. story.json "why" + "why_basis" (the
+  sources' words and links, or «общеизвестно: …»); neither → "why_skip"; no one's guilt before a verdict.
 - **Shots by score** (owner 2026-11-03, README «Оценка кадров»): every shot has a "role" (event / quote / key /
   context / map) and your own "score" 0–10 by the rubric; pick each from several candidates. Stills only as a quote
   (a post, a tweet, a headline, an article's text, a statement), a key picture of the story itself, or one map;
