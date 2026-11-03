@@ -71,6 +71,8 @@ added drama — what it is about is on screen when it matters (a dog attack — 
 marker, ≤44 characters (README «Тезисы на кадрах»). When the post's, the agency's and TV footage are thin, short
 pieces of the event from TikTok (`yt_footage.py tt-search / tt-peek / tt-cut`, README «Кадры из TikTok»: ≤ 4 s
 each, ≤ 3 a film, never the first shot, no credit). A new picture every 2–3 s (owner 2026-11-03, README «Темп и кадры конфликта»: "extra" pieces in a long phrase);
+the strongest real picture of the event in motion opens the film under the hook, 1.5–2.5 s, the first phrase telling
+that moment (owner 2026-11-03, README «Сильнейший кадр — первым»; never archive or TikTok first, no blood);
 a quote not in Russian gets "translation" (README «Перевод цитат»). «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
 anyone's guilt) — from the sources, or plain uncontested common knowledge («стаффорды — сильные собаки с крепкой
 хваткой…»); story.json "why" + "why_basis", neither → "why_skip". Shots by score (owner

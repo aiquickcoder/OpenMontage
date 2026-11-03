@@ -1648,6 +1648,19 @@ def test_extra_pieces_split_a_phrase_and_are_cleaned_and_checked(tmp_path):
     assert shot_judge.pace_notes([{"dur": 2.5}, {"dur": 3.0}]) == []
 
 
+def test_shot_judge_wants_the_strongest_picture_under_the_hook():
+    from addons.news import shot_judge as sj
+
+    items = [{"start": 0.0, "dur": 2.0, "src_key": "media/map.png"}, {"start": 2.0, "dur": 2.5, "src_key": "media/city.mp4"},
+             {"start": 4.5, "dur": 2.0, "src_key": "media/tt/crash.mp4"}, {"start": 6.5, "dur": 2.0, "src_key": "media/fire.mp4"}]
+    got = sj.opening_notes(items, {0: {"impact": 0}, 1: {"impact": 1}, 2: {"impact": 3}, 3: {"impact": 3}})
+    assert got and got[0].startswith("opening: the strongest picture is shot 3 (impact 3/3)") and "TikTok" in got[0]
+    assert sj.opening_notes(items, {0: {"impact": 3}, 2: {"impact": 3}}) == []        # it already opens the film
+    assert sj.opening_notes(items, {1: {"impact": 3}, 3: {"impact": 3}}) == []        # second piece, within 3.5 s
+    assert sj.opening_notes(items, {0: {"impact": 0}, 3: {"impact": 1}}) == []        # nothing strong at all
+    assert sj.opening_notes(items, {}) == []                                            # no AI scores
+
+
 def test_shot_judge_refuses_label_on_real_footage():
     """03.11: «Архивные кадры» in "label" — build.py took 9 of 14 shots for AI pictures and the test film failed."""
     from addons.news import shot_judge as sj

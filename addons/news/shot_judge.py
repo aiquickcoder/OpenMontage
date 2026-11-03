@@ -38,6 +38,9 @@ MIN_SHOT, MIN_AVG, MAX_ROUNDS = 6, 7.5, 2
 # the pace of a reel (owner 2026-11-03: «футажей стало меньше, сейчас кадры сменяются редко, что для рилс формата очень
 # критично»): the picture changes every 2–3 s — the mean piece ≤ PACE_MEAN, none longer than PACE_MAX
 PACE_MEAN, PACE_MAX = 3.5, 6.0
+# the strongest picture opens the film (owner 2026-11-03: «самые мощные, шокирующие кадры — в самое начало, пока идёт
+# начало видео… с самолётом — как он падает и взрывается»): the first OPENING_S seconds hold the film's top impact
+OPENING_S = 3.5
 REPEAT_GAP_S, SAME_PICTURE = 3.0, 4  # seconds between two moments of one clip; dhash bits that still mean «the same»
 RUBRIC = """Балл плана 0–10 = сумма четырёх оценок:
 - meaning 0–4 — кадр показывает то, о чём говорится в эти секунды: 4 — само событие, человек, место, документ из
@@ -68,8 +71,13 @@ yt_footage.py search, TikTok — tt-search, посты Telegram-каналов, 
 foreign_text — true, если в кадре читается новость, заголовок, цитата или пост НЕ на русском (а на экране, по данным
 плана, перевода нет) — такой кадр нужно перевести; надписи на вывесках и логотипы не в счёт.
 
+impact — сила кадра для первых секунд ролика, в балл не входит: 3 — сам момент события в движении (падение,
+взрыв, пожар, обрушение, задержание, драка, стихия); 2 — живое видео события или героев истории (место сразу после,
+люди в деле, выступление); 1 — спокойное видео (общий план, улица, здание); 0 — фото, скриншот, карта, а также кровь,
+тела, лица пострадавших.
+
 Ответ — только JSON-массив по одному объекту на план: [{"shot": 3, "meaning": 3, "role": 2, "context": 2, "clean": 1,
-"total": 8, "foreign_text": false, "problem": "коротко, что не так (или пусто)",
+"total": 8, "impact": 2, "foreign_text": false, "problem": "коротко, что не так (или пусто)",
 "fix": "что поставить вместо: какое видео искать, где"}]."""
 
 
@@ -274,6 +282,24 @@ def pace_notes(items: list[dict]) -> list[str]:
     return out
 
 
+def opening_notes(items: list[dict], scores: dict[int, dict]) -> list[str]:
+    """README «Сильнейший кадр — первым»: while the hook is read, the film's strongest picture plays."""
+    imp = {i: int(s["impact"]) for i, s in scores.items() if "impact" in s}
+    if not items or not imp or max(imp.values()) < 2:
+        return []
+    best, t0 = max(imp.values()), float(items[0]["start"])
+    opening = [i for i, it in enumerate(items) if float(it["start"]) - t0 < OPENING_S - 1e-9]
+    there = max((imp.get(i, 0) for i in opening), default=0)
+    if there >= best:
+        return []
+    i = min(j for j, v in imp.items() if v == best)
+    tt = ("; it is a TikTok piece — second, right after ≥ 1.2 s of the same event from another source"
+          if "/tt/" in f"/{items[i].get('src_key', '')}" else "")
+    return [f"opening: the strongest picture is shot {i + 1} (impact {best}/3), the first {OPENING_S:g} s reach only "
+            f"{there}/3 — open the film on it, the first phrase telling that moment{tt} (README «Сильнейший кадр — "
+            f"первым»)"]
+
+
 def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict]:
     from addons.channels import llm
 
@@ -301,7 +327,8 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
                 i = int(v.get("shot")) - 1
                 parts_ = {x: max(0, min(hi, int(v.get(x) or 0))) for x, hi in
                           (("meaning", 4), ("role", 2), ("context", 2), ("clean", 2))}
-                out[i] = {**parts_, "total": sum(parts_.values()), "problem": str(v.get("problem") or "")[:300],
+                out[i] = {**parts_, "total": sum(parts_.values()), "impact": max(0, min(3, int(v.get("impact") or 0))),
+                          "problem": str(v.get("problem") or "")[:300],
                           "fix": str(v.get("fix") or "")[:300], "foreign_text": bool(v.get("foreign_text"))}
             except (TypeError, ValueError, AttributeError):
                 continue
@@ -343,6 +370,7 @@ def judge(proj: Path, use_ai: bool = True, save_strips: bool = False) -> dict:
             soft.append(f"shot {i + 1}: its text is not in Russian — give the shot a \"translation\" (README «Перевод "
                         f"цитат»)")
     soft += pace_notes(items)
+    soft += opening_notes(items, scores)
     totals = [scores[i]["total"] for i in scores]
     mean = round(sum(totals) / len(totals), 2) if totals else None
     if mean is not None and mean < MIN_AVG:

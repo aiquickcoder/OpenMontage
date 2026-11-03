@@ -54,7 +54,9 @@ theses (build.py allows four in a world story), each on a turn of the story. Voi
 format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs, the question, hashtags. Thematic
 pace and conflict (owner 2026-11-03, README «Темп и кадры конфликта»: a new picture every 2–3 s with "extra"
 pieces, a conflict story shows the conflict — troops, jets, ships, launches of the same sides, never passed off as
-this strike; README «Перевод цитат»: a quote not in Russian gets "translation"); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
+this strike; README «Перевод цитат»: a quote not in Russian gets "translation"; README «Сильнейший кадр — первым»: the first 3–4 s
+under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
+story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
 broadly, for someone who does not follow the topic — who against whom and why, what came before, what is at stake;
 well-known background plainly, the author only for a disputed version, an accusation, a loud word; "why" +
 "why_basis", neither → "why_skip"); shots by score (owner 2026-11-03, README «Оценка кадров»: a "role" and your "score" per shot, stills only as a

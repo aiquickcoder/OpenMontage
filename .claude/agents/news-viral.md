@@ -49,6 +49,11 @@ for the pipeline steps; they all apply here.
   none > 6 s; a conflict story shows the conflict (troops, jets, ships, launches — real footage of the same sides,
   role context, never passed off as this strike — no on-screen mark, never "label": it means an AI picture and
   build.py refuses the film); a quote not in Russian gets "translation" (shown on screen).
+- **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
+  в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
+  strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision
+  the story's people in action — 1–2 pieces of 1.5–2.5 s; the first phrase tells that moment so picture and word match;
+  an incident never opens on archive or a thematic shot (a decision may open on its people in past action), never a TikTok piece first, no blood, bodies or victims' faces.
 - **Shots by score** (owner 2026-11-03, README «Оценка кадров»): every shot has a "role" (event / quote / key /
   context / map) and your own "score" 0–10 by the rubric; pick each from several candidates. Stills only as a quote
   (a post, a tweet, a headline, an article's text, a statement), a key picture of the story itself, or one map;
