@@ -26,7 +26,7 @@ SCHEMA = """CREATE TABLE IF NOT EXISTS stories (
     hook TEXT, why TEXT, question TEXT, topic TEXT, place TEXT, region TEXT,
     score REAL, ai_score REAL, momentum REAL, best_score REAL,
     velocity REAL, channels INTEGER, channels_3h INTEGER, reach INTEGER, comments INTEGER, age_h REAL,
-    demand TEXT, links TEXT, text TEXT, status TEXT DEFAULT 'seen', skip TEXT, film TEXT)"""
+    demand TEXT, links TEXT, text TEXT, status TEXT DEFAULT 'seen', skip TEXT, film TEXT, angle TEXT)"""
 
 
 def path() -> Path:
@@ -41,6 +41,8 @@ def db(p: Path | None = None) -> sqlite3.Connection:
     con = sqlite3.connect(p, timeout=30)
     con.row_factory = sqlite3.Row
     con.execute(SCHEMA)
+    if "angle" not in {r[1] for r in con.execute("PRAGMA table_info(stories)")}:  # a base from before the angle
+        con.execute("ALTER TABLE stories ADD COLUMN angle TEXT")
     return con
 
 
@@ -56,7 +58,8 @@ def row_of(st: dict, source: str) -> dict:
             "age_h": s.get("age_h"), "demand": json.dumps(demand, ensure_ascii=False),
             "links": json.dumps([p.get("link") for p in st.get("posts", [])][:12], ensure_ascii=False),
             "text": (seed.get("plain") or seed.get("text") or "")[:1200],
-            "skip": ", ".join(str(x) for x in st.get("skip") or []) or None}
+            "skip": ", ".join(str(x) for x in st.get("skip") or []) or None,
+            "angle": json.dumps(v.get("angle"), ensure_ascii=False) if v.get("angle") else None}
 
 
 def save(stories: list[dict], source: str, status: str = "seen", con: sqlite3.Connection | None = None) -> int:
@@ -71,12 +74,12 @@ def save(stories: list[dict], source: str, status: str = "seen", con: sqlite3.Co
         con.execute(
             "INSERT OR REPLACE INTO stories (key, first_seen, last_seen, seen_n, source, hook, why, question, topic, place,"
             " region, score, ai_score, momentum, best_score, velocity, channels, channels_3h, reach, comments, age_h,"
-            " demand, links, text, status, skip, film) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+            " demand, links, text, status, skip, angle, film) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
             " (SELECT film FROM stories WHERE key=?))",
             (r["key"], old["first_seen"] if old else now, now, (old["seen_n"] if old else 0) + 1, r["source"],
              r["hook"], r["why"], r["question"], r["topic"], r["place"], r["region"], r["score"], r["ai_score"],
              r["momentum"], best if best >= 0 else None, r["velocity"], r["channels"], r["channels_3h"], r["reach"],
-             r["comments"], r["age_h"], r["demand"], r["links"], r["text"], st_now, r["skip"], r["key"]))
+             r["comments"], r["age_h"], r["demand"], r["links"], r["text"], st_now, r["skip"], r["angle"], r["key"]))
         n += 1
     con.commit()
     return n
@@ -122,6 +125,9 @@ def main() -> None:
               f"{r['topic'] or '?'} · {r['channels'] or 0} кан. · охват {r['reach'] or 0:,}".replace(",", " ")
               + (f" · {dem}" if dem else "") + (f" · ролик {r['film']}" if r["film"] else ""))
         print(f"    {r['hook']}")
+        ang = json.loads(r["angle"]) if r["angle"] else {}
+        if ang.get("question"):
+            print(f"    угол ({ang.get('kind')}): {ang['question']}")
 
 
 if __name__ == "__main__":

@@ -37,6 +37,12 @@ for the pipeline steps; they all apply here.
   official media accounts first, an eyewitness only when date and place match the agencies; always through
   clean_footage.py (the author's burned-in titles; build.py refuses "clean": "none" for them); no credit —
   neither in the shot's "credit" nor in caption.txt (owner 2026-11-02).
+- **The angle first** (owner 2026-11-04, README «Угол»: «есть инфоповод — новость. Но нужно сделать её интересной,
+  потому что обычная новость не всегда будет интересна к просмотру»): before the text weigh the stakes, the open
+  question, everyone's opinion, «касается меня», why today, the hero and the picture; choose the angle (the news itself
+  / conflict / paradox / myth vs reality / «а меня коснётся?» / will it or not / why — the pick's draft in viral.json),
+  write story.json "angle" {kind, question, why_watch, argue}; the hook is its tension in facts, the body answers its
+  question, the closing fork is on it; no angle in the facts — the next candidate; the hook never overpromises.
 - **«Почему так вышло»** (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause between the facts and the
   question (2–4 in a political or big story), answering the main question the story raises — broadly, for someone who
   does not follow the topic: who against whom and over what, what came before, what is at stake for an ordinary

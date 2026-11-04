@@ -1825,6 +1825,33 @@ def test_the_film_is_always_voiced_in_the_owners_voice():
     assert build.fish_voice_of({"voice": "abc", "voice_override": True}) == "abc"
 
 
+def test_a_film_is_built_on_an_angle(tmp_path):
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(build.__file__).parent))
+    import newsbase
+    import viral
+    from addons.news import shot_judge as sj
+
+    assert "angle" in viral.SYSTEM and "none" in viral.SYSTEM                          # the pick drafts the angle
+    assert "no \"angle\"" in sj.angle_problems({"hook": "x", "narration": {"text": "y"}}, use_ai=False)[0]
+    assert sj.angle_problems({"angle": {"kind": "myth", "question": "Заберёт ли государство деньги умерших?"}},
+                             use_ai=False) == []
+    assert sj.angle_problems({"angle": {"kind": "news"}}, use_ai=False) == []           # a strong fact is its own angle
+    assert sj.angle_problems({"stories": [{}, {}]}, use_ai=False) == []                 # a digest: no one angle
+    b = {"score": 70.0, "region": "russia", "place": "Россия", "topic": "деньги", "ai": True,
+         "features": {k: 7 for k in viral.AI_FEATURES}, "signal_features": {k: 0.5 for k in viral.SIGNALS},
+         "signals": {"velocity": 2, "channels": 5, "channels_3h": 3, "reach": 800_000, "comments": 200, "video_s": 0,
+                     "photos": 1, "age_h": 10},
+         "angle": {"kind": "myth", "question": "Заберёт ли государство деньги умерших?", "why_watch": "страх за вклад",
+                   "argue": "можно ли доверять"}, "hook": "х", "posts": []}
+    assert "угол: миф против реальности — Заберёт ли государство деньги умерших?" in viral.describe(b)
+    con = newsbase.db(tmp_path / "n.db")
+    newsbase.save([{"key": "k", "signals": {}, "posts": [], "seed": {"plain": "x"},
+                    "ai": {"score": 80, "angle": b["angle"]}}], "pick", con=con)
+    assert json.loads(newsbase.listing(con=con)[0]["angle"])["kind"] == "myth"
+
+
 def test_the_news_base_keeps_every_story_and_its_fate(tmp_path):
     import sys as _sys
 

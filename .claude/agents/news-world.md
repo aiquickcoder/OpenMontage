@@ -59,7 +59,7 @@ README «Цитаты — карточкой и редко»: a quote is a "quot
 translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
 text itself before voicing (calques, words torn out of context, slop) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
-story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
+story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); the angle before the text (owner 2026-11-04, README «Угол»: a plain news item is not always worth watching — find the stakes, the open question, what everyone will argue about; choose the news itself / conflict / paradox / myth vs reality / «а меня коснётся?» / will it or not / why; story.json "angle"; the hook is its tension, the body answers it, the hook never overpromises); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
 broadly, for someone who does not follow the topic — who against whom and why, what came before, what is at stake;
 well-known background plainly, the author only for a disputed version, an accusation, a loud word; "why" +
 "why_basis", neither → "why_skip"); shots by score (owner 2026-11-03, README «Оценка кадров»: a "role" and your "score" per shot, stills only as a

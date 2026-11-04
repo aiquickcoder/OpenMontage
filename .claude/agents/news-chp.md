@@ -75,7 +75,7 @@ the strongest real picture of the event in motion opens the film under the hook,
 that moment (owner 2026-11-03, README «Сильнейший кадр — первым»; never archive or TikTok first, no blood);
 a quote not in Russian gets "translation" (README «Перевод цитат»); a quote is a "quote_card", never two in a row, at
 most one per ~25 s (README «Цитаты — карточкой и редко»); build.py's editor mends the voice text itself before
-voicing — calques, words torn out of context, slop (README «Проверка текста»); write it clean anyway. «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
+voicing — calques, words torn out of context, slop (README «Проверка текста»); write it clean anyway. The angle before the text (owner 2026-11-04, README «Угол»): a strong incident is its own angle; a dry one (a decision, a law, a figure) gets one from the facts — conflict, paradox, myth vs reality, «а меня коснётся?», will it or not, why — story.json "angle", the hook its tension, never an overpromise. «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
 anyone's guilt) — from the sources, or plain uncontested common knowledge («стаффорды — сильные собаки с крепкой
 хваткой…»); story.json "why" + "why_basis", neither → "why_skip". Shots by score (owner
 2026-11-03, README «Оценка кадров»): a
