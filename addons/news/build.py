@@ -294,13 +294,16 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
         # озвучки»; «опроверг это Variety» — a calque, «англицизм не к месту… как ИИ-слоп»; README «Проверка текста»)
         from addons.news import proofread
 
-        fix_, notes = proofread.check(proj, story, plain(text), use_ai=os.environ.get("NEWS_PROOF", "1") != "0",
-                                      screens=False)
-        for n in notes:
-            print("note: text:", n, flush=True)
-        if fix_:
-            sys.exit("TEXT — fix the text in story.json and voice again (README «Проверка текста»):\n  "
-                     + "\n  ".join(fix_))
+        # the editor mends the text itself and the voice goes on (owner 04.11: «оценщик не должен останавливать билд,
+        # он должен вносить правки»; «в субтитры тоже должен отправляться правильный текст» — captions are this text)
+        applied, left = proofread.mend(proj, story, plain(text), use_ai=os.environ.get("NEWS_PROOF", "1") != "0")
+        for line in applied:
+            print("text: fixed", line, flush=True)
+        for line in left:
+            print("note: text:", line, flush=True)
+        if applied:
+            text = full_text(story)
+            bite = story.get("bite") if "[bite]" in (story.get("narration") or {}).get("text", "") else None
         if bite:
             sound_bite(proj, story, A)
         else:
@@ -548,8 +551,9 @@ def slots(story: dict, window: list[float], proj: Path, words: list = (), phrase
         d_all = round((edges[i + 1] if i < min(n, len(shots)) - 1 else window[1]) - edges[i], 3)
         # «extra» pieces share the phrase (owner 2026-11-03: «кадры сменяются редко, что для рилс формата очень
         # критично»): the shot, then each extra in turn, every piece at least MIN_PIECE_S; no extra — as before
-        pieces = [{k: v for k, v in shot.items() if k != "extra"}] + [dict(e) for e in shot.get("extra") or []
-                                                                      if isinstance(e, dict) and e.get("src")]
+        # "_ref": where the piece lives in story.json — the shot judge replaces a broken piece there (owner 04.11)
+        pieces = [{**{k: v for k, v in shot.items() if k != "extra"}, "_ref": [i, None]}] + [
+            {**e, "_ref": [i, k]} for k, e in enumerate(shot.get("extra") or []) if isinstance(e, dict) and e.get("src")]
         k_n = max(1, min(len(pieces), int(d_all // MIN_PIECE_S)))
         parts = [round(d_all / k_n, 3)] * (k_n - 1)
         parts.append(round(d_all - sum(parts), 3))

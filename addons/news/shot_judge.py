@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -357,7 +358,99 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
     return out
 
 
-def judge(proj: Path, use_ai: bool = True, save_strips: bool = False) -> dict:
+def _target(story: dict, it: dict):
+    """The dict in story.json a film piece came from (build.slots tags it "_ref": [shot, extra or None])."""
+    import build
+
+    ref = it.get("_ref")
+    try:
+        shot = build.stories(story)[int(it.get("w", 0))]["shots"][ref[0]]
+        return shot if ref[1] is None else shot["extra"][ref[1]]
+    except (TypeError, IndexError, KeyError):
+        return None
+
+
+def broken(items: list[dict], hard: dict[int, list[str]], scores: dict[int, dict]) -> dict[int, str]:
+    """Pieces to replace and why: a hard rule (but a bare "label", which is only removed) or a score under MIN_SHOT."""
+    out = {}
+    for i, v in hard.items():
+        if why := [r for r in v if not r.startswith('"label"')]:
+            out[i] = why[0]
+    for i, s in scores.items():
+        if s["total"] < MIN_SHOT and i not in out:
+            out[i] = f"{s['total']}/10: {s['problem']}"
+    return out
+
+
+def autofix(proj: Path, story: dict, items: list[dict], hard: dict[int, list[str]],
+            scores: dict[int, dict]) -> tuple[list[str], list[str]]:
+    """The judge mends the film itself and the build goes on (owner 2026-11-04: «оценщик не должен останавливать билд,
+    он должен вносить правки и билд должен продолжаться»): a "label" on real footage is removed; a broken piece (a
+    repeat, a look-alike, a still «around» the story, a second map, a quote card in a row or over the limit, a score
+    under MIN_SHOT) becomes another moment of the film's own video — the nearest clip of the same story, ≥ REPEAT_GAP_S
+    from every moment already shown, never TikTok. (changed, could not)."""
+    import build
+
+    changed, left = [], []
+    for i, it in enumerate(items):
+        if it.get("label") and (t := _target(story, it)) is not None and t.pop("label", None) is not None:
+            changed.append(f"shot {i + 1}: \"label\" removed")
+    bad = broken(items, hard, scores)
+    used: dict[str, list[tuple[float, float]]] = {}
+    donors = []
+    for i, it in enumerate(items):
+        if it["still"]:
+            continue
+        orig = str(it.get("src_orig") or it.get("src") or "")
+        used.setdefault(orig, []).append((float(it.get("in_orig", it.get("in", 0)) or 0), float(it["dur"])))
+        if i not in bad and orig.startswith("media/") and "/tt/" not in f"/{orig}" and "/clean/" not in orig:
+            donors.append(i)
+    lengths: dict[str, float] = {}
+    day = time.strftime("%d.%m")
+    for i in sorted(bad):
+        it, reason = items[i], bad[i]
+        tgt = _target(story, it)
+        if tgt is None:
+            left.append(f"shot {i + 1}: {reason[:160]} — not a piece of story.json, left as is")
+            continue
+        d, pick = float(it["dur"]), None
+        for j in sorted(donors, key=lambda j: (items[j].get("w") != it.get("w"), abs(j - i),
+                                               -(scores.get(j) or {}).get("total", 7))):
+            orig = str(items[j].get("src_orig") or items[j]["src"])
+            if orig not in lengths:
+                try:
+                    lengths[orig] = float(build.probe(proj / orig)[2])
+                except Exception:  # noqa: BLE001 — a clip we cannot read is not a donor
+                    lengths[orig] = 0.0
+            if lengths[orig] < d + 0.5:
+                continue
+            base = float(items[j].get("in_orig", items[j].get("in", 0)) or 0)
+            for t in sorted((x * 0.5 for x in range(int((lengths[orig] - d - 0.2) / 0.5) + 1)),
+                            key=lambda t: abs(t - (base + REPEAT_GAP_S + d))):
+                if all(abs(t - u) >= max(REPEAT_GAP_S, ud, d) for u, ud in used.get(orig, [])):
+                    pick = (j, orig, round(t, 2))
+                    break
+            if pick:
+                break
+        if not pick:
+            left.append(f"shot {i + 1}: {reason[:160]} — no free moment of the film's video to put instead")
+            continue
+        j, orig, t = pick
+        donor = items[j]
+        new = {k: tgt[k] for k in ("beat", "thesis", "span", "extra") if k in tgt}
+        new.update({"src": orig, "in": t, "role": donor.get("role") if donor.get("role") in ("event", "context")
+                    else "context", "auto": f"shot_judge {day}: {reason[:120]}"})
+        for k in ("credit", "clean"):
+            if donor.get(k):
+                new[k] = donor[k]
+        tgt.clear()
+        tgt.update(new)
+        used.setdefault(orig, []).append((t, d))
+        changed.append(f"shot {i + 1}: {reason[:120]} → {Path(orig).name} at {t:g} s")
+    return changed, left
+
+
+def judge(proj: Path, use_ai: bool = True, save_strips: bool = False, fix: bool = True) -> dict:
     story, items = shots_of(proj)
     imgs = [frames(it) for it in items]
     mids = [dhash(f[len(f) // 2]) if f else None for f in imgs]
@@ -401,13 +494,20 @@ def judge(proj: Path, use_ai: bool = True, save_strips: bool = False) -> dict:
     why_hard, why_soft = why_problems(story, use_ai)
     hard_lines += [f"why: {w}" for w in why_hard]
     soft += [f"why: {w}" for w in why_soft]
-    held = bool(hard_lines) or (bool(soft) and rnd <= MAX_ROUNDS)
+    # the judge never holds the film (owner 2026-11-04): it mends what it can in story.json, the rest is notes
+    fixed, left = autofix(proj, story, items, hard, scores) if fix else ([], [])
+    if fixed:
+        bak = proj / "story.json.pre-judge"
+        if not bak.exists():
+            shutil.copy2(proj / "story.json", bak)
+        (proj / "story.json").write_text(json.dumps(story, ensure_ascii=False, indent=1), encoding="utf-8")
     review = {"round": rnd, "time": time.strftime("%Y-%m-%d %H:%M"), "mean": mean, "shots": rows,
               "why": story.get("why"), "why_basis": story.get("why_basis"), "why_skip": story.get("why_skip"),
               "videos": sum(1 for it in items if not it["still"]), "stills": sum(1 for it in items if it["still"]),
-              "hard": hard_lines, "soft": soft, "ok": not held,
-              "notes_only": bool(soft) and rnd > MAX_ROUNDS}
-    (qa / "shot_review.json").write_text(json.dumps(review, ensure_ascii=False, indent=1), encoding="utf-8")
+              "hard": hard_lines, "soft": soft + left, "fixed": fixed, "ok": True, "notes_only": True}
+    # the look after the judge's own mending (--no-fix) keeps the mending pass's report
+    (qa / ("shot_review.json" if fix else "shot_review_after.json")).write_text(
+        json.dumps(review, ensure_ascii=False, indent=1), encoding="utf-8")
     return review
 
 
@@ -416,20 +516,21 @@ def main() -> None:
     ap.add_argument("project", type=Path)
     ap.add_argument("--no-ai", action="store_true", help="the hard rules only")
     ap.add_argument("--save-strips", action="store_true", help="write what the judge saw to qa/shots/NN.jpg")
+    ap.add_argument("--no-fix", action="store_true", help="only look: do not mend story.json")
     a = ap.parse_args()
     proj = a.project if a.project.is_absolute() else REPO / a.project
-    r = judge(proj, not a.no_ai, a.save_strips)
-    head = (f"SHOTS: {'OK' if r['ok'] else 'FAILED'} · round {r['round']} · {r['videos']} video, {r['stills']} stills"
-            + (f" · mean {r['mean']}/10" if r["mean"] is not None else ""))
-    print(head)
+    r = judge(proj, not a.no_ai, a.save_strips, fix=not a.no_fix)
+    print(f"SHOTS: OK · round {r['round']} · {r['videos']} video, {r['stills']} stills"
+          + (f" · mean {r['mean']}/10" if r["mean"] is not None else "")
+          + (f" · fixed {len(r['fixed'])}" if r["fixed"] else ""))
+    for line in r["fixed"]:
+        print("  FIXED", line)
     for line in r["hard"]:
-        print("  HARD", line)
+        print("  was", line)
     for line in r["soft"]:
-        print("  " + ("note" if r["notes_only"] else "LOW"), line)
-    if not r["ok"]:
-        print(f"  fix these shots (README «Оценка кадров»), then run produce.py again"
-              + (f"; after round {MAX_ROUNDS} low scores turn into notes, the hard rules stay" if not r["hard"] else ""))
-    sys.exit(0 if r["ok"] else 3)
+        print("  note", line)
+    # 4: story.json was mended — produce.py cleans the new pieces and goes on
+    sys.exit(4 if r["fixed"] else 0)
 
 
 if __name__ == "__main__":

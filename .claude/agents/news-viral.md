@@ -55,9 +55,9 @@ for the pipeline steps; they all apply here.
   screenshot as "src"; never two cards in a row, at most one per ~25 s (shot_judge.py refuses more) — the rest is video
   of the speaker or of the story.
 - **Text check** (owner 2026-11-04, README «Проверка текста»: «опроверг это Variety» — «англицизм не к месту… как
-  ИИ-слоп», «текстовик ошибся»): build.py proofreads the voice text before every new voice and stops with «TEXT: …»
-  (calques, words torn out of context, slop, grammar) — fix the text and voice again; proofread.py projects/<slug>
-  checks it earlier, with the hook, theses and caption. Names in Latin are fine.
+  ИИ-слоп», «текстовик ошибся»): build.py's editor mends the voice text itself before every new voice (calques, words
+  torn out of context, slop, grammar; the captions get the mended text) — write it clean anyway; proofread.py
+  projects/<slug> checks it earlier, with the hook, theses and caption. Names in Latin are fine.
 - **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
   в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
   strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision
@@ -67,7 +67,8 @@ for the pipeline steps; they all apply here.
   context / map) and your own "score" 0–10 by the rubric; pick each from several candidates. Stills only as a quote
   (a post, a tweet, a headline, an article's text, a statement), a key picture of the story itself, or one map;
   anything around the story is video from our engine (yt_footage.py, TikTok, posts), cleaned. No repeats at all.
-  produce.py runs shot_judge.py before the render: on «shots: …» replace the listed shots and run produce.py again.
+  produce.py runs shot_judge.py before the render; it never stops the film — it replaces a broken piece with another
+  moment of the film's own video and the build goes on (owner 04.11), so pick good shots yourself first.
 - **Pictures follow the story, no added drama** (owner 2026-11-02, README «Кадры — по смыслу истории»): what the
   story is about is on screen when it matters (a dog attack — the dog, a credited thematic clip of the breed), not
   only façades and maps; no mood shots the event does not have; a thematic clip from the same context (a US story —

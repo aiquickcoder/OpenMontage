@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -36,8 +37,9 @@ SYSTEM = """Ты — выпускающий редактор вертикаль�
   голос прочтёт неверно;
 - оборванная или повторённая фраза, хук или тезис, противоречащий тексту.
 Названия латиницей сами по себе не ошибка, если стоят естественно («компания OpenAI»). Стиль, который и так хорош, не
-трогай. Ответ — только JSON: {"problems": [{"where": "voice|hook|thesis|caption", "quote": "точный фрагмент",
-"problem": "что не так", "fix": "как исправить"}]}; ошибок нет — пустой список."""
+трогай. Ответ — только JSON: {"problems": [{"where": "voice|hook|thesis|caption", "quote": "точный фрагмент, как в
+тексте", "replace": "готовый текст вместо этого фрагмента (тот же смысл и факты, без новых чисел)", "problem": "что не
+так"}]}; ошибок нет — пустой список."""
 
 
 def screen_texts(story: dict) -> dict:
@@ -46,7 +48,7 @@ def screen_texts(story: dict) -> dict:
     return {"hook": str(story.get("hook") or ""), "theses": theses}
 
 
-def ai_problems(voice: str, story: dict, caption: str = "", screens: bool = True) -> list[str]:
+def ai_findings(voice: str, story: dict, caption: str = "", screens: bool = True) -> list[dict]:
     from addons.channels import llm
     from addons.news.shot_judge import _meter
 
@@ -56,12 +58,65 @@ def ai_problems(voice: str, story: dict, caption: str = "", screens: bool = True
            + (f"\n\nПодпись к ролику:\n{caption[:1500]}" if caption else ""))
     v = llm.chat_json(_meter(), "shot_judge", os.environ.get("NEWS_JUDGE_MODEL", "gpt-6.1-sol"), SYSTEM, msg[:9000],
                       max_tokens=900, timeout=300)
-    out = []
-    for p in (v.get("problems") if isinstance(v, dict) else None) or []:
-        if isinstance(p, dict) and p.get("quote"):
-            out.append(f"{p.get('where', 'voice')}: «{str(p['quote'])[:120]}» — {str(p.get('problem', ''))[:160]}"
-                       f" → {str(p.get('fix', ''))[:160]}")
-    return out
+    return [p for p in (v.get("problems") if isinstance(v, dict) else None) or [] if isinstance(p, dict) and p.get("quote")]
+
+
+def ai_problems(voice: str, story: dict, caption: str = "", screens: bool = True) -> list[str]:
+    return [f"{p.get('where', 'voice')}: «{str(p['quote'])[:120]}» — {str(p.get('problem', ''))[:160]}"
+            f" → {str(p.get('replace', p.get('fix', '')))[:160]}" for p in ai_findings(voice, story, caption, screens)]
+
+
+def voice_fields(story: dict) -> list[tuple[dict, str]]:
+    """Where the voiced text lives in story.json (build.parts): the one-story text, a digest's leads, texts and the
+    cat's comments, the anchor's intro and outro."""
+    out = [(story.get("narration") or {}, "text")]
+    for s in story.get("stories") or []:
+        out += [(s, "lead"), (s, "text"), (s, "comment")]
+    out += [(story.get("anchor") or {}, "intro"), (story.get("anchor") or {}, "outro")]
+    return [(d, k) for d, k in out if isinstance(d.get(k), str) and d.get(k)]
+
+
+def safe(quote: str, repl: str) -> bool:
+    """A mend that only rewords: no markup touched, no new numbers, about the same length."""
+    if len(quote) < 3 or any(c in quote + repl for c in "[]*|"):
+        return False
+    if not set(re.findall(r"\d+", repl)) <= set(re.findall(r"\d+", quote)):
+        return False
+    return len(repl) <= 2 * len(quote) + 60
+
+
+def mend(proj: Path, story: dict, voice: str, use_ai: bool = True) -> tuple[list[str], list[str]]:
+    """Before a new voice (build.py): the AI editor's fixes go straight into the text — the voice and the captions are
+    made from it (owner 2026-11-04: «в субтитры тоже должен отправляться правильный текст»; «оценщик не должен
+    останавливать билд, он должен вносить правки»). (applied, left as notes); story.json is saved when changed."""
+    if not use_ai:
+        return [], []
+    try:
+        found = ai_findings(voice, story, "", screens=False)
+    except Exception as e:  # noqa: BLE001 — an editor that did not answer leaves the text as it is
+        print(f"proofread AI: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
+        return [], []
+    applied, left = [], []
+    fields = voice_fields(story)
+    for p in found:
+        q, r = str(p.get("quote") or ""), str(p.get("replace") if p.get("replace") is not None else "")
+        hits = [(d, k) for d, k in fields if d[k].count(q) == 1]
+        if r != q and safe(q, r) and len(hits) == 1:
+            d, k = hits[0]
+            d[k] = re.sub(r"\s+([,.:;!?])", r"\1", d[k].replace(q, r)).replace("  ", " ")
+            applied.append(f"«{q}» → «{r}» ({str(p.get('problem', ''))[:100]})")
+        else:
+            left.append(f"«{q[:100]}» — {str(p.get('problem', ''))[:140]} (not applied)")
+    qa = proj / "qa"
+    qa.mkdir(exist_ok=True)
+    (qa / "proof.json").write_text(json.dumps({"time": time.strftime("%Y-%m-%d %H:%M"), "applied": applied,
+                                               "left": left}, ensure_ascii=False, indent=1), encoding="utf-8")
+    if applied:
+        bak = proj / "story.json.pre-proof"
+        if not bak.exists() and (proj / "story.json").is_file():
+            bak.write_bytes((proj / "story.json").read_bytes())
+        (proj / "story.json").write_text(json.dumps(story, ensure_ascii=False, indent=1), encoding="utf-8")
+    return applied, left
 
 
 def check(proj: Path, story: dict, voice: str, use_ai: bool = True, screens: bool = True) -> tuple[list[str], list[str]]:

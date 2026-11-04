@@ -1690,6 +1690,50 @@ def test_a_quote_is_a_card_with_its_translation_inside_and_a_gentle_push(monkeyp
     assert "boxblur" in flt and "overlay" not in flt                                    # only the source, blurred
 
 
+def test_the_judge_mends_the_film_instead_of_stopping_it(tmp_path, monkeypatch):
+    from addons.news import shot_judge as sj
+
+    story = {"narration": {"text": "x"}, "shots": [
+        {"src": "media/clean/a_0.clean.mp4", "src_orig": "media/yt/a.mp4", "in": 0, "in_orig": 2.0, "role": "event",
+         "credit": "Видео: AP"},
+        {"src": "media/cards/q1.png", "role": "quote", "beat": "Вэнс заявил"},
+        {"src": "media/cards/q2.png", "role": "quote", "beat": "срока нет", "thesis": "СРОКА *НЕТ*",
+         "translation": "…", "quote_card": {"kind": "post"}, "label": "Архив"}]}
+    items = [{**{k: v for k, v in s.items()}, "_ref": [n, None], "w": 0, "start": n * 3.0, "dur": 3.0,
+              "still": s["src"].endswith(".png"), "src_key": s.get("src_orig", s["src"])}
+             for n, s in enumerate(story["shots"])]
+    monkeypatch.setattr(sj, "REPEAT_GAP_S", 3.0)
+    import build as b
+
+    monkeypatch.setattr(b, "probe", lambda p: (1920, 1080, 30.0))
+    hard = sj.hard_rules(items, [None] * 3)
+    assert any("right after another" in w for w in hard[2])
+    changed, left = sj.autofix(tmp_path, story, items, hard, {})
+    new = story["shots"][2]
+    assert new["src"] == "media/yt/a.mp4" and abs(new["in"] - 2.0) >= 3.0 and new["role"] == "event"
+    assert new["beat"] == "срока нет" and new["thesis"] == "СРОКА *НЕТ*" and new["credit"] == "Видео: AP"
+    assert "quote_card" not in new and "translation" not in new and "label" not in new and new["auto"].startswith("shot_judge")
+    assert story["shots"][1]["src"] == "media/cards/q1.png"                       # the first card stays
+    assert len(changed) == 2 and not left                                         # the label, then the piece
+
+
+def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
+    from addons.news import proofread
+
+    story = {"narration": {"text": "Слух оказался ложным — его представитель опроверг это Variety. Погибли 9 человек."}}
+    (tmp_path / "story.json").write_text("{}")
+    monkeypatch.setattr(proofread, "ai_findings", lambda *a, **k: [
+        {"quote": "его представитель опроверг это Variety", "replace": "представитель музыканта опроверг слух",
+         "problem": "калька с английского"},
+        {"quote": "Погибли 9 человек", "replace": "Погибли 12 человек", "problem": "число"},       # a new number: no
+        {"quote": "нет такого", "replace": "что-то", "problem": "нет в тексте"}])
+    applied, left = proofread.mend(tmp_path, story, "")
+    assert story["narration"]["text"] == "Слух оказался ложным — представитель музыканта опроверг слух. Погибли 9 человек."
+    assert len(applied) == 1 and len(left) == 2
+    assert json.loads((tmp_path / "story.json").read_text())["narration"]["text"].startswith("Слух оказался ложным — пр")
+    assert proofread.mend(tmp_path, story, "", use_ai=False) == ([], [])
+
+
 def test_proofread_flags_slop_for_two_rounds_then_notes(tmp_path, monkeypatch):
     from addons.news import proofread
 

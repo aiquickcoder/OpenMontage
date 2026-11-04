@@ -56,15 +56,15 @@ pace and conflict (owner 2026-11-03, README «Темп и кадры конфл�
 pieces, a conflict story shows the conflict — troops, jets, ships, launches of the same sides, never passed off as
 this strike; README «Перевод цитат»: a quote not in Russian gets "translation";
 README «Цитаты — карточкой и редко»: a quote is a "quote_card" (a post or a news card, original verbatim, the
-translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py proofreads the voice text
-before voicing — on «TEXT: …» (calques, words torn out of context, slop) fix the text and voice again; README «Сильнейший кадр — первым»: the first 3–4 s
+translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
+text itself before voicing (calques, words torn out of context, slop) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
 story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
 broadly, for someone who does not follow the topic — who against whom and why, what came before, what is at stake;
 well-known background plainly, the author only for a disputed version, an accusation, a loud word; "why" +
 "why_basis", neither → "why_skip"); shots by score (owner 2026-11-03, README «Оценка кадров»: a "role" and your "score" per shot, stills only as a
-quote / key picture / one map, the rest video, no repeats; produce.py runs shot_judge.py — on «shots: …» fix and
-rerun); clips come from the story's own context (TikTok too, README «Кадры из TikTok»: ≤ 4 s pieces, ≤ 3 a film, never
+quote / key picture / one map, the rest video, no repeats; produce.py runs shot_judge.py — it mends broken pieces
+itself and the build goes on, so pick good shots first); clips come from the story's own context (TikTok too, README «Кадры из TikTok»: ≤ 4 s pieces, ≤ 3 a film, never
 the first shot), no added drama (owner 2026-11-02, README «Кадры — по смыслу истории»: a US
 story — never a Mumbai call centre).
 

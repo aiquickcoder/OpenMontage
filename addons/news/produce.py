@@ -211,12 +211,20 @@ def main() -> None:
         fail(f"illustrations missing: {', '.join(missing)}")
     # every shot scored before the render (owner 2026-11-03: «ИИ оценивал кадры по бальной системе»; README «Оценка
     # кадров»): repeats and stills «around» the story stop the film; low scores too, for MAX_ROUNDS rounds
+    # the judge mends instead of stopping (owner 2026-11-04: «оценщик не должен останавливать билд, он должен вносить
+    # правки и билд должен продолжаться»): 4 — it replaced pieces in story.json, they are cleaned and the film goes on
     j = subprocess.run([PY, "addons/news/shot_judge.py", rel], cwd=REPO, capture_output=True, text=True)
     (logs / "shot_judge.log").write_text(j.stdout + j.stderr, encoding="utf-8")
     print(j.stdout.strip(), flush=True)
-    if j.returncode == 3:
-        fail("shots: " + " | ".join(l.strip() for l in j.stdout.splitlines()[1:6]))
-    if j.returncode != 0:  # the judge itself broke: the film goes on, the log says why
+    if j.returncode == 4:
+        c = run([PY, "addons/news/clean_footage.py", rel, "--run"], None, logs / "clean_footage.log")
+        if c.wait() != 0:
+            fail(f"clean of the judge's new pieces failed (see {rel}/logs)")
+        j2 = subprocess.run([PY, "addons/news/shot_judge.py", rel, "--no-fix", "--no-ai"], cwd=REPO, capture_output=True,
+                            text=True)
+        (logs / "shot_judge_after_fix.log").write_text(j2.stdout + j2.stderr, encoding="utf-8")
+        print(j2.stdout.strip(), flush=True)
+    elif j.returncode != 0:  # the judge itself broke: the film goes on, the log says why
         print(f"shot judge error (not blocking): {(j.stderr or j.stdout)[-300:]}", flush=True)
     print("build: start", flush=True)
     b = run([PY, "addons/news/build.py", rel, "--retime"],

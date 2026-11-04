@@ -74,13 +74,13 @@ each, ≤ 3 a film, never the first shot, no credit). A new picture every 2–3 
 the strongest real picture of the event in motion opens the film under the hook, 1.5–2.5 s, the first phrase telling
 that moment (owner 2026-11-03, README «Сильнейший кадр — первым»; never archive or TikTok first, no blood);
 a quote not in Russian gets "translation" (README «Перевод цитат»); a quote is a "quote_card", never two in a row, at
-most one per ~25 s (README «Цитаты — карточкой и редко»); build.py proofreads the voice text before voicing — on
-«TEXT: …» (calques, words torn out of context, slop) fix the text and voice again (README «Проверка текста»). «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
+most one per ~25 s (README «Цитаты — карточкой и редко»); build.py's editor mends the voice text itself before
+voicing — calques, words torn out of context, slop (README «Проверка текста»); write it clean anyway. «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
 anyone's guilt) — from the sources, or plain uncontested common knowledge («стаффорды — сильные собаки с крепкой
 хваткой…»); story.json "why" + "why_basis", neither → "why_skip". Shots by score (owner
 2026-11-03, README «Оценка кадров»): a
 "role" and your "score" per shot, stills only as a quote / key picture / one map, the rest video, no repeats;
-produce.py runs shot_judge.py — on «shots: …» fix and rerun. Official agency footage — МВД России on Rutube,
+produce.py runs shot_judge.py — it mends broken pieces itself and the build goes on. Official agency footage — МВД России on Rutube,
 НАК on YouTube, ГАИ, СК — is cleaned like any other (owner 2026-10-31), facts from the agency's own description;
 a news site's article video (tnv.ru) comes with `article_video.py`. A ministry video marked «Видео сгенерировано ИИ»
 is not footage. Before writing about the hurt, look for a later report (29.10: «выжила» in one channel, died in
