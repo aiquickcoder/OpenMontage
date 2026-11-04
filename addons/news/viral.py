@@ -1190,6 +1190,26 @@ def rank(posts: list[dict], now: float, weights: dict[str, float], made: list[di
     return sorted(stories, key=lambda s: (bool(s["skip"]), not s.get("ai"), -s["score"]))
 
 
+MOM_FLOOR = 0.55   # a story with no take-off at all keeps 55 % of the AI's score: it sinks to the middle, not out
+MOM_YOUNG_H = 2.0  # under two hours a story has had no time to show its numbers: it is not marked down for them
+
+
+def momentum(st: dict) -> float:
+    """0..1: is it really taking off — its posts above their channels' usual, picked up by many channels, read, argued
+    over; people searching it (Google Trends); TikTok already carrying it with big numbers (owner 2026-11-04: «новости
+    все равно какие-то слабые, нам нужны максимальные охваты… заранее понять, что сильно набирает»)."""
+    f, sig = st["sigf"], st["signals"]
+    m = 0.4 * f["velocity"] + 0.3 * f["pickup"] + 0.2 * f["reach"] + 0.1 * f["engage"]
+    if sig.get("google"):
+        m += 0.25
+    tt = ((st.get("tiktok") or {}).get("videos") or [{}])[0].get("views") or 0
+    if tt >= 100_000:
+        m += 0.2 if tt < 1_000_000 else 0.35
+    if sig.get("age_h", 99) < MOM_YOUNG_H:
+        m = max(m, 0.5)
+    return round(clamp(m), 3)
+
+
 def final_score(st: dict, weights: dict[str, float]) -> None:
     """The AI's own score when it scored the story (owner 2026-11-02: «выходной балл — ИИ»); the weighted formula
     ("formula", kept for the stats) only when the gateway gave none."""
@@ -1203,8 +1223,12 @@ def final_score(st: dict, weights: dict[str, float]) -> None:
         st["score"] = round(st["score"] * 0.75, 1)
         st["note"] = "почему — не объяснить (×0.75)"
     st["formula"] = st["score"]
+    st["momentum"] = momentum(st)
     if v and v.get("score") is not None:
-        st["score"] = round(v["score"], 1)
+        # the AI's score, weighed by the take-off it really has (owner 04.11: «нам нужны максимальные охваты»): the
+        # AI judges what is worth a film, the numbers what people already read
+        st["score"] = round(v["score"] * (MOM_FLOOR + (1 - MOM_FLOOR) * st["momentum"]), 1)
+        st["ai_score"] = round(v["score"], 1)
 
 
 SAME_TOP = 16
@@ -1303,6 +1327,7 @@ def brief(st: dict, n: int | None = None) -> dict:
     v = st.get("ai") or {}
     posts = sorted(st["posts"], key=lambda p: -p["views"])
     return {"rank": n, "key": st["key"], "score": st["score"], "region": st["region"], "place": st["place"],
+            "momentum": st.get("momentum"), "ai_score": st.get("ai_score"),
             "signals": st["signals"], "signal_features": st["sigf"], "features": st["features"], "ai": bool(v),
             "topic": v.get("topic"), "emotion_kind": v.get("emotion_kind"), "hook": v.get("hook"), "why": v.get("why"),
             "question": v.get("question"), "sides": v.get("sides"), "common_hook": v.get("common_hook"),
@@ -1322,7 +1347,9 @@ def describe(b: dict) -> str:
     flags = (" · 🚀 разгон ×%g" % s["velocity"] if s["velocity"] >= 3 else f" · ×{s['velocity']:g} к обычному"
              if s["velocity"] else "")
     pickup = f" · подхватили {s['channels']} кан." + (f" ({s['channels_3h']} за 3 ч)" if s["channels"] > 1 else "")
-    lines = [f"[{b['score']:5.1f}] {b['place'] or b['region']} · {b.get('topic') or '?'}{flags}{pickup} · "
+    mom = (f" (ИИ {b['ai_score']:g} × разгон {b['momentum']:.2f})" if b.get("ai_score") is not None
+           and b.get("momentum") is not None else "")
+    lines = [f"[{b['score']:5.1f}]{mom} {b['place'] or b['region']} · {b.get('topic') or '?'}{flags}{pickup} · "
              f"охват {s['reach']:,} · комм. {s['comments']} · {media} · {s['age_h']:g} ч"
              + ("" if b["ai"] else " · ИИ-оценки нет")
              + (f" · Google Trends {', '.join(s['google'])}" if s.get("google") else "")

@@ -1199,7 +1199,8 @@ def test_viral_the_ai_shortlists_every_story_and_its_score_is_final(monkeypatch)
     # world politics with war words abroad: the AI set no flag — in, and first by the AI's score although it is
     # 40 h old with few views (its formula is far lower)
     assert not by["topor"]["skip"] and ranked[0] is by["topor"]
-    assert by["topor"]["score"] == 88.0 and by["topor"]["formula"] != 88.0
+    m = by["topor"]["momentum"]                  # 04.11: the AI's score weighed by the real take-off
+    assert by["topor"]["ai_score"] == 88.0 and by["topor"]["score"] == round(88.0 * (0.55 + 0.45 * m), 1)
     # the war of Russia and Ukraine: the filters hinted, the AI never cleared it — out
     assert by["shot_shot"]["hints"] and any("ИИ не проверял" in r for r in by["shot_shot"]["skip"])
     # without the AI the filters cut as before: the war of Russia and Ukraine out, world politics in
@@ -1746,6 +1747,29 @@ def test_a_telegram_session_is_held_by_one_process_at_a_time(tmp_path, monkeypat
     out = subprocess.run([_sys.executable, "-c", code, f"{s}.lock"], capture_output=True, text=True).stdout.strip()
     assert out == "held"                                                  # another agent waits its turn
     tg_client._HELD.pop(str(s)).close()
+
+
+def test_the_ai_score_is_weighed_by_the_real_take_off():
+    from addons.news import viral
+
+    def st(vel, chans, reach, age, google=(), tt=0):
+        sig = {"velocity": vel, "channels": chans, "channels_3h": chans, "reach": reach, "engage": 1.0,
+               "age_h": age, "google": list(google)}
+        return {"signals": sig, "sigf": viral.signal_features(sig),
+                "tiktok": {"videos": [{"views": tt}]} if tt else None}
+
+    still = st(1.0, 1, 5_000, 20)                     # one channel, nobody reads it: «Германия, 1 комментарий»
+    flying = st(4.75, 23, 1_472_401, 25)               # «курьеров убирают с тротуаров»: 23 channels, ×4.75
+    assert viral.momentum(still) == 0.0 and viral.momentum(flying) > 0.8
+    assert viral.momentum(st(1.0, 1, 5_000, 0.5)) == 0.5                 # too young to have numbers: not marked down
+    assert viral.momentum(st(1.0, 1, 5_000, 20, google=["US 200+"])) == 0.25   # people search it
+    assert viral.momentum(st(1.0, 1, 5_000, 20, tt=2_000_000)) == 0.35        # TikTok already carries it big
+    s1, s2 = dict(still, ai={"score": 90, **{k: 8 for k in viral.AI_FEATURES}}), dict(flying, ai={"score": 85,
+             **{k: 8 for k in viral.AI_FEATURES}})
+    for s_ in (s1, s2):
+        s_.update(region="world", h={k: 5 for k in viral.AI_FEATURES})
+        viral.final_score(s_, viral.WEIGHTS)
+    assert s1["score"] == 49.5 and s2["score"] > 75 and s2["score"] > s1["score"]   # the numbers decide the order
 
 
 def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
