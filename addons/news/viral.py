@@ -787,6 +787,9 @@ emotion_kind — одно из: возмущение, страх, восхище
 hook — хук-конфликт на первую секунду, 6–12 слов, только факты из текстов, без «шок» и без вины до приговора.
 why — почему это произошло, одной фразой: причина из текстов или общеизвестный контекст; не выдумывай, если причины
 не видно — так и напиши «причина неясна».
+next — что из этого выйдет, одной фразой, ТОЛЬКО если это держит внимание: развилка с датой, которую зритель будет
+ждать, или как это ударит по нему самому (цены, штрафы, выплаты), или крупный поворот — из текстов или с автором
+сценария; дежурное («расследование продолжается») и догадки — пустая строка.
 question — вопрос в конце ролика: «Как думаете, …?», до 14 слов, из этой истории; сильнее всего — тот, на который
 знающий зритель захочет ответить, чтобы показать, что разбирается; в вопросе две названные версии «А или Б»
 («Что, по-вашему, покажет расследование — отказ техники или ошибку экипажа?»), открытое «почему…?» слабее:
@@ -807,7 +810,7 @@ score — твой итоговый балл 0–100: насколько эта 
 
 Ответ — только JSON-массив: [{"id": 1, "everyone": 8, "emotion": 7, "debate": 9, "visual": 6, "explain": 8,
 "war": false, "ru_politics": false, "risky": false, "ad": false, "local_only": false, "common_hook": null,
-"topic": "цены", "emotion_kind": "возмущение", "hook": "…", "why": "…", "question": "Как думаете, …?",
+"topic": "цены", "emotion_kind": "возмущение", "hook": "…", "why": "…", "next": "", "question": "Как думаете, …?",
 "sides": ["…", "…"], "note": "…", "score": 74}]"""
 
 # the first pass over every story (owner 2026-11-02: «отдал отбор новостей, их оценку и выходной балл — ИИ, а не
@@ -1115,7 +1118,7 @@ def ai_score(stories: list[dict], batch: int = 8, workers: int = 3) -> int:
                 continue
             st["ai"] = {**{k: int(clamp(float(v.get(k) or 0), 0, 10)) for k in AI_FEATURES},
                         **{k: bool(v.get(k)) for k in ("war", "ru_politics", "risky", "ad", "local_only")},
-                        **{k: v.get(k) for k in ("common_hook", "topic", "emotion_kind", "hook", "why", "question",
+                        **{k: v.get(k) for k in ("common_hook", "topic", "emotion_kind", "hook", "why", "next", "question",
                                                   "sides", "note")}, "ai": True,
                         "score": _num(v.get("score"))}
             n += 1
@@ -1424,6 +1427,7 @@ def brief(st: dict, n: int | None = None) -> dict:
             "momentum": st.get("momentum"), "ai_score": st.get("ai_score"),
             "signals": st["signals"], "signal_features": st["sigf"], "features": st["features"], "ai": bool(v),
             "topic": v.get("topic"), "emotion_kind": v.get("emotion_kind"), "hook": v.get("hook"), "why": v.get("why"),
+            "next": v.get("next"),
             "question": v.get("question"), "sides": v.get("sides"), "common_hook": v.get("common_hook"),
             "note": v.get("note"), "gate": st.get("note"), "skip": st.get("skip") or [], "sig": st.get("sig"),
             "tiktok": st.get("tiktok"),
@@ -1454,7 +1458,8 @@ def describe(b: dict) -> str:
                  f"{k} {v:.2f}" for k, v in b["signal_features"].items())]
     if b.get("gate"):
         lines.append(f"   ⚠ {b['gate']}")
-    for k, label in (("hook", "хук"), ("why", "почему"), ("question", "вопрос"), ("common_hook", "общий крючок")):
+    for k, label in (("hook", "хук"), ("why", "почему"), ("next", "что будет"), ("question", "вопрос"),
+                     ("common_hook", "общий крючок")):
         if b.get(k):
             lines.append(f"   {label}: {b[k]}")
     for p in b["posts"][:3]:

@@ -56,7 +56,9 @@ pace and conflict (owner 2026-11-03, README «Темп и кадры конфл�
 pieces, a conflict story shows the conflict — troops, jets, ships, launches of the same sides, never passed off as
 this strike; README «Перевод цитат»: a quote not in Russian gets "translation";
 README «Цитаты — карточкой и редко»: a quote is a "quote_card" (a post or a news card, original verbatim, the
-translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
+translation inside), never two in a row, at most one per ~25 s; README «Что из этого выйдет»: after «почему», consequences only
+where they hold the viewer — a fork with a date, how it hits him, a big turn — from the sources or a named author,
+never our forecast, nothing interesting — no block ("next" + "next_basis"); README «Проверка текста»: build.py's editor mends the voice
 text itself before voicing (calques, words torn out of context, slop) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
 story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question

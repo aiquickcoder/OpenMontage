@@ -54,6 +54,10 @@ for the pipeline steps; they all apply here.
   "quote_card" (post: name, handle, platform, text verbatim; news: outlet, headline) with "translation" inside, the
   screenshot as "src"; never two cards in a row, at most one per ~25 s (shot_judge.py refuses more) — the rest is video
   of the speaker or of the story.
+- **«Что из этого выйдет»** (owner 2026-11-04, README: «там, где реально уместно и интересно, чтобы удержать
+  внимание, а не для галочки везде»): after «почему», 1–2 phrases of consequences ONLY when they hold the viewer — a
+  fork with a date he will wait for, how it hits him (prices, fines, payments), a big turn; from the sources or a
+  named author's scenario, never our own forecast; nothing interesting — no block. story.json "next" + "next_basis".
 - **Text check** (owner 2026-11-04, README «Проверка текста»: «опроверг это Variety» — «англицизм не к месту… как
   ИИ-слоп», «текстовик ошибся»): build.py's editor mends the voice text itself before every new voice (calques, words
   torn out of context, slop, grammar; the captions get the mended text) — write it clean anyway; proofread.py
