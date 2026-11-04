@@ -74,8 +74,7 @@ each, ≤ 3 a film, never the first shot, no credit). A new picture every 2–3 
 the strongest real picture of the event in motion opens the film under the hook, 1.5–2.5 s, the first phrase telling
 that moment (owner 2026-11-03, README «Сильнейший кадр — первым»; never archive or TikTok first, no blood);
 a quote not in Russian gets "translation" (README «Перевод цитат»); a quote is a "quote_card", never two in a row, at
-most one per ~25 s (README «Цитаты — карточкой и редко»); «Что из этого выйдет» (owner 2026-11-04, README) — only where it holds the viewer (a court date, what changes,
-what it costs him), from the sources, never a guess ("next" + "next_basis"). build.py's editor mends the voice text itself before
+most one per ~25 s (README «Цитаты — карточкой и редко»); build.py's editor mends the voice text itself before
 voicing — calques, words torn out of context, slop (README «Проверка текста»); write it clean anyway. «Почему так вышло» (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause of the phenomenon (not
 anyone's guilt) — from the sources, or plain uncontested common knowledge («стаффорды — сильные собаки с крепкой
 хваткой…»); story.json "why" + "why_basis", neither → "why_skip". Shots by score (owner

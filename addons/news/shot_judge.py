@@ -136,34 +136,6 @@ def why_problems(story: dict, use_ai: bool = True) -> tuple[list[str], list[str]
     return [], []
 
 
-def next_problems(story: dict, use_ai: bool = True) -> list[str]:
-    """«Что из этого выйдет» (README; owner 2026-11-04: «там, где реально уместно и интересно… а не для галочки
-    везде»): no block — fine; a block without "next_basis" or not what its sources say — a note."""
-    nxt = " ".join(str(story.get("next") or "").split())
-    if not nxt:
-        return []
-    basis = story.get("next_basis") or []
-    if isinstance(basis, str):
-        basis = [basis]
-    if not basis:
-        return ["«что будет» has no \"next_basis\" — the sources' words and links it rests on"]
-    if not use_ai:
-        return []
-    try:
-        from addons.channels import llm
-
-        v = llm.chat_json(_meter(), "shot_judge", os.environ.get("NEWS_JUDGE_MODEL", "gpt-6.1-sol"), WHY_SYSTEM,
-                          f"История: {story.get('hook') or story.get('headline') or ''}\n\nФраза (что из этого "
-                          f"выйдет): «{nxt}»\n\nОснование:\n" + "\n".join(f"- {b}" for b in basis)[:6000],
-                          max_tokens=300, timeout=300)
-    except Exception as e:  # noqa: BLE001 — not checked is reported, not failed
-        print(f"next check AI: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
-        return []
-    if isinstance(v, dict) and v.get("supported") is False:
-        return [f"«что будет» is not what its sources say: {str(v.get('problem') or '')[:300]}"]
-    return []
-
-
 def _meter():
     class Meter:  # what addons.channels.llm needs of a DB (as viral._Meter): settings defaults, a call counter
         calls = 0
@@ -520,7 +492,6 @@ def judge(proj: Path, use_ai: bool = True, save_strips: bool = False, fix: bool 
         soft.append(f"the film's mean {mean}/10 < {MIN_AVG}")
     hard_lines = [f"shot {i + 1}: {'; '.join(v)}" for i, v in sorted(hard.items())]
     why_hard, why_soft = why_problems(story, use_ai)
-    why_soft += next_problems(story, use_ai)
     hard_lines += [f"why: {w}" for w in why_hard]
     soft += [f"why: {w}" for w in why_soft]
     # the judge never holds the film (owner 2026-11-04): it mends what it can in story.json, the rest is notes

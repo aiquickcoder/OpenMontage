@@ -1825,16 +1825,6 @@ def test_the_film_is_always_voiced_in_the_owners_voice():
     assert build.fish_voice_of({"voice": "abc", "voice_override": True}) == "abc"
 
 
-def test_what_next_is_optional_and_rests_on_its_sources():
-    from addons.news import shot_judge as sj
-
-    assert sj.next_problems({"why": "x"}, use_ai=False) == []                   # no block: fine, not for a tick
-    assert "next_basis" in sj.next_problems({"next": "Совет ИИХФ решит 15 ноября."}, use_ai=False)[0]
-    assert sj.next_problems({"next": "Совет ИИХФ решит 15 ноября.",
-                             "next_basis": ["ТАСС: решение примут на совете 15 ноября https://tass.ru/x"]},
-                            use_ai=False) == []
-
-
 def test_the_news_base_keeps_every_story_and_its_fate(tmp_path):
     import sys as _sys
 
