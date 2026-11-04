@@ -32,9 +32,37 @@ SESSIONS = {"films": SESSION, "channels": SESSION.parent / "telegram-channels",
 PROXY = os.environ.get("TG_CLIENT_PROXY", "http://127.0.0.1:10809")  # not TG_PROXY: the factory bot's
 
 
+_HELD: dict[str, object] = {}
+SESSION_WAIT_S = 20 * 60
+
+
+def hold(path: Path) -> None:
+    """One process at a time on a session (owner 2026-11-04: «можем распараллелить хотя бы на 2?» — two film agents at
+    once): Telethon keeps a session in SQLite and two processes on it lock it or worse. The lock is held until this
+    process exits (a tg_client call is one short process); another agent waits its turn, at most SESSION_WAIT_S."""
+    import fcntl
+    import time
+
+    key = str(path)
+    if key in _HELD:
+        return
+    f = open(f"{key}.lock", "w")
+    until = time.time() + SESSION_WAIT_S
+    while True:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.time() > until:
+                sys.exit(f"Telegram session {path.name} busy for {SESSION_WAIT_S // 60} min — another agent holds it")
+            time.sleep(2)
+    _HELD[key] = f
+
+
 def client(path: Path = SESSION):
     from telethon import TelegramClient
 
+    hold(path)
     api_id, api_hash = os.environ.get("TG_API_ID"), os.environ.get("TG_API_HASH")
     if not api_id or not api_hash:
         sys.exit("TG_API_ID / TG_API_HASH are not in the environment (run with EnvironmentFile=/opt/openmontage/.env)")

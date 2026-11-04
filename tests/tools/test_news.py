@@ -1731,6 +1731,23 @@ def test_a_quote_card_finds_its_source_avatar_and_style():
     assert "foxnews.com · 3 ноября" in html and '<img src="ava.jpg"' in html and "Перевод" not in html
 
 
+def test_a_telegram_session_is_held_by_one_process_at_a_time(tmp_path, monkeypatch):
+    import fcntl
+    import subprocess
+    import sys as _sys
+
+    from addons.news import tg_client
+
+    s = tmp_path / "films"
+    tg_client.hold(s)
+    tg_client.hold(s)                                                     # the same process: no deadlock
+    code = ("import fcntl,sys; f=open(sys.argv[1],'w')\n"
+            "try:\n fcntl.flock(f, fcntl.LOCK_EX|fcntl.LOCK_NB); print('free')\nexcept BlockingIOError: print('held')")
+    out = subprocess.run([_sys.executable, "-c", code, f"{s}.lock"], capture_output=True, text=True).stdout.strip()
+    assert out == "held"                                                  # another agent waits its turn
+    tg_client._HELD.pop(str(s)).close()
+
+
 def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
     from addons.news import proofread
 
