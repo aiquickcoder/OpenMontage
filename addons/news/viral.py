@@ -225,6 +225,7 @@ def client(force: bool = False):
         raise RuntimeError("TG_API_ID / TG_API_HASH are not in the environment (EnvironmentFile=/opt/openmontage/.env)")
     kind, rest = tg_client.PROXY.split("://", 1)
     host, port = rest.rsplit(":", 1)
+    tg_client.hold(session_copy(force).with_suffix(""))  # the take-off watch reads it too: one process at a time
     return TelegramClient(str(session_copy(force).with_suffix("")), int(api_id), api_hash,
                           proxy=(kind, host, int(port)), flood_sleep_threshold=60)
 
@@ -293,6 +294,75 @@ def google_trends(geos: Iterable[str] = TREND_GEOS, timeout: float = 15) -> list
                         "traffic": traffic_of(it.findtext(HT + "approx_traffic")),
                         "picture": bool(it.findtext(HT + "picture")), "news": [n for n in news if n["title"]]})
     return out
+
+
+# what people read outside Telegram (owner 2026-11-04, plan Д — «давай прокачивать»): Google News' top stories for
+# Russia (its own clusters: the description lists every outlet carrying the story) join the posts as src "gnews";
+# Russian Wikipedia's most read articles of yesterday mark the stories about the same person or event.
+GNEWS_URL = "https://news.google.com/rss?hl=ru&gl=RU&ceid=RU:ru"
+WIKI_URL = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/ru.wikipedia/all-access/{d:%Y/%m/%d}"
+WIKI_UA = "OpenMontage-news/1.0 (news pick; https://github.com/aiquickcoder/OpenMontage)"
+WIKI_SKIP = ("Заглавная_страница", "Служебная:", "Special:", "Википедия:", "Файл:", "Портал:")
+
+
+def gnews_posts(timeout: float = 15) -> list[dict]:
+    """Google News' top stories for Russia now, each as a post: the headline and the outlets' headlines of its cluster
+    as text, how many outlets carry it as "outlets". [] on any failure."""
+    try:
+        req = urllib.request.Request(GNEWS_URL, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            root = ET.fromstring(r.read())
+    except Exception as e:  # noqa: BLE001 — no Google News leaves the rest of the pick
+        print(f"  Google News: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+        return []
+    out = []
+    for i, it in enumerate(root.iter("item"), 1):
+        desc = re.sub(r"<[^>]+>", "\n", it.findtext("description") or "")
+        heads = [h.strip() for h in desc.split("\n") if len(h.strip()) > 25][:4]
+        title = (it.findtext("title") or "").strip()
+        try:
+            ts = email.utils.parsedate_to_datetime(it.findtext("pubDate") or "").timestamp()
+        except (TypeError, ValueError):
+            ts = time.time()
+        text = ". ".join(dict.fromkeys([title] + heads))
+        out.append({"channel": "Google News RU", "post": i, "ts": ts, "views": 0, "forwards": 0, "replies": 0,
+                    "reactions": 0, "text": text, "plain": text, "video_s": 0.0, "photos": 0, "group": 0,
+                    "fwd": False, "link": (it.findtext("link") or "").strip(), "ref": f"gnews:{i}:{title[:60]}",
+                    "src": "gnews", "outlets": max(1, len(heads))})
+    return out
+
+
+def wiki_top(day: date | None = None, n: int = 60, timeout: float = 15) -> list[tuple[str, int]]:
+    """Russian Wikipedia's most read articles of a day (yesterday by default): (title, views). [] on failure."""
+    day = day or (datetime.now(MSK).date() - timedelta(days=1))
+    try:
+        req = urllib.request.Request(WIKI_URL.format(d=day), headers={"User-Agent": WIKI_UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            arts = json.loads(r.read())["items"][0]["articles"]
+    except Exception as e:  # noqa: BLE001
+        print(f"  Википедия: {type(e).__name__}: {str(e)[:120]}", file=sys.stderr)
+        return []
+    return [(a["article"], int(a["views"])) for a in arts if not a["article"].startswith(WIKI_SKIP)][:n]
+
+
+def wiki_key(title: str) -> str:
+    """«Долина,_Лариса_Александровна» → «Долина»; «Выборы_в_Конгресс_США_(2026)» → «Выборы в Конгресс США»."""
+    t = re.sub(r"_\(.*?\)", "", title).replace("_", " ")
+    return t.split(",")[0].strip()
+
+
+def mark_wiki(stories: list[dict], top: list[tuple[str, int]]) -> int:
+    """A story about a person or an event people are reading about on Wikipedia gets it in its "demand"."""
+    n = 0
+    for st in stories:
+        text = " ".join((p.get("plain") or "") for p in st["posts"][:4]).lower()
+        for title, views in top:
+            key = wiki_key(title)
+            if len(key) >= 5 and key.lower() in text:
+                st["signals"].setdefault("demand", []).append(f"Википедия: {key} {views // 1000} тыс.")
+                n += 1
+                break
+    return n
 
 
 def trend_posts(trends: list[dict]) -> list[dict]:
@@ -395,6 +465,23 @@ def channel_norms(posts: list[dict], now: float) -> dict[str, dict]:
     return out
 
 
+def save_norms(norms: dict, now: float) -> None:
+    """The channels' usual for the take-off watch (watch.py reads only the last hours — too few posts for it)."""
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        (DATA / "norms.json").write_text(json.dumps({"t": now, "norms": norms}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load_norms(max_age_h: float = 36) -> dict:
+    try:
+        d = json.loads((DATA / "norms.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d.get("norms") or {} if time.time() - float(d.get("t", 0)) < max_age_h * 3600 else {}
+
+
 def engage_rate(p: dict) -> float:
     return (p.get("reactions", 0) + 2 * p.get("forwards", 0) + 3 * p.get("replies", 0)) / max(1, p["views"])
 
@@ -446,7 +533,8 @@ def signals(story: dict, norms: dict, now: float) -> dict:
             "video_s": round(max(p.get("video_s", 0) for p in posts), 1), "photos": max(p.get("photos", 0) for p in posts),
             "comments": sum(p.get("replies", 0) for p in posts),
             "google": [f"{p['geo']} {p['traffic']:,}+".replace(",", " ") for p in
-                       sorted((p for p in posts if p.get("src") == "google"), key=lambda p: -p["traffic"])][:4]}
+                       sorted((p for p in posts if p.get("src") == "google"), key=lambda p: -p["traffic"])][:4],
+            "demand": [f"Google News: {p['outlets']} изд." for p in posts if p.get("src") == "gnews"][:1]}
 
 
 def signal_features(sig: dict) -> dict[str, float]:
@@ -776,6 +864,7 @@ def story_block(i: int, st: dict) -> str:
             f"комментариев {sig['comments']} · медиа {media} · первая запись {sig['age_h']:g} ч назад · "
             f"где: {st['place'] or st['region']}"
             + (f"\nGoogle Trends — сейчас ищут: {', '.join(sig['google'])}" if sig.get("google") else "")
+            + (f"\nВне Telegram: {', '.join(sig['demand'])}" if sig.get("demand") else "")
             + tiktok_lines(st)
             + (f"\nфильтры заметили: {', '.join(st['hints'])}" if st.get("hints") else "") + "\n" + "\n".join(texts))
 
@@ -1149,6 +1238,7 @@ def rank(posts: list[dict], now: float, weights: dict[str, float], made: list[di
     idx = cl.Index([cl.signature(p["plain"]) for p in kept]) if cl else None
     for m in made:
         m.setdefault("sig", cl.signature(m["text"]) if cl else None)
+    save_norms(norms, now)
     stories = group(kept, idx)
     for st in stories:
         st["signals"] = signals(st, norms, now)
@@ -1164,6 +1254,8 @@ def rank(posts: list[dict], now: float, weights: dict[str, float], made: list[di
         st["h"] = heuristic(st)
         st["prescore"] = score(st["h"], st["sigf"], st["signals"]["age_h"], weights)
     live = sorted((s for s in stories if not s["skip"]), key=lambda s: -s["prescore"])
+    if use_ai and ai and (wk := mark_wiki(live, wiki_top())):
+        print(f"  Википедия: {wk} сюжетов о том, что читают", file=sys.stderr)
     if use_ai and ai:
         looked = ai_triage(live)
         if looked:
@@ -1200,7 +1292,7 @@ def momentum(st: dict) -> float:
     все равно какие-то слабые, нам нужны максимальные охваты… заранее понять, что сильно набирает»)."""
     f, sig = st["sigf"], st["signals"]
     m = 0.4 * f["velocity"] + 0.3 * f["pickup"] + 0.2 * f["reach"] + 0.1 * f["engage"]
-    if sig.get("google"):
+    if sig.get("google") or sig.get("demand"):  # people search it, Google News leads with it, Wikipedia reads it
         m += 0.25
     tt = ((st.get("tiktok") or {}).get("videos") or [{}])[0].get("views") or 0
     if tt >= 100_000:
@@ -1303,7 +1395,9 @@ def gather(hours: float, per: int = 400) -> list[dict]:
     db = engine_posts(hours)
     trends = trend_posts(google_trends())
     print(f"  Google Trends: {len(trends)} трендов из {len({p['geo'] for p in trends})} стран", file=sys.stderr)
-    return merge(tg, db) + trends
+    gn = gnews_posts()
+    print(f"  Google News: {len(gn)} главных сюжетов по России", file=sys.stderr)
+    return merge(tg, db) + trends + gn
 
 
 def engine_channels() -> list[str]:

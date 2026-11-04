@@ -1,0 +1,9 @@
+[Unit]
+Description=A hot story queued by the take-off watch → news-hot.service makes the film
+
+[Path]
+PathExistsGlob=/srv/factory/news_viral/hot/*.json
+Unit=news-hot.service
+
+[Install]
+WantedBy=multi-user.target

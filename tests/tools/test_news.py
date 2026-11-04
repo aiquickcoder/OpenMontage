@@ -1772,6 +1772,53 @@ def test_the_ai_score_is_weighed_by_the_real_take_off():
     assert s1["score"] == 49.5 and s2["score"] > 75 and s2["score"] > s1["score"]   # the numbers decide the order
 
 
+def test_the_watch_flags_a_take_off_and_queues_the_strongest(tmp_path, monkeypatch):
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(build.__file__).parent))
+    import viral
+    import watch
+
+    def st(key, vel, chans, chans3, age, reach=200_000, google=()):
+        sig = {"velocity": vel, "channels": chans, "channels_3h": chans3, "reach": reach, "engage": 1.0,
+               "age_h": age, "google": list(google), "comments": 0, "video_s": 0, "photos": 0}
+        post = {"link": f"https://t.me/x/{key}", "views": 50_000, "plain": "текст " * 20}
+        return {"key": key, "signals": sig, "sigf": viral.signal_features(sig), "posts": [post], "seed": post}
+
+    assert watch.is_hot(st("a", 4.0, 2, 2, 1.5))                 # ×4 its channels' usual, a second channel
+    assert watch.is_hot(st("b", 1.0, 5, 4, 2.5))                 # four channels within three hours
+    assert not watch.is_hot(st("c", 1.2, 1, 1, 1.0))             # nothing yet
+    assert not watch.is_hot(st("d", 6.0, 5, 5, 9.0))             # a day-old wave is the pick's, not the watch's
+    hot = [st("a", 4.0, 3, 3, 1.5), st("b", 1.5, 4, 4, 2.0)]
+    monkeypatch.setattr(watch, "STATE", tmp_path / "watch.json")
+    monkeypatch.setattr(watch, "QUEUE", tmp_path / "hot")
+    monkeypatch.setattr(watch, "stories", lambda posts, now: hot)
+    monkeypatch.setattr(watch, "msk_hour", lambda: 12)
+    monkeypatch.setattr(viral, "read", lambda *a, **k: _done([]))
+    monkeypatch.setattr(viral, "engine_posts", lambda h: [])
+    monkeypatch.setattr(viral, "engine_channels", lambda: [])
+    monkeypatch.setattr(viral, "google_trends", lambda: [])
+    sent = []
+    monkeypatch.setattr(watch, "viral_telegram", sent.append)
+
+    def marks(sts):
+        for x in sts:
+            x["ai"] = {"score": 88.0 if x["key"] == "a" else 70.0, "hook": f"хук {x['key']}", "why": "", "question": ""}
+        return len(sts)
+
+    monkeypatch.setattr(viral, "ai_score", marks)
+    out = watch.look()
+    assert [x["key"] for x in out] == ["a", "b"] and len(sent) == 2
+    assert sent[0].startswith("🚀 Набирает — ставлю ролик в очередь: хук a") and sent[1].startswith("🚀 Набирает: хук b")
+    q = list((tmp_path / "hot").glob("*.json"))
+    assert len(q) == 1 and json.loads(q[0].read_text())["key"] == "a"
+    assert watch.look() == [] and len(sent) == 2                  # told once
+
+
+async def _done(x):
+    return x
+
+
 def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
     from addons.news import proofread
 

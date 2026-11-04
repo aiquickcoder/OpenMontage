@@ -1,0 +1,14 @@
+[Unit]
+Description=Take-off watch: what is taking off right now → the owner's bot, the strongest queued as a film (addons/news/watch.py, README «Сторож разгона»)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=factory
+Group=factory
+WorkingDirectory=/opt/openmontage
+EnvironmentFile=/opt/openmontage/.env
+EnvironmentFile=-/etc/codex-gateway.env
+Environment=HOME=/home/factory PYTHONUNBUFFERED=1 PATH=/opt/node22/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/openmontage/.venv/bin/python addons/news/watch.py
+TimeoutStartSec=25min

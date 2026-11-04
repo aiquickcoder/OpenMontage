@@ -1,0 +1,9 @@
+[Unit]
+Description=Take-off watch every 15 minutes (owner 2026-11-04: «заранее понять, что сильно набирает»)
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=false
+
+[Install]
+WantedBy=timers.target
