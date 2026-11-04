@@ -1791,6 +1791,7 @@ def test_the_watch_flags_a_take_off_and_queues_the_strongest(tmp_path, monkeypat
     assert not watch.is_hot(st("d", 6.0, 5, 5, 9.0))             # a day-old wave is the pick's, not the watch's
     hot = [st("a", 4.0, 3, 3, 1.5), st("b", 1.5, 4, 4, 2.0)]
     monkeypatch.setattr(watch, "STATE", tmp_path / "watch.json")
+    monkeypatch.setattr(viral, "DATA", tmp_path)
     monkeypatch.setattr(watch, "QUEUE", tmp_path / "hot")
     monkeypatch.setattr(watch, "stories", lambda posts, now: hot)
     monkeypatch.setattr(watch, "msk_hour", lambda: 12)
@@ -1803,16 +1804,37 @@ def test_the_watch_flags_a_take_off_and_queues_the_strongest(tmp_path, monkeypat
 
     def marks(sts):
         for x in sts:
-            x["ai"] = {"score": 88.0 if x["key"] == "a" else 70.0, "hook": f"хук {x['key']}", "why": "", "question": ""}
+            x["ai"] = {"score": 88.0 if x["key"] == "a" else 69.0, "hook": f"хук {x['key']}", "why": "", "question": ""}
         return len(sts)
 
     monkeypatch.setattr(viral, "ai_score", marks)
     out = watch.look()
-    assert [x["key"] for x in out] == ["a", "b"] and len(sent) == 2
-    assert sent[0].startswith("🚀 Набирает — ставлю ролик в очередь: хук a") and sent[1].startswith("🚀 Набирает: хук b")
+    assert [x["key"] for x in out] == ["a"] and len(sent) == 1                # b: the AI 70 → not worth the bot
+    assert sent[0].startswith("🚀 Набирает — ставлю ролик в очередь: хук a")
     q = list((tmp_path / "hot").glob("*.json"))
     assert len(q) == 1 and json.loads(q[0].read_text())["key"] == "a"
-    assert watch.look() == [] and len(sent) == 2                  # told once
+    assert watch.look() == [] and len(sent) == 1                  # told once
+
+
+def test_the_news_base_keeps_every_story_and_its_fate(tmp_path):
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(build.__file__).parent))
+    import newsbase
+
+    con = newsbase.db(tmp_path / "news.db")
+    st = {"key": "tg:topor/1", "score": 52.0, "momentum": 0.4, "place": "Россия", "region": "russia",
+          "signals": {"velocity": 2.1, "channels": 7, "channels_3h": 4, "reach": 450_000, "comments": 300, "age_h": 5,
+                      "google": [], "demand": ["Википедия: Долина 12 тыс."]},
+          "ai": {"score": 84, "hook": "Долина подаёт иски", "why": "травля", "question": "А или Б?", "topic": "звёзды"},
+          "posts": [{"link": "https://t.me/topor/1"}], "seed": {"plain": "Долина решила судиться"}}
+    assert newsbase.save([st], "pick", con=con) == 1
+    newsbase.save([{**st, "score": 61.0}], "watch", "alerted", con=con)
+    newsbase.save([{**st, "score": 40.0}], "pick", con=con)                  # a later look: the status stays
+    r = newsbase.listing(con=con)[0]
+    assert r["status"] == "alerted" and r["best_score"] == 61.0 and r["seen_n"] == 3 and r["hook"] == "Долина подаёт иски"
+    newsbase.mark("tg:topor/1", "queued", "news-hot-04-11-1", con=con)
+    assert newsbase.listing(con=con, q="Долина")[0]["film"] == "news-hot-04-11-1"
 
 
 async def _done(x):

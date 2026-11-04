@@ -1493,6 +1493,12 @@ def main() -> None:
     ranked = rank(posts, now, load_weights(), made, claims, links, keys, ai=0 if a.no_ai else a.ai,
                   max_age_h=a.max_age)
     live = [s for s in ranked if not s["skip"]]
+    try:  # the news base keeps what the pick saw (owner 04.11: «запоминай новости… в базу класть»)
+        import newsbase
+
+        newsbase.save([s for s in ranked if not s["skip"] or s.get("ai")][:200], "pick")
+    except Exception as e:  # noqa: BLE001 — the base never stops a pick
+        print(f"  база новостей: {type(e).__name__}: {e}", file=sys.stderr)
     out_posts = defaultdict(int)
     for p in posts:
         for r in p.get("skip") or []:
@@ -1514,6 +1520,12 @@ def main() -> None:
             print(f"\n{o['rank']}. " + describe(o))
         if a.claim and out:
             save_claim(claim_of(a.claim, acc, out[0], out[0]["sig"]))
+            try:
+                import newsbase
+
+                newsbase.mark(out[0]["key"], "queued", a.claim)
+            except Exception as e:  # noqa: BLE001
+                print(f"  база новостей: {type(e).__name__}: {e}", file=sys.stderr)
     if a.show:
         print(f"\nлучшие {a.show} по баллу:")
         for i, st in enumerate(live[:a.show], 1):

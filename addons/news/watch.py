@@ -36,6 +36,8 @@ HOT_VEL, HOT_CHANS, HOT_CHANS_3H, HOT_MAX_AGE_H = 3.0, 2, 4, 6.0
 AUTO_CAP = int(os.environ.get("NEWS_WATCH_AUTO", "2"))
 AUTO_AI, AUTO_MOM, AUTO_LAST_H = 80.0, 0.6, 19
 AUTO_VEL, AUTO_CHANS_3H = 4.0, 5  # a strong early take-off: ×4 its channels' usual, or five channels in three hours
+ALERT_AI = 70.0  # the bot hears only of what the AI finds worth a film (a dry run 04.11: a terminal of Kazan airport,
+# gas to China — four agencies' RSS each, the AI 7–18: noise)
 QUIET_FROM, QUIET_TO = 23, 7  # MSK: no alerts at night (the night's hot stories wait for the morning look)
 NORMS_MAX_AGE_H = 36
 STATE = viral.DATA / "watch.json"
@@ -54,12 +56,22 @@ def norms(now: float, posts: list[dict]) -> dict:
     return {**own, **saved}
 
 
+def tg_channels(st: dict, within_h: float | None = None) -> int:
+    """Telegram channels carrying it (agencies' RSS carry every official item: they are not a take-off)."""
+    posts = [p for p in st.get("posts", []) if p.get("src") == "tg"]
+    if within_h is not None and posts:
+        first = min(p["ts"] for p in posts)
+        posts = [p for p in posts if p["ts"] - first <= within_h * 3600]
+    return len({p["channel"] for p in posts})
+
+
 def is_hot(st: dict) -> bool:
     s = st["signals"]
     if s["age_h"] > HOT_MAX_AGE_H:
         return False
-    return ((s["velocity"] >= HOT_VEL and s["channels"] >= HOT_CHANS) or s["channels_3h"] >= HOT_CHANS_3H
-            or (bool(s.get("google")) and s["channels"] >= HOT_CHANS))
+    tg, tg3 = st.get("tg_channels", s["channels"]), st.get("tg_channels_3h", s["channels_3h"])
+    return ((s["velocity"] >= HOT_VEL and tg >= HOT_CHANS) or tg3 >= HOT_CHANS_3H
+            or (bool(s.get("google")) and tg >= HOT_CHANS))
 
 
 def stories(posts: list[dict], now: float) -> list[dict]:
@@ -80,6 +92,7 @@ def stories(posts: list[dict], now: float) -> list[dict]:
         st["sigf"] = viral.signal_features(st["signals"])
         st["region"], st["place"] = viral.region_of(st)
         st["hints"] = sorted({h for p in st["posts"] for h in p.get("hints") or []})
+        st["tg_channels"], st["tg_channels_3h"] = tg_channels(st), tg_channels(st, 3)
         if not viral.taken(st, made, claims, links, keys):
             out.append(st)
     return out
@@ -151,8 +164,11 @@ def look(dry: bool = False) -> list[dict]:
     out = []
     for st in sorted(new, key=lambda s: -((s.get("ai") or {}).get("score") or 0)):
         v = st.get("ai") or {}
-        if any(v.get(k) for k in ("war", "ru_politics", "ad")):
-            state[st["key"]] = {"t": now, "links": [p["link"] for p in st["posts"]], "skipped": "ИИ: флаг"}
+        flag = [k for k in ("war", "ru_politics", "ad") if v.get(k)]
+        if flag or (v.get("score") or 0) < ALERT_AI:
+            if not dry:
+                state[st["key"]] = {"t": now, "links": [p["link"] for p in st["posts"]],
+                                    "skipped": f"ИИ: {', '.join(flag)}" if flag else f"ИИ {v.get('score')}"}
             continue
         st["momentum"] = viral.momentum(st)
         s = st["signals"]
@@ -170,6 +186,14 @@ def look(dry: bool = False) -> list[dict]:
             rec["file"] = str(queue(st, autos))
         if not dry:
             state[st["key"]] = rec
+            try:  # the news base (owner 04.11: «запоминай новости… в базу класть»)
+                import newsbase
+
+                newsbase.save([st], "watch", "queued" if auto else "alerted" if rec["alerted"] else "seen")
+                if auto:
+                    newsbase.mark(st["key"], "queued", json.loads(Path(rec["file"]).read_text())["slug"])
+            except Exception as e:  # noqa: BLE001 — the base never stops the watch
+                print(f"news base: {type(e).__name__}: {e}", file=sys.stderr)
         out.append(st)
     if not dry:
         STATE.parent.mkdir(parents=True, exist_ok=True)
