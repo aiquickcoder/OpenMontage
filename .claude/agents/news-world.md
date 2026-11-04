@@ -56,8 +56,8 @@ pace and conflict (owner 2026-11-03, README «Темп и кадры конфл�
 pieces, a conflict story shows the conflict — troops, jets, ships, launches of the same sides, never passed off as
 this strike; README «Перевод цитат»: a quote not in Russian gets "translation";
 README «Цитаты — карточкой и редко»: a quote is a "quote_card" (a post or a news card, original verbatim, the
-translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: no Latin in the voice-over,
-«TEXT: …» from build.py means fix and voice again; README «Сильнейший кадр — первым»: the first 3–4 s
+translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: right after writing the
+text, before voicing, run proofread.py and fix every «TEXT: …» — calques, words torn out of context, slop; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
 story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
 broadly, for someone who does not follow the topic — who against whom and why, what came before, what is at stake;

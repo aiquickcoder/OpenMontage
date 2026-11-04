@@ -1670,7 +1670,7 @@ def test_a_quote_is_a_card_with_its_translation_inside_and_a_gentle_push(monkeyp
             "text": "We have not set a deadline.", "date": "2 ноября", "url": "https://x.com/JDVance"}
     html, js = qc.clip(0, card, "Мы не устанавливали срок.", 4.0, 3.0, top=qc.top_under(build.hook_text_bottom(
         {"hook": "Вэнс: *жёсткого срока* для сделки с Ираном нет"})))
-    assert 'class="clip qwrap"' in html and 'data-start="4.0"' in html and "Перевод" in html
+    assert 'class="clip qwrap"' in html and 'data-start="4.0"' in html and "Перевод" not in html   # no label (04.11)
     assert html.index("We have not set a deadline.") < html.index("Мы не устанавливали срок.")   # original, then RU
     assert "scale: 1.04" in js and "<svg" in html and "@JDVance · X" in html
     top = int(html.split("top:")[1].split("px")[0])
@@ -1690,12 +1690,18 @@ def test_a_quote_is_a_card_with_its_translation_inside_and_a_gentle_push(monkeyp
     assert "boxblur" in flt and "overlay" not in flt                                    # only the source, blurred
 
 
-def test_proofread_stops_latin_in_the_voice(tmp_path):
+def test_proofread_flags_slop_for_two_rounds_then_notes(tmp_path, monkeypatch):
     from addons.news import proofread
 
-    hard, notes = proofread.check(tmp_path, {}, "Как пишет Variety, слух о гибели ложный.", use_ai=False)
-    assert hard and "Variety" in hard[0] and not notes
-    assert proofread.check(tmp_path, {}, "Как пишет «Вэрайети», слух ложный.", use_ai=False) == ([], [])
+    said = "Слух оказался ложным — его представитель опроверг это Variety."
+    found = ["voice: «опроверг это Variety» — калька с английского → «представитель артиста опроверг слух»"]
+    monkeypatch.setattr(proofread, "ai_problems", lambda voice, story, caption="": list(found))
+    assert proofread.check(tmp_path, {}, said) == (found, [])                  # round 1: to fix
+    assert proofread.check(tmp_path, {}, said) == (found, [])                  # round 2
+    assert proofread.check(tmp_path, {}, said) == ([], found)                  # then a note, never a stop for ever
+    found.clear()
+    assert proofread.check(tmp_path, {}, "Компания OpenAI выпустила модель.") == ([], [])   # a name in Latin is fine
+    assert proofread.check(tmp_path, {}, said, use_ai=False) == ([], [])                    # no Latin rule of its own
 
 
 def test_produce_drops_videos_of_films_on_kinescope(tmp_path, monkeypatch):

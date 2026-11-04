@@ -38,7 +38,6 @@ INNER_W = W - LEFT - RIGHT - 2 * PAD_X
 PUSH = 0.04                  # «небольшой наезд камеры»: 1.00 → 1.04 over the shot
 SIZES = (46, 42, 38, 35, 32, 29, 27)
 CHAR_EM = 0.58               # Inter's mean advance for mixed Latin/Cyrillic text, with room for word wrap
-TR_LABEL = "Перевод"
 
 CSS = f"""
     .qwrap {{ position: absolute; left: {LEFT}px; right: {RIGHT}px; z-index: 6; display: flex; align-items: center;
@@ -55,8 +54,6 @@ CSS = f"""
     .qhandle {{ margin-top: 4px; color: #536471; font-size: 27px; line-height: 1.2; }}
     .qtext {{ font-weight: 500; line-height: 1.3; white-space: pre-line; overflow-wrap: break-word; }}
     .qtr {{ margin-top: 22px; padding-top: 18px; border-top: 2px solid #e6ecf0; }}
-    .qtrl {{ margin-bottom: 8px; color: #536471; font-size: 22px; font-weight: 700; letter-spacing: 2px;
-            text-transform: uppercase; }}
     .qtrt {{ font-weight: 600; line-height: 1.3; overflow-wrap: break-word; }}
     .qfoot {{ margin-top: 20px; color: #536471; font-size: 25px; line-height: 1.2; }}
     .qcard.news .qoutlet {{ margin-bottom: 18px; padding-bottom: 14px; border-bottom: 3px solid #0f1419;
@@ -83,7 +80,7 @@ def fit(card: dict, translation: str = "", room: int = BOTTOM - TOP_MIN) -> tupl
     smallest overflows (build.py warns: shorten the quote to its key sentence)."""
     avail = room - PAD_TOP - PAD_BOTTOM - (20 + 30 if card.get("date") or card.get("platform") else 0)
     if translation:
-        avail -= 22 + 18 + 30 + 8
+        avail -= 22 + 18
     news = card.get("kind") == "news"
     avail -= (30 * 1.2 + 14 + 3 + 18) if news else (84 + 22)
     best = None
@@ -113,8 +110,8 @@ def card_html(card: dict, translation: str = "", avatar_src: str = "", room: int
     """The card itself (the inside of .qwrap)."""
     sz, _ = fit(card, translation, room)
     foot = esc(card.get("date") or "")
-    tr = (f'<div class="qtr"><div class="qtrl">{TR_LABEL}</div>'
-          f'<div class="qtrt" style="font-size:{sz["tr"]}px">{esc(translation)}</div></div>') if translation else ""
+    tr = (f'<div class="qtr"><div class="qtrt" style="font-size:{sz["tr"]}px">{esc(translation)}</div></div>'
+          if translation else "")  # under a line, no «Перевод» label (owner 04.11: «и так понятно»)
     if card.get("kind") == "news":
         body = (f'<div class="qoutlet">{esc(card.get("outlet", ""))}</div>'
                 + (f'<div class="qheadline" dir="auto" style="font-size:{sz["head"]}px">{esc(card["headline"])}</div>'
