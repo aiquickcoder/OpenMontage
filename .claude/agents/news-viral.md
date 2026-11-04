@@ -55,8 +55,9 @@ for the pipeline steps; they all apply here.
   screenshot as "src"; never two cards in a row, at most one per ~25 s (shot_judge.py refuses more) — the rest is video
   of the speaker or of the story.
 - **Text check** (owner 2026-11-04, README «Проверка текста»: «опроверг это Variety» — «англицизм не к месту… как
-  ИИ-слоп», «текстовик ошибся»): right after writing the text, before voicing, run `proofread.py projects/<slug>`;
-  fix every «TEXT: …» (calques, words torn out of context, slop, grammar) until «TEXT: OK». Names in Latin are fine.
+  ИИ-слоп», «текстовик ошибся»): build.py proofreads the voice text before every new voice and stops with «TEXT: …»
+  (calques, words torn out of context, slop, grammar) — fix the text and voice again; proofread.py projects/<slug>
+  checks it earlier, with the hook, theses and caption. Names in Latin are fine.
 - **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
   в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
   strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision

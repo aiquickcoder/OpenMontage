@@ -1695,7 +1695,7 @@ def test_proofread_flags_slop_for_two_rounds_then_notes(tmp_path, monkeypatch):
 
     said = "Слух оказался ложным — его представитель опроверг это Variety."
     found = ["voice: «опроверг это Variety» — калька с английского → «представитель артиста опроверг слух»"]
-    monkeypatch.setattr(proofread, "ai_problems", lambda voice, story, caption="": list(found))
+    monkeypatch.setattr(proofread, "ai_problems", lambda voice, story, caption="", screens=True: list(found))
     assert proofread.check(tmp_path, {}, said) == (found, [])                  # round 1: to fix
     assert proofread.check(tmp_path, {}, said) == (found, [])                  # round 2
     assert proofread.check(tmp_path, {}, said) == ([], found)                  # then a note, never a stop for ever

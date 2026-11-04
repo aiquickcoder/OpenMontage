@@ -1,9 +1,10 @@
-"""The text writer checks the script right after writing it, before it is voiced (owner 2026-11-04: «нужно проверять
-текст озвучки и сценария на косяки после составления»; the Florida film said «его представитель опроверг это
-Variety» — «суть не в латинице… вырванное из контекста слово, скорее как аномалия, просто англицизм не к месту. Как
-ИИ-слоп»; «тут текстовик ошибся»).
+"""The text for the voice is checked before it is voiced (owner 2026-11-04: «нужно проверять текст озвучки и сценария на
+косяки после составления»; the Florida film said «его представитель опроверг это Variety» — «суть не в латинице…
+вырванное из контекста слово, скорее как аномалия, просто англицизм не к месту. Как ИИ-слоп»; «может просто
+перепроверять текст для озвучки было бы правильнее»). build.py runs it on the voiced text right before every new
+voice and stops with «TEXT: …»; the writer may run it earlier on everything:
 
-    .venv/bin/python addons/news/proofread.py projects/<slug>     # after story.json's text, before build.py --voice-only
+    .venv/bin/python addons/news/proofread.py projects/<slug>     # the voice text, the hook, the theses, the caption
 
 An AI proofreader reads the voice-over, the hook, the theses and the caption for what a careful Russian editor would
 strike: a calque of English («опроверг это Variety» ← «told Variety»), a word or a name torn out of its context,
@@ -45,12 +46,13 @@ def screen_texts(story: dict) -> dict:
     return {"hook": str(story.get("hook") or ""), "theses": theses}
 
 
-def ai_problems(voice: str, story: dict, caption: str = "") -> list[str]:
+def ai_problems(voice: str, story: dict, caption: str = "", screens: bool = True) -> list[str]:
     from addons.channels import llm
     from addons.news.shot_judge import _meter
 
-    scr = screen_texts(story)
-    msg = (f"Озвучка:\n{voice}\n\nХук: {scr['hook']}\n\nТезисы:\n" + "\n".join(f"- {t}" for t in scr["theses"])
+    scr = screen_texts(story) if screens else {"hook": "", "theses": []}
+    msg = (f"Озвучка:\n{voice}" + (f"\n\nХук: {scr['hook']}" if scr["hook"] else "")
+           + ("\n\nТезисы:\n" + "\n".join(f"- {t}" for t in scr["theses"]) if scr["theses"] else "")
            + (f"\n\nПодпись к ролику:\n{caption[:1500]}" if caption else ""))
     v = llm.chat_json(_meter(), "shot_judge", os.environ.get("NEWS_JUDGE_MODEL", "gpt-6.1-sol"), SYSTEM, msg[:9000],
                       max_tokens=900, timeout=300)
@@ -62,13 +64,15 @@ def ai_problems(voice: str, story: dict, caption: str = "") -> list[str]:
     return out
 
 
-def check(proj: Path, story: dict, voice: str, use_ai: bool = True) -> tuple[list[str], list[str]]:
-    """(to fix, notes): the AI's findings are to fix for PROOF_ROUNDS rounds, then notes."""
+def check(proj: Path, story: dict, voice: str, use_ai: bool = True, screens: bool = True) -> tuple[list[str], list[str]]:
+    """(to fix, notes): the AI's findings are to fix for PROOF_ROUNDS rounds, then notes. screens=False — only the
+    text that is voiced (build.py, right before a new voice); True — also the hook, the theses and the caption."""
     found: list[str] = []
     if use_ai:
         cap = proj / "caption.txt"
         try:
-            found = ai_problems(voice, story, cap.read_text(encoding="utf-8") if cap.is_file() else "")
+            found = ai_problems(voice, story, cap.read_text(encoding="utf-8") if cap.is_file() and screens else "",
+                                screens)
         except Exception as e:  # noqa: BLE001 — a proofreader that did not answer is reported, not a stop
             print(f"proofread AI: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
     qa = proj / "qa"

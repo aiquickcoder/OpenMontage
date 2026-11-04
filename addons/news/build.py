@@ -290,6 +290,17 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
         except (OSError, ValueError, KeyError, TypeError):
             pass
     if not (retime and audio.is_file()):
+        # the text that will be voiced is proofread first (owner 2026-11-04: «может просто перепроверять текст для
+        # озвучки»; «опроверг это Variety» — a calque, «англицизм не к месту… как ИИ-слоп»; README «Проверка текста»)
+        from addons.news import proofread
+
+        fix_, notes = proofread.check(proj, story, plain(text), use_ai=os.environ.get("NEWS_PROOF", "1") != "0",
+                                      screens=False)
+        for n in notes:
+            print("note: text:", n, flush=True)
+        if fix_:
+            sys.exit("TEXT — fix the text in story.json and voice again (README «Проверка текста»):\n  "
+                     + "\n  ".join(fix_))
         if bite:
             sound_bite(proj, story, A)
         else:
