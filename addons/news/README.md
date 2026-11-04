@@ -651,9 +651,9 @@ Kinescope (голос «Энергичный Рассказчик», Fish Audio 
  "anchor": {"dir": "addons/news/anchor_cat",
             "intro": "Здравствуйте, это «ЧП Москва». <суть одной фразой>.",
             "outro": "Подписывайтесь, чтобы первыми знать, что происходит в городе."},
- "narration": {"engine": "fishaudio", "voice": "48ec28a45588422b977a86460c11977f", "model": "drama-3",
+ "narration": {"engine": "fishaudio", "voice": "6731d6ce3b30456bae0a938a93d6d639", "model": "drama-3",
                "fallback": {"engine": "openrouter", "voice": "cedar", "model": "openai/gpt-audio"},
-               "text": "<сюжет, 45–55 слов>"},   // «Энергичный Рассказчик» (Fish Audio Drama 3) с 2026-10-29, cedar — запасной
+               "text": "<сюжет, 45–55 слов>"},   // голос владельца с 2026-10-30 (Fish Audio Drama 3), cedar — запасной
  "illustration_style": "...", "illustrations": [{"id": "i1", "prompt": "..."}],   // только если нужны иллюстрации
  "shots": [
    {"src": "media/fire.mp4", "in": 0.3, "credit": "Видео: 112 / @moscowach"},

@@ -1816,6 +1816,15 @@ def test_the_watch_flags_a_take_off_and_queues_the_strongest(tmp_path, monkeypat
     assert watch.look() == [] and len(sent) == 1                  # told once
 
 
+def test_the_film_is_always_voiced_in_the_owners_voice():
+    from addons.news.fish_voice import OWNER_VOICE
+
+    assert OWNER_VOICE == "6731d6ce3b30456bae0a938a93d6d639"
+    assert build.fish_voice_of({"voice": "48ec28a45588422b977a86460c11977f"}) == OWNER_VOICE   # the old one: swapped
+    assert build.fish_voice_of({}) == OWNER_VOICE
+    assert build.fish_voice_of({"voice": "abc", "voice_override": True}) == "abc"
+
+
 def test_what_next_is_optional_and_rests_on_its_sources():
     from addons.news import shot_judge as sj
 

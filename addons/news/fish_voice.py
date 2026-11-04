@@ -30,7 +30,10 @@ import urllib.request
 from pathlib import Path
 
 URL = "https://api.fish.audio/v1/tts"
-OWNER_VOICE = "48ec28a45588422b977a86460c11977f"  # https://fish.audio/ru/app/m/48ec28a45588422b977a86460c11977f/
+# the owner's voice since 2026-10-30 (README «Голос»); until then «Энергичный Рассказчик» 48ec28a4… — still the
+# default here and in README's example on 04.11, so a film started from scratch (China) came out in the old voice
+OWNER_VOICE = "6731d6ce3b30456bae0a938a93d6d639"
+OLD_VOICES = {"48ec28a45588422b977a86460c11977f"}
 # the owner's pick of four A/B takes on the SPb 28.10 opening (2026-10-29, «проба 1/4 — ок»): calm, no word-stress marks
 DIRECTION = "уверенный ведущий новостей, естественная интонация, ровный темп, без восклицаний и театральности"
 CUES = re.compile(r"\[[^\]]*\]|</?[a-z]+>")  # never spoken as words, so never compared

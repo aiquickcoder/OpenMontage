@@ -135,6 +135,18 @@ def full_text(story: dict) -> str:
     return " ".join(p["text"] for p in parts(story))
 
 
+def fish_voice_of(n: dict) -> str:
+    """Always the owner's voice (owner 2026-11-04: «почему ты голос озвучки поменял? В ролике про Китай стал другой» —
+    the agent took the old voice from an example); another one only with "voice_override": true."""
+    from addons.news.fish_voice import OWNER_VOICE
+
+    v = n.get("voice") or OWNER_VOICE
+    if v != OWNER_VOICE and not n.get("voice_override"):
+        print(f"voice: {v[:8]}… is not the owner's voice — {OWNER_VOICE[:8]}… instead (README «Голос»)", flush=True)
+        return OWNER_VOICE
+    return v
+
+
 def voice_text(story: dict) -> str:
     """What Fish Drama 3 reads: the plain script and a [pause] before every next lead and the outro, so a digest does
     not run on as one block (owner, 2026-10-28). Tone cues and <stress> in a text are dropped: the owner heard them
@@ -191,12 +203,13 @@ def speak(n: dict, out: Path) -> None:
 
         or_speak(n["text"], out, n.get("voice", "ash"), n.get("model", "openai/gpt-audio-mini"), n.get("style", STYLE))
         return
-    if engine == "fishaudio":  # the news voice («Энергичный Рассказчик»), Fish Audio Drama 3 (addons/news/fish_voice.py)
+    if engine == "fishaudio":  # the owner's news voice, Fish Audio Drama 3 (addons/news/fish_voice.py)
         from addons.news.fish_voice import DIRECTION, OWNER_VOICE
         from addons.news.fish_voice import speak as fish_speak
 
+        voice = fish_voice_of(n)
         try:
-            fish_speak(n["text"], out, n.get("voice", OWNER_VOICE), n.get("model", "drama-3"),
+            fish_speak(n["text"], out, voice, n.get("model", "drama-3"),
                        n.get("direction", DIRECTION), float(n.get("speed", 1.0)))
             return
         except SystemExit as e:  # key, balance or outage: the morning film must still come out
