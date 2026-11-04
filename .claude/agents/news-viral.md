@@ -49,6 +49,13 @@ for the pipeline steps; they all apply here.
   none > 6 s; a conflict story shows the conflict (troops, jets, ships, launches — real footage of the same sides,
   role context, never passed off as this strike — no on-screen mark, never "label": it means an AI picture and
   build.py refuses the film); a quote not in Russian gets "translation" (shown on screen).
+- **Quotes — a card, and few** (owner 2026-11-03, README «Цитаты — карточкой и редко»: «упаковывать в UI типа как твит
+  / или новость… оригинал, а далее там же переведённый текст»; «цитат стало очень много»): a quote shot is
+  "quote_card" (post: name, handle, platform, text verbatim; news: outlet, headline) with "translation" inside, the
+  screenshot as "src"; never two cards in a row, at most one per ~25 s (shot_judge.py refuses more) — the rest is video
+  of the speaker or of the story.
+- **Text check** (owner 2026-11-04, README «Проверка текста»): no Latin in the voice-over — a name as it is said
+  («Вэрайети», «Нью-Йорк пост»); build.py proofreads before voicing and stops with «TEXT: …» — fix and voice again.
 - **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
   в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
   strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision

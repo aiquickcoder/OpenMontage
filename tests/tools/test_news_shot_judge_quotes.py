@@ -25,7 +25,7 @@ class QuoteDedupTests(unittest.TestCase):
             a = card(tmp_path, "a", "We are going to crash into the ground")
             b = card(tmp_path, "b", "Investigation remains ongoing")
             assert not same_paper_quote(a, b)
-            assert hard_rules([a, b], [0, 0]) == {}
+            assert not any("looks the same" in p for v in hard_rules([a, b], [0, 0]).values() for p in v)
 
 
     def test_compressed_repost_still_rejected(self):
@@ -36,14 +36,14 @@ class QuoteDedupTests(unittest.TestCase):
             cv2.imwrite(str(path), cv2.imread(str(a["path"])), [cv2.IMWRITE_JPEG_QUALITY, 55])
             b = {**a, "src_key": "repost", "path": path}
             assert same_paper_quote(a, b)
-            assert hard_rules([a, b], [0, 0])[1] == ["looks the same as shot 1"]
+            assert "looks the same as shot 1" in hard_rules([a, b], [0, 0])[1]
 
 
     def test_same_file_rule_is_unchanged(self):
         with tempfile.TemporaryDirectory() as folder:
             tmp_path = Path(folder)
             a = card(tmp_path, "a", "Source quotation")
-            assert hard_rules([a, a], [0, 2**32])[1] == ["repeats shot 1 (a)"]
+            assert "repeats shot 1 (a)" in hard_rules([a, a], [0, 2**32])[1]
 
 
     def test_normal_pictures_keep_coarse_hash_gate(self):

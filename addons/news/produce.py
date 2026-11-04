@@ -27,6 +27,7 @@ import fcntl
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -123,6 +124,38 @@ def wait_for_others(rx: re.Pattern, max_s: float, say=print) -> bool:
         time.sleep(30)
 
 
+# a film on Kinescope keeps no video on the server (owner 2026-11-04: «если уже выгрузил в kinescope, то удаляй видео с
+# диска. Почисти диск, ошибки получаем» — the disk filled up, the cleaner answered 507 and three films failed)
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".m4v", ".ts"}
+MIN_FREE_GB = 6       # less than this after the sweep: stop with the reason, not a 507 halfway through the cleaning
+RECENT_S = 2 * 3600   # a delivered film touched since then may be re-edited by an agent: its videos stay
+
+
+def drop_videos(proj: Path) -> int:
+    """Delete every video file of a project (not through symlinks); the bytes freed."""
+    freed = 0
+    for root, _dirs, files in os.walk(proj, followlinks=False):
+        for name in files:
+            f = Path(root) / name
+            if f.suffix.lower() in VIDEO_EXT and f.is_file() and not f.is_symlink():
+                freed += f.stat().st_size
+                f.unlink()
+    return freed
+
+
+def sweep_delivered(skip: Path) -> int:
+    """The videos of every film already on Kinescope (kinescope.json), except one touched in the last RECENT_S."""
+    freed, now = 0, time.time()
+    for k in (REPO / "projects").glob("*/kinescope.json"):
+        p = k.parent
+        if p == skip:
+            continue
+        latest = max((f.stat().st_mtime for f in (p / "story.json", p / "events.jsonl", k) if f.is_file()), default=0)
+        if now - latest > RECENT_S:
+            freed += drop_videos(p)
+    return freed
+
+
 def run(cmd: list[str], env: dict | None = None, log: Path | None = None) -> subprocess.Popen:
     out = log.open("w") if log else None
     return subprocess.Popen(cmd, cwd=REPO, env={**os.environ, **(env or {}), "PYTHONUNBUFFERED": "1"},
@@ -155,6 +188,10 @@ def main() -> None:
     # another produce.py waits on the lock; a render or a cleaning started by hand does not take it — wait for it too
     if not wait_for_others(DIRECT, OTHERS_MAX_WAIT_S, lambda m: print(m, flush=True)):
         fail("server busy: another film's render or cleaning ran for 3 h")
+    if freed := sweep_delivered(proj):
+        print(f"disk: {freed / 2**30:.1f} GB of videos of films already on Kinescope deleted", flush=True)
+    if (free := shutil.disk_usage(REPO).free / 2**30) < MIN_FREE_GB:
+        fail(f"disk full: {free:.1f} GB free, {MIN_FREE_GB} GB needed — nothing delivered left to delete")
     jobs = {}
     if story.get("illustrations"):
         jobs["pictures"] = run([PY, "addons/news/gen_shots.py", f"{rel}/story.json", f"{rel}/illustrations"],
@@ -218,6 +255,8 @@ def main() -> None:
         k = [PY, "addons/news/kinescope_upload.py", rel, "--notify"] + (["--replace"] if (proj / "kinescope.json").is_file() else [])
         if subprocess.run(k, cwd=REPO).returncode != 0:
             fail("kinescope upload failed")
+        if (proj / "kinescope.json").is_file():
+            print(f"disk: {drop_videos(proj) / 2**20:.0f} MB of this film's videos deleted — it is on Kinescope", flush=True)
     print(f"PRODUCE_RESULT: READY {rel}", flush=True)
 
 

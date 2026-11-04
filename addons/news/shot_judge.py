@@ -41,7 +41,10 @@ PACE_MEAN, PACE_MAX = 3.5, 6.0
 # the strongest picture opens the film (owner 2026-11-03: «самые мощные, шокирующие кадры — в самое начало, пока идёт
 # начало видео… с самолётом — как он падает и взрывается»): the first OPENING_S seconds hold the film's top impact
 OPENING_S = 3.5
-REPEAT_GAP_S, SAME_PICTURE = 3.0, 4  # seconds between two moments of one clip; dhash bits that still mean «the same»
+REPEAT_GAP_S, SAME_PICTURE = 3.0, 4
+# quotes season a film, they are not the film (owner 2026-11-03: «цитат стало очень много» — Iran 03.11: 15 cards of 41
+# shots, the hockey film 21 stills of 38): never two cards in a row, at most one per QUOTE_EVERY_S of the film
+QUOTE_EVERY_S = 25.0  # seconds between two moments of one clip; dhash bits that still mean «the same»
 RUBRIC = """Балл плана 0–10 = сумма четырёх оценок:
 - meaning 0–4 — кадр показывает то, о чём говорится в эти секунды: 4 — само событие, человек, место, документ из
   фразы; 2 — общий контекст той же темы; 0 — не про это, или нагнетание (кровь, жертвы, драма, которой нет в событии).
@@ -259,6 +262,18 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
                     and same_paper_quote(it, o)):
                 bad.setdefault(i, []).append(f"looks the same as shot {j + 1}")
                 break
+    q = [i for i, it in enumerate(items) if it.get("role") == "quote" and (it["still"] or it.get("quote_card"))]
+    for a, b in zip(q, q[1:]):
+        if b == a + 1:
+            bad.setdefault(b, []).append(f"a quote card right after another (shot {a + 1}) — one card a statement, a "
+                                         f"video between (README «Цитаты — карточкой и редко»)")
+    if items and q:
+        film = float(items[-1].get("start", 0)) + float(items[-1].get("dur", 0)) - float(items[0].get("start", 0))
+        most = max(2, round(film / QUOTE_EVERY_S))
+        for n, i in enumerate(q[most:], most + 1):
+            bad.setdefault(i, []).append(f"quote card {n} of {len(q)} — at most {most} in a {film:.0f} s film (one per "
+                                         f"~{QUOTE_EVERY_S:g} s): keep the key statements, the rest — video of the "
+                                         f"speaker or of the story (README «Цитаты — карточкой и редко»)")
     for i in maps[1:]:
         bad.setdefault(i, []).append("a second map — one a film")
     return bad

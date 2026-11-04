@@ -1648,6 +1648,80 @@ def test_extra_pieces_split_a_phrase_and_are_cleaned_and_checked(tmp_path):
     assert shot_judge.pace_notes([{"dur": 2.5}, {"dur": 3.0}]) == []
 
 
+def test_quote_cards_are_few_and_never_in_a_row():
+    from addons.news import shot_judge as sj
+
+    def it(n, role, still):
+        return {"src_key": f"media/{n}", "still": still, "role": role, "in": 0.0, "start": n * 3.0, "dur": 3.0}
+
+    roles = ["event", "quote", "quote", "context", "quote", "context", "quote", "event", "quote", "context"]  # 30 s
+    items = [it(n, r, r == "quote") for n, r in enumerate(roles)]
+    bad = sj.hard_rules(items, [None] * len(items))
+    assert any("right after another (shot 2)" in w for w in bad[2])
+    assert 1 not in bad                                                 # the first card
+    assert any("quote card 3 of 5 — at most 2 in a 30 s film" in w for w in bad[4])
+    assert any("quote card 5 of 5" in w for w in bad[8]) and 0 not in bad and 3 not in bad
+
+
+def test_a_quote_is_a_card_with_its_translation_inside_and_a_gentle_push(monkeypatch):
+    from addons.news import quote_card as qc
+
+    card = {"kind": "post", "name": "JD Vance", "handle": "@JDVance", "platform": "X", "verified": True,
+            "text": "We have not set a deadline.", "date": "2 ноября", "url": "https://x.com/JDVance"}
+    html, js = qc.clip(0, card, "Мы не устанавливали срок.", 4.0, 3.0, top=qc.top_under(build.hook_text_bottom(
+        {"hook": "Вэнс: *жёсткого срока* для сделки с Ираном нет"})))
+    assert 'class="clip qwrap"' in html and 'data-start="4.0"' in html and "Перевод" in html
+    assert html.index("We have not set a deadline.") < html.index("Мы не устанавливали срок.")   # original, then RU
+    assert "scale: 1.04" in js and "<svg" in html and "@JDVance · X" in html
+    top = int(html.split("top:")[1].split("px")[0])
+    assert top >= 548 and top + int(html.split("height:")[1].split("px")[0]) <= 1282       # under the hook, above captions
+    long_hook = {"hook": "Очень длинный хук " * 8}
+    assert build.hook_text_bottom(long_hook) > build.hook_text_bottom({"hook": "Короткий хук"})
+    assert qc.problems([{"quote_card": {"kind": "news", "outlet": "WSJ", "headline": "Secret strikes for weeks"}}]) == [
+        'shot 0: quote_card not in Russian without "translation" (README «Цитаты — карточкой»)',
+        'shot 0: quote_card without "url" of the original']
+    assert build.still_move({"role": "quote", "n": 0}) == "zoom"                        # text never pans
+    calls = []
+    monkeypatch.setattr(build, "probe", lambda p: (1080, 760, 0.0))
+    monkeypatch.setattr(build, "sh", lambda cmd: calls.append(cmd))
+    build.segment({"path": "media/cards/vance.png", "dur": 3.0, "video": False, "role": "quote", "quote_card": card},
+                  Path("/tmp/s.mp4"))
+    flt = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "boxblur" in flt and "overlay" not in flt                                    # only the source, blurred
+
+
+def test_proofread_stops_latin_in_the_voice(tmp_path):
+    from addons.news import proofread
+
+    hard, notes = proofread.check(tmp_path, {}, "Как пишет Variety, слух о гибели ложный.", use_ai=False)
+    assert hard and "Variety" in hard[0] and not notes
+    assert proofread.check(tmp_path, {}, "Как пишет «Вэрайети», слух ложный.", use_ai=False) == ([], [])
+
+
+def test_produce_drops_videos_of_films_on_kinescope(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from addons.news import produce
+
+    monkeypatch.setattr(produce, "REPO", tmp_path)
+    old, new, mine = (tmp_path / "projects" / n for n in ("old", "new", "mine"))
+    for p in (old, new, mine):
+        (p / "renders").mkdir(parents=True)
+        (p / "renders" / "final.mp4").write_bytes(b"x" * 10)
+        (p / "story.json").write_text("{}")
+        (p / "kinescope.json").write_text("{}")
+    (old / "media").mkdir()
+    (old / "media" / "photo.jpg").write_bytes(b"j")
+    past = time.time() - 3 * 3600
+    for f in (old / "story.json", old / "kinescope.json", mine / "story.json", mine / "kinescope.json"):
+        os.utime(f, (past, past))
+    assert produce.sweep_delivered(mine) == 10                        # only the old one: new may be re-edited
+    assert not (old / "renders" / "final.mp4").exists() and (old / "media" / "photo.jpg").exists()
+    assert (new / "renders" / "final.mp4").exists() and (mine / "renders" / "final.mp4").exists()
+    assert produce.drop_videos(mine) == 10 and not (mine / "renders" / "final.mp4").exists()
+
+
 def test_a_thesis_gives_way_to_a_translation_card(monkeypatch):
     from addons.news import build
 

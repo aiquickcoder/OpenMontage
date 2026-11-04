@@ -59,6 +59,7 @@ CUT_MIN, SNAP_S = 1.8, 0.6  # a cut moves up to SNAP_S to land between words; no
 PIECE_S, LAST_PIECE_S = 3.35, 5.95  # cleaned post clips are 3.4 s, a story's last one 6 s (clean_footage.py)
 TAIL_S = 1.2           # hold after the last word
 CARD_ZOOM = 0.07       # a still's slow push-in (segment); "zoom": [from, to] on a cut overrides it
+QUOTE_ZOOM = 0.04      # a quote's text: «небольшой наезд камеры… сильно не приближать, а то текст не видно» (03.11)
 PAN_Z = 1.12           # a still's sideways move (owner 2026-10-30: «движение камеры слева направо»): this much closer,
                        # travelling across; stills take turns: pan, push-in, pan… ("move": pan|pan-left|zoom on a shot)
 VOICE_AT = 0.3         # the voice starts this far into the composition; every timing below is composition time
@@ -289,6 +290,15 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
         except (OSError, ValueError, KeyError, TypeError):
             pass
     if not (retime and audio.is_file()):
+        # the script is proofread before it is voiced (owner 2026-11-04: «проверять текст озвучки и сценария на косяки
+        # после составления… проскользнуло слово variety»; README «Проверка текста»)
+        from addons.news import proofread
+
+        hard, notes = proofread.check(proj, story, plain(text), use_ai=os.environ.get("NEWS_PROOF", "1") != "0")
+        for n in notes:
+            print("note: text:", n, flush=True)
+        if hard:
+            sys.exit("TEXT — fix story.json and voice again (README «Проверка текста»):\n  " + "\n  ".join(hard))
         if bite:
             sound_bite(proj, story, A)
         else:
@@ -899,7 +909,7 @@ def frame_box(item: dict) -> tuple[int, int, int, int, bool]:
 
 def still_move(item: dict) -> str:
     """How a still moves: a card's own "zoom" or the shot's "move", else stills take turns — pan, push-in, pan…"""
-    if item.get("zoom"):
+    if item.get("zoom") or item.get("role") == "quote":  # text never pans: a pan cut its sides (owner 03.11)
         return "zoom"
     return item.get("move") or ("pan" if item.get("n", 0) % 2 == 0 else "zoom")
 
@@ -929,7 +939,7 @@ def segment(item: dict, dst: Path) -> None:
         inp = ["-loop", "1", "-t", f"{d:.3f}", "-i", str(src)]
         move = still_move(item)
         if move == "zoom":
-            z0, z1 = item.get("zoom", (1.0, 1.0 + CARD_ZOOM))
+            z0, z1 = item.get("zoom", (1.0, 1.0 + (QUOTE_ZOOM if item.get("role") == "quote" else CARD_ZOOM)))
             z, x = f"{z0:g}+{z1 - z0:.4f}*on/{frames}", "iw/2-(iw/zoom/2)"
         else:  # across the picture at a fixed closeness, left to right (or back)
             k = f"on/{max(1, frames - 1)}" if move == "pan" else f"(1-on/{max(1, frames - 1)})"
@@ -941,6 +951,9 @@ def segment(item: dict, dst: Path) -> None:
     hold = f"tpad=stop_mode=clone:stop_duration={d:.3f}," if item["video"] else ""
     flt = (f"[0:v]{pre}fps={FPS},{hold}split[a][b];{bg};{fg};[bg][fg]overlay={x0}:{y}:shortest=1,"
            f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
+    if item.get("quote_card"):  # the card itself is HTML over this (quote_card.py): only its source, blurred, behind
+        flt = (f"[0:v]{pre}fps={FPS},{hold}scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+               f"boxblur=28:2,eq=brightness=-0.22:saturation=0.7,trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
 
@@ -1188,6 +1201,20 @@ HOOK_CSS = """
 HOOK_CSS = HOOK_CSS.replace("SAFE_TOP", str(SAFE_TOP)).replace("SAFE_X", str(SAFE_X))
 
 
+def hook_text_bottom(story: dict) -> int:
+    """Where a one-story film's hook text ends (#hook: the brand row, then PT Mono 46 px at 1.3 in 840 px — about
+    30 characters a line)."""
+    if not story.get("hook"):
+        return 0
+    words, n, line = plain(str(story["hook"]).replace("*", "")).split(), 1, 0
+    for w in words:
+        if line and line + 1 + len(w) > 30:
+            n, line = n + 1, len(w)
+        else:
+            line += (1 if line else 0) + len(w)
+    return SAFE_TOP + 64 + round(n * 46 * 1.3)
+
+
 def hook_html(story: dict, duration: float) -> tuple[str, str]:
     """A one-story film's hook (owner 2026-10-30, «вот пример хуков» — the ПОТОК cards): the whole headline as a
     title card over the top of the frame for the whole film — the brand and the date above, the headline in mono
@@ -1228,7 +1255,8 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
     # a translated quote holds the bottom of the frame (README «Перевод цитат»; the Qeshm test 03.11 failed the layout
     # check on a translation card over a thesis): a thesis waits for the translated shot to end, and one already on
     # screen leaves when a translated shot comes
-    tr = [(x["start"], round(x["start"] + x["dur"], 3)) for x in items if x.get("translation") and x.get("path")]
+    tr = [(x["start"], round(x["start"] + x["dur"], 3)) for x in items
+          if (x.get("translation") or x.get("quote_card")) and x.get("path")]
     plan = []
     for n, it in [(n, i) for n, i in enumerate(items) if i.get("thesis") and i.get("path")]:
         story = [x for x in items[n:] if x.get("w") == it.get("w")]
@@ -1404,7 +1432,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
         # кадров, где есть новость текстовая или цитата, но она не на русском»): a card under the picture, above the
         # captions grow upward from SAFE_BOTTOM: reserve their full two-line room,
         # and anchor translations by their bottom so longer text cannot run into them.
-        if it.get("translation"):
+        if it.get("translation") and not it.get("quote_card"):
             tr_bottom = H - (SAFE_BOTTOM - CAP_ROOM - 18)
             chips.append(f'    <div id="chip{k}" class="clip chip tr" style="bottom:{tr_bottom}px" data-start="{it["start"]}" '
                          f'data-duration="{it["dur"]}" data-track-index="5">{esc(it["translation"])}</div>')
@@ -1415,6 +1443,21 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
                          f'data-start="{it["start"]}" data-duration="{it["dur"]}" data-track-index="4">'
                          f'{esc(it["credit"])}</div>')
             k += 1
+    # a quote as a component (owner 2026-11-03, README «Цитаты — карточкой и редко»): the card in the film's HTML,
+    # the original and its translation inside, a gentle push-in
+    from addons.news import quote_card
+
+    qc_html, qc_js = [], []
+    qtop = quote_card.top_under(hook_text_bottom(story))
+    for n, it in enumerate(i for i in items if i.get("quote_card")):
+        c, ava = it["quote_card"], ""
+        if c.get("avatar") and (proj / c["avatar"]).is_file():
+            ava = f"assets/qc{n}_ava{Path(c['avatar']).suffix.lower()}"
+            shutil.copy2(proj / c["avatar"], ws / ava)
+        h_, j_ = quote_card.clip(n, c, it.get("translation", ""), it["start"], it["dur"], ava, qtop)
+        qc_html.append(h_)
+        qc_js.append(j_)
+    chips += qc_html
     music_vol = music.get("volume", 0.12)
     audio = (f'    <audio id="bgm" src="assets/music.mp3" data-start="0" data-duration="{duration}" '
              f'data-media-start="{music.get("offset", 0)}" data-track-index="10" data-volume="{music_vol}"></audio>\n'
@@ -1509,7 +1552,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
                  background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
                  text-shadow: 0 2px 6px rgba(0,0,0,.6); }}
-    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}
+    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}{quote_card.CSS if qc_html else ""}
   </style>
 </head>
 <body>
@@ -1532,6 +1575,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {lower_js}
 {anchor_js}
 {chr(10).join(thesis_js)}
+{chr(10).join(qc_js)}
 {hook_js}
 {caps_js}
 {audio_js}
@@ -1685,7 +1729,10 @@ def main() -> None:
     print(f"AI pictures: {ai} of {total} shots, allowed {limit:.0%} (cities.json ai_max_share)"
           + (" — OVER: use the post's footage at other in-points, crops of its photos, Commons photos of the very "
              "place, or drop the story" if over else ""), flush=True)
+    from addons.news import quote_card
+
     for warning in picture_warnings(story) + thesis_warnings(story) + unused_post_media(proj, story) + [
+            "quote card: " + w for st in stories(story) for w in quote_card.problems(st.get("shots", []))] + [
             "TikTok: " + w for w in tiktok_problems(story) + reposted_tiktok(proj, story)]:
         print("warning:", warning, flush=True)
     if a.storyboard:
