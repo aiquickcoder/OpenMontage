@@ -316,11 +316,12 @@ def opening_notes(items: list[dict], scores: dict[int, dict]) -> list[str]:
 
 
 def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict]:
+    from concurrent.futures import ThreadPoolExecutor
     from addons.channels import llm
 
     model = os.environ.get("NEWS_JUDGE_MODEL", "gpt-6.1-sol")
     out: dict[int, dict] = {}
-    for k in range(0, len(items), batch):
+    def ask(k: int):
         parts: list[dict] = [{"type": "text", "text": "Планы ролика:"}]
         for i in range(k, min(k + batch, len(items))):
             it = items[i]
@@ -336,17 +337,23 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
             ans = llm.chat_json(_meter(), "shot_judge", model, SYSTEM, parts, max_tokens=300 * batch, timeout=420)
         except Exception as e:  # noqa: BLE001 — a batch the AI did not answer is reported, not scored as zero
             print(f"shot judge AI: {type(e).__name__}: {str(e)[:200]}", file=sys.stderr)
-            continue
-        for v in ans if isinstance(ans, list) else []:
-            try:
-                i = int(v.get("shot")) - 1
-                parts_ = {x: max(0, min(hi, int(v.get(x) or 0))) for x, hi in
-                          (("meaning", 4), ("role", 2), ("context", 2), ("clean", 2))}
-                out[i] = {**parts_, "total": sum(parts_.values()), "impact": max(0, min(3, int(v.get("impact") or 0))),
-                          "problem": str(v.get("problem") or "")[:300],
-                          "fix": str(v.get("fix") or "")[:300], "foreign_text": bool(v.get("foreign_text"))}
-            except (TypeError, ValueError, AttributeError):
-                continue
+            return []
+        return ans
+
+    # Independent batches use the same model and rubric; bound network concurrency
+    # so a long film does not spend several minutes waiting on each batch in turn.
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        for ans in executor.map(ask, range(0, len(items), batch)):
+            for v in ans if isinstance(ans, list) else []:
+                try:
+                    i = int(v.get("shot")) - 1
+                    parts_ = {x: max(0, min(hi, int(v.get(x) or 0))) for x, hi in
+                              (("meaning", 4), ("role", 2), ("context", 2), ("clean", 2))}
+                    out[i] = {**parts_, "total": sum(parts_.values()), "impact": max(0, min(3, int(v.get("impact") or 0))),
+                              "problem": str(v.get("problem") or "")[:300],
+                              "fix": str(v.get("fix") or "")[:300], "foreign_text": bool(v.get("foreign_text"))}
+                except (TypeError, ValueError, AttributeError):
+                    continue
     return out
 
 

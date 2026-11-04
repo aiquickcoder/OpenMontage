@@ -299,7 +299,8 @@ def render(ws: Path, out: Path) -> None:
     # the tool's 5 s `npm view` runtime probe times out when the registry answers slowly (~12 s from RU).
     out.parent.mkdir(parents=True, exist_ok=True)
     hf = os.environ.get("HYPERFRAMES_BIN", "npx --yes hyperframes").split()  # server: a pinned global install
-    for args in (["check"], ["render", "--output", str(out.resolve()), "--fps", str(FPS), "--quality", "high", "--strict"]):
+    workers = ["--workers", os.environ["HYPERFRAMES_WORKERS"]] if os.environ.get("HYPERFRAMES_WORKERS") else []
+    for args in (["check"], ["render", "--output", str(out.resolve()), "--fps", str(FPS), "--quality", "high", "--strict", *workers]):
         p = subprocess.run([*hf, *args], cwd=ws, capture_output=True, text=True)
         tail = (p.stdout + p.stderr).strip().splitlines()[-4:]
         print(f"hyperframes {args[0]}: exit {p.returncode}\n  " + "\n  ".join(tail), flush=True)

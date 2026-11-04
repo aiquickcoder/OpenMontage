@@ -333,6 +333,7 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
                 et = float(e.get("in_orig", e.get("in", 0.0))) if evid else 0.0
                 eu = use.setdefault(f"{esrc}@{et:g}", {"src": esrc, "start": et, "len": 0.0})
                 eu["len"] = max(eu["len"], round(plen / (len(extras) + 1) + 0.6, 2) if evid else 0.0)
+                eu["shown"] = max(eu.get("shown", 0.0), (plen - 0.3) / (len(extras) + 1) if bs is not None and evid else eu["len"])
             src = sh_.get("src_orig") or sh_.get("src", "")
             if not src.startswith("media/") or "Wikimedia" in (sh_.get("credit") or "") or "/clean/" in src:
                 continue
@@ -341,11 +342,13 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
             video = Path(src).suffix.lower() in VIDEO
             t = float(sh_.get("in_orig", sh_.get("in", 0.0))) if video else 0.0
             if bs is not None:
-                length = round(bs[j]["end"] - bs[j]["start"] + 0.3, 2) if video else 0.0
+                # The main piece shares its phrase with extras, just as build.py does.
+                length = round((bs[j]["end"] - bs[j]["start"]) / (len(extras) + 1) + 0.3, 2) if video else 0.0
             else:
                 length = (LAST_S if j == len(shots) - 1 else SHOT_S) if video else 0.0
             u = use.setdefault(f"{src}@{t:g}", {"src": src, "start": t, "len": 0.0})
             u["len"] = max(u["len"], length)
+            u["shown"] = max(u.get("shown", 0.0), (bs[j]["end"] - bs[j]["start"]) / (len(extras) + 1) if bs is not None and video else length)
     return use
 
 
@@ -403,6 +406,7 @@ def main() -> None:
             dur = float(sh(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)]) or 0)
         start = min(piece["start"], max(0.0, dur - 0.5)) if is_video else 0.0
         length = min(piece["len"], dur - start) if is_video else 0.0
+        shown = min(piece.get("shown", length), dur - start) if is_video else 0.0
         clip = work / f"{tag(src)}_{start:g}.in.mp4"
         name = Path(src).name
         entry = hand.get(name)
@@ -440,7 +444,7 @@ def main() -> None:
             meta = json.loads(meta_file.read_text())
             if meta.get("signature") == signature:
                 masks[src] = cv2.imread(str(mask_file), cv2.IMREAD_GRAYSCALE)
-                plan[key] = {**meta["plan"], "src": src, "clip": clip, "start": start, "video": is_video}
+                plan[key] = {**meta["plan"], "src": src, "clip": clip, "start": start, "video": is_video, "shown": shown}
                 print(f"{key}: cached plan, {plan[key]['how']}, window {start:.1f}–{start + length:.1f} s", flush=True)
                 continue
         fr = frames(path) if is_video else frames(clip)
@@ -468,7 +472,7 @@ def main() -> None:
         cv2.imwrite(str(work / (tag(src) + ".mask.png")), mask)
         masks[src] = mask
         plan[key] = {"src": src, "clip": clip, "start": start, "video": is_video, "mask_area": area, "how": how,
-                     "unchecked": entry is None and needs_look(moving, blind)}
+                     "unchecked": entry is None and needs_look(moving, blind), "shown": shown}
         meta_file.write_text(json.dumps({"signature": signature,
                                         "plan": {k: v for k, v in plan[key].items() if k != "clip"}}))
         print(f"{key}: {how}, mask {area:.1%}, window {start:.1f}–{start + length:.1f} s", flush=True)
@@ -498,9 +502,10 @@ def main() -> None:
         # a rerun keeps what is done, but only if it was cleaned with this very mask: pieces cleaned before the
         # mask learned the Region 116 emblem kept it after the mask was fixed (Kazan 28.10, owner's screenshot)
         sig, sigs[p["out_mp4"]] = p["out_mp4"].with_suffix(".mask.sha1"), hashlib.sha1(mask.tobytes()).hexdigest()
-        # …and only if it is as long as the shot now needs (a phrase can be longer than the old 3.4 s piece)
+        # The shown interval must fit. prepare() adds a safety tail that is not displayed;
+        # do not repeat an already sufficient cleaning just to regenerate that tail.
         if not (p["out_mp4"].is_file() and sig.is_file() and sig.read_text() == sigs[p["out_mp4"]]
-                and (not p["video"] or seconds(p["out_mp4"]) >= seconds(p["clip"]) - 0.1)):
+                and (not p["video"] or seconds(p["out_mp4"]) >= p["shown"] - 1 / 30)):
             receipt = p["out_mp4"].with_suffix(".job.json")
             saved = json.loads(receipt.read_text()) if receipt.is_file() else {}
             jid = saved.get("id") if saved.get("mask") == sigs[p["out_mp4"]] and saved.get("input") == digest(p["clip"]) else None
