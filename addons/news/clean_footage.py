@@ -432,7 +432,7 @@ def main() -> None:
             continue
         prepare(path, start, length, clip)
         if src in masks:
-            plan[key] = {**plan[next(k for k in plan if plan[k]["src"] == src)], "clip": clip, "start": start}
+            plan[key] = {**plan[next(k for k in plan if plan[k]["src"] == src)], "clip": clip, "start": start, "shown": shown}
             print(f"{key}: same mask as {src}, window {start:.1f}–{start + length:.1f} s", flush=True)
             continue
         # Reuse a reviewed plan only for identical source bytes, hand boxes and logo templates.
