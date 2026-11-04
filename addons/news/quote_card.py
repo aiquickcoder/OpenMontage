@@ -16,6 +16,7 @@ film's HTML over it: white, whole, inside the text-safe zone, under the hook and
 push-in. No platform logos (a foreign logo reads as a watermark), the platform by name.
 
     .venv/bin/python addons/news/quote_card.py preview <cards.json> <out.png> [--bg <picture>]   # the card alone
+    .venv/bin/python addons/news/quote_card.py avatars [key,key] [--force]   # the popular sources' pictures
 """
 from __future__ import annotations
 
@@ -38,6 +39,14 @@ INNER_W = W - LEFT - RIGHT - 2 * PAD_X
 PUSH = 0.04                  # «небольшой наезд камеры»: 1.00 → 1.04 over the shot
 SIZES = (46, 42, 38, 35, 32, 29, 27)
 CHAR_EM = 0.58               # Inter's mean advance for mixed Latin/Cyrillic text, with room for word wrap
+HERE = Path(__file__).resolve().parent
+AVATARS = HERE / "avatars"   # the popular sources' pictures (quote_card.py avatars): <key>.jpg
+SOURCES = {k: v for k, v in json.loads((HERE / "quote_sources.json").read_text(encoding="utf-8")).items()
+           if not k.startswith("_")}
+MAST_H = 100                 # a news card's masthead in the outlet's colours
+HEAD_FONT = {"serif": '"Playfair Display", "PT Serif", Georgia, serif',
+             "sans": '"Inter", "DejaVu Sans", Arial, sans-serif',
+             "condensed": '"Roboto Condensed", "Inter", Arial, sans-serif'}
 
 CSS = f"""
     .qwrap {{ position: absolute; left: {LEFT}px; right: {RIGHT}px; z-index: 6; display: flex; align-items: center;
@@ -56,9 +65,16 @@ CSS = f"""
     .qtr {{ margin-top: 22px; padding-top: 18px; border-top: 2px solid #e6ecf0; }}
     .qtrt {{ font-weight: 600; line-height: 1.3; overflow-wrap: break-word; }}
     .qfoot {{ margin-top: 20px; color: #536471; font-size: 25px; line-height: 1.2; }}
-    .qcard.news .qoutlet {{ margin-bottom: 18px; padding-bottom: 14px; border-bottom: 3px solid #0f1419;
-                           font: 700 30px "PT Serif", Georgia, serif; letter-spacing: 1px; text-transform: uppercase; }}
-    .qcard.news .qheadline {{ font-family: "PT Serif", Georgia, serif; font-weight: 700; line-height: 1.18; }}
+    .qcard.news {{ padding: 0 0 {PAD_BOTTOM}px; overflow: hidden; }}
+    .qcard.news .qbody {{ padding: 26px {PAD_X}px 0; }}
+    .qmast {{ display: flex; align-items: center; gap: 16px; height: {MAST_H}px; box-sizing: border-box;
+             padding: 0 {PAD_X}px; }}
+    .qmast.dark {{ background: var(--acc); color: #fff; }}
+    .qmast.light {{ background: #fff; color: var(--acc); border-bottom: 4px solid var(--acc); }}
+    .qmast img {{ width: 58px; height: 58px; border-radius: 12px; object-fit: cover; flex: none; background: #fff; }}
+    .qword {{ font-weight: 800; font-size: 34px; letter-spacing: .5px; white-space: nowrap; overflow: hidden;
+             text-overflow: ellipsis; }}
+    .qcard.news .qheadline {{ font-weight: 800; line-height: 1.16; color: #111; }}
     .qcard.news .qtext {{ margin-top: 14px; color: #2b3238; }}"""
 
 VERIFIED = ('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="M7 12.4l3.3 3.3 '
@@ -82,7 +98,7 @@ def fit(card: dict, translation: str = "", room: int = BOTTOM - TOP_MIN) -> tupl
     if translation:
         avail -= 22 + 18
     news = card.get("kind") == "news"
-    avail -= (30 * 1.2 + 14 + 3 + 18) if news else (84 + 22)
+    avail -= (MAST_H + 26 - PAD_TOP) if news else (84 + 22)
     best = None
     for fs in SIZES:
         tr, head = round(fs * 0.94), round(fs * 1.12)
@@ -106,19 +122,59 @@ def initials(name: str) -> str:
     return "".join(p[0] for p in parts[:2]).upper() or "?"
 
 
+def domain(url: str) -> str:
+    m = re.match(r"https?://(?:www\.)?([^/:?#]+)", str(url or ""))
+    return m.group(1).lower() if m else ""
+
+
+def source(card: dict) -> tuple[str, dict]:
+    """The popular source a card quotes (quote_sources.json): its "source" key, the handle, the outlet or the
+    person's name, or the url's domain; ("", {}) when it is none of them."""
+    if card.get("source") in SOURCES:
+        return card["source"], SOURCES[card["source"]]
+    handle = str(card.get("handle") or "").lstrip("@").lower()
+    who = str(card.get("outlet") or card.get("name") or "").casefold()
+    dom = domain(card.get("url", ""))
+    for key, s in SOURCES.items():
+        if handle and handle in (str(s.get("x", "")).lower(), str(s.get("telegram", "")).lower()):
+            return key, s
+        if who and who in [n.casefold() for n in [s["name"], *s.get("aka", [])]]:
+            return key, s
+    for key, s in SOURCES.items():
+        if dom and any(dom == d or dom.endswith("." + d) for d in s.get("domains", [])):
+            return key, s
+    return "", {}
+
+
+def avatar_file(card: dict, proj: Path | None = None) -> Path | None:
+    """The card's own "avatar" (in the project), else the source's from the library."""
+    if card.get("avatar") and proj is not None and (proj / card["avatar"]).is_file():
+        return proj / card["avatar"]
+    key, _ = source(card)
+    f = AVATARS / f"{key}.jpg"
+    return f if key and f.is_file() else None
+
+
 def card_html(card: dict, translation: str = "", avatar_src: str = "", room: int = BOTTOM - TOP_MIN) -> str:
     """The card itself (the inside of .qwrap)."""
     sz, _ = fit(card, translation, room)
-    foot = esc(card.get("date") or "")
     tr = (f'<div class="qtr"><div class="qtrt" style="font-size:{sz["tr"]}px">{esc(translation)}</div></div>'
           if translation else "")  # under a line, no «Перевод» label (owner 04.11: «и так понятно»)
-    if card.get("kind") == "news":
-        body = (f'<div class="qoutlet">{esc(card.get("outlet", ""))}</div>'
-                + (f'<div class="qheadline" dir="auto" style="font-size:{sz["head"]}px">{esc(card["headline"])}</div>'
-                   if card.get("headline") else "")
+    if card.get("kind") == "news":  # like the outlet's own page: its masthead, its headline face (owner 04.11)
+        _, src = source(card)
+        th = src.get("theme") or {"accent": "#111111", "mast": "light", "head": "serif"}
+        name = card.get("outlet") or src.get("name", "")
+        logo = f'<img src="{esc(avatar_src)}" alt="">' if avatar_src else ""
+        mast = (f'<div class="qmast {th.get("mast", "light")}">{logo}<span class="qword" style="font-family:'
+                f'{esc(HEAD_FONT.get(th.get("head"), HEAD_FONT["sans"]))}">{esc(name)}</span></div>')
+        body = ((f'<div class="qheadline" dir="auto" style="font-size:{sz["head"]}px;font-family:'
+                 f'{esc(HEAD_FONT.get(th.get("head"), HEAD_FONT["sans"]))}">{esc(card["headline"])}</div>'
+                 if card.get("headline") else "")
                 + (f'<div class="qtext" dir="auto" style="font-size:{sz["text"]}px">{esc(card["text"])}</div>'
                    if card.get("text") else ""))
-        return f'<div class="qcard news">{body}{tr}' + (f'<div class="qfoot">{foot}</div>' if foot else "") + "</div>"
+        foot = " · ".join(esc(x) for x in (domain(card.get("url", "")), card.get("date")) if x)
+        return (f'<div class="qcard news" style="--acc:{esc(th.get("accent", "#111111"))}">{mast}<div class="qbody">'
+                f'{body}{tr}' + (f'<div class="qfoot">{foot}</div>' if foot else "") + "</div></div>")
     ava = (f'<img class="qava" src="{esc(avatar_src)}" alt="">' if avatar_src else
            f'<div class="qava qini">{esc(initials(card.get("name", "")))}</div>')
     who = " · ".join(esc(x) for x in (card.get("handle"), card.get("platform")) if x)
@@ -175,7 +231,7 @@ def problems(shots: list[dict]) -> list[str]:
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=PT+Serif:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=PT+Serif:wght@700&family=Playfair+Display:wght@700;800&family=Roboto+Condensed:wght@700;800&display=swap" rel="stylesheet">
 <style>body{{margin:0;background:#0b0b0d}}#f{{position:relative;width:{W}px;height:{H}px;overflow:hidden;background:{bg}}}
 #f .bg{{position:absolute;inset:-40px;background:url('{bgimg}') center/cover;filter:blur(28px) brightness(.7) saturate(.7)}}
 .zone{{position:absolute;left:{L}px;right:{L}px;border:2px dashed rgba(255,255,255,.18)}}
@@ -197,8 +253,9 @@ def preview(spec: dict, out: Path, bg: str = "", scale: float = 1.0) -> Path:
     out = out.resolve()
     tmp = Path(tempfile.mkdtemp())
     avatar = ""
-    if spec.get("avatar_file"):
-        avatar = str(Path(spec["avatar_file"]).resolve().as_uri())
+    f = Path(spec["avatar_file"]) if spec.get("avatar_file") else avatar_file(spec["quote_card"])
+    if f and f.is_file():
+        avatar = f.resolve().as_uri()
     page = PAGE.format(W=W, H=H, L=LEFT, hb=TOP_MIN - 24, cb=H - 1500, top=TOP_MIN, h=BOTTOM - TOP_MIN, scale=scale,
                        bg="#1b1d22", bgimg=Path(bg).resolve().as_uri() if bg else "", css=CSS,
                        card=card_html(spec["quote_card"], spec.get("translation", ""), avatar))
@@ -212,7 +269,53 @@ def preview(spec: dict, out: Path, bg: str = "", scale: float = 1.0) -> Path:
     return out
 
 
+def fetch_avatars(only: list[str] | None = None, force: bool = False) -> dict[str, str]:
+    """The popular sources' pictures into avatars/<key>.jpg (200 px): the X or Telegram profile picture via unavatar.io
+    (an outlet's is its logo), else the site's own icon. One request a source; what is there is kept."""
+    import io
+    import urllib.request
+
+    from PIL import Image
+
+    AVATARS.mkdir(exist_ok=True)
+    out = {}
+    for key, s in SOURCES.items():
+        if only and key not in only:
+            continue
+        dst = AVATARS / f"{key}.jpg"
+        if dst.is_file() and not force:
+            out[key] = "kept"
+            continue
+        urls = ([f"https://unavatar.io/x/{s['x']}?fallback=false"] if s.get("x") else []) + \
+               ([f"https://unavatar.io/telegram/{s['telegram']}?fallback=false"] if s.get("telegram") else []) + \
+               [f"https://www.google.com/s2/favicons?domain={d}&sz=256" for d in s.get("domains", [])[:1]]
+        for url in urls:
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}),
+                                            timeout=25) as r:
+                    im = Image.open(io.BytesIO(r.read()))
+                    im.load()
+                if min(im.size) < 64:
+                    continue
+                bg = Image.new("RGB", im.size, "white")
+                bg.paste(im.convert("RGBA"), mask=im.convert("RGBA").split()[3])
+                side = min(bg.size)
+                bg = bg.crop(((bg.width - side) // 2, (bg.height - side) // 2, (bg.width + side) // 2,
+                              (bg.height + side) // 2)).resize((200, 200), Image.LANCZOS)
+                bg.save(dst, quality=90)
+                out[key] = url.split("?")[0]
+                break
+            except Exception as e:  # noqa: BLE001 — the next way, or none: the card shows initials / no logo
+                out[key] = f"failed: {type(e).__name__}"
+    return out
+
+
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "avatars":
+        only = sys.argv[2].split(",") if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else None
+        for k, v in fetch_avatars(only, "--force" in sys.argv).items():
+            print(f"{k}: {v}")
+        return
     if len(sys.argv) >= 4 and sys.argv[1] == "preview":
         bg = sys.argv[sys.argv.index("--bg") + 1] if "--bg" in sys.argv else ""
         specs = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))

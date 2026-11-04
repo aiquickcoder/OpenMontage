@@ -1717,6 +1717,20 @@ def test_the_judge_mends_the_film_instead_of_stopping_it(tmp_path, monkeypatch):
     assert len(changed) == 2 and not left                                         # the label, then the piece
 
 
+def test_a_quote_card_finds_its_source_avatar_and_style():
+    from addons.news import quote_card as qc
+
+    key, src = qc.source({"kind": "news", "outlet": "Нью-Йорк пост", "headline": "x"})
+    assert key == "nypost" and src["theme"]["head"] == "condensed"
+    assert qc.source({"kind": "post", "handle": "@FoxNews"})[0] == "fox"
+    assert qc.source({"kind": "news", "url": "https://www.reuters.com/world/x"})[0] == "reuters"
+    assert qc.source({"kind": "news", "outlet": "Местная газета"}) == ("", {})
+    html = qc.card_html({"kind": "news", "outlet": "Fox News", "headline": "Trump: not a big deal",
+                         "url": "https://www.foxnews.com/politics", "date": "3 ноября"}, "Трамп: не проблема", "ava.jpg")
+    assert 'class="qmast dark"' in html and "--acc:#003366" in html and "Roboto Condensed" in html
+    assert "foxnews.com · 3 ноября" in html and '<img src="ava.jpg"' in html and "Перевод" not in html
+
+
 def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
     from addons.news import proofread
 

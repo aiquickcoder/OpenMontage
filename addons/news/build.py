@@ -1457,9 +1457,9 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     qtop = quote_card.top_under(hook_text_bottom(story))
     for n, it in enumerate(i for i in items if i.get("quote_card")):
         c, ava = it["quote_card"], ""
-        if c.get("avatar") and (proj / c["avatar"]).is_file():
-            ava = f"assets/qc{n}_ava{Path(c['avatar']).suffix.lower()}"
-            shutil.copy2(proj / c["avatar"], ws / ava)
+        if f := quote_card.avatar_file(c, proj):  # its own, else the popular source's (quote_sources.json)
+            ava = f"assets/qc{n}_ava{f.suffix.lower()}"
+            shutil.copy2(f, ws / ava)
         h_, j_ = quote_card.clip(n, c, it.get("translation", ""), it["start"], it["dur"], ava, qtop)
         qc_html.append(h_)
         qc_js.append(j_)
