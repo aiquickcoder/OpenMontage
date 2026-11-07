@@ -1185,6 +1185,9 @@ siren_police, siren_ambulance_distant, siren_passing, fire_crackling(_2), whoosh
 — сама выбирает быстрый выход для Flow, параллельно рисует иллюстрации и чистит футажи, собирает под общей блокировкой
 (два рендера разом душат сервер), шлёт в Telegram и заливает в Kinescope. Последняя строка — `PRODUCE_RESULT: READY|FAILED`;
 логи шагов — `projects/<id>/logs/`. Ниже — то же по шагам.
+Если утверждённый `renders/final.mp4` уже сохранён, добавить `--deliver-only`: текст, голос и монтаж не
+пересоздаются. Режим сохраняет подтверждения Telegram в `delivery.json`, пропускает уже доставленные копии
+и готовый Kinescope. Прерванный запрос Telegram требует сверки перед повтором, чтобы не отправить дубль.
 Каждый шаг — из `/opt/openmontage`, `.venv/bin/python`. Ключи (`OPENROUTER_API_KEY`, Telegram, Flow) лежат в `/opt/openmontage/.env`. Не печатать их.
 **OpenRouter (модели OpenAI) не пускает российский IP сервера (403)** — `build.py` запускать с `https_proxy=http://127.0.0.1:10809` (локальный выход фабрики).
 Сборка на сервере: `systemd-run --uid=factory -p EnvironmentFile=/opt/openmontage/.env -E HYPERFRAMES_BIN=/opt/node22/hyperframes.sh -E PATH=/opt/node22/bin:/usr/bin:/bin -E https_proxy=http://127.0.0.1:10809 … addons/news/build.py projects/<id>`.

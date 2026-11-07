@@ -113,7 +113,7 @@ class Telegram:
                       chat_id=self.chat, caption=caption[:1000], reply_markup=markup, supports_streaming=True,
                       **video_meta(path))
 
-    def send_document(self, path: Path, caption: str, name: str = "") -> None:
+    def send_document(self, path: Path, caption: str, name: str = "") -> dict | None:
         """A file as it is: Telegram neither recompresses it nor turns an mp4 into a video message."""
         if not self.enabled:
             return
@@ -126,7 +126,7 @@ class Telegram:
                 return
             note = f"\n\n(файл сжат с {full} до {path.stat().st_size // 2**20} МБ — лимит бота 50 МБ)"
         with open(path, "rb") as f:
-            self.call("sendDocument", http_timeout=600, files={"document": (name or path.name, f, "video/mp4")},
+            return self.call("sendDocument", http_timeout=600, files={"document": (name or path.name, f, "video/mp4")},
                       chat_id=self.chat, caption=caption[:1000 - len(note)] + note, disable_content_type_detection=True)
 
 

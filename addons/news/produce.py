@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -162,12 +163,100 @@ def run(cmd: list[str], env: dict | None = None, log: Path | None = None) -> sub
                             stdout=out or None, stderr=subprocess.STDOUT if out else None)
 
 
+def deliver_existing(proj: Path, story: dict, caption_path: Path | None, send: bool, kinescope: bool) -> None:
+    """Resume an approved render without touching its script, voice or pictures.
+
+    Save each Telegram acknowledgement immediately. An interrupted request is deliberately
+    not retried: its outcome must be reconciled before risking a duplicate owner copy.
+    """
+    sys.path.insert(0, str(REPO))
+    from factory import config
+    from factory.tg import Telegram
+
+    receipt_path = proj / "delivery.json"
+    lock = (proj / ".delivery.lock").open("w")
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    receipt = json.loads(receipt_path.read_text()) if receipt_path.is_file() else {"telegram": {}}
+
+    def save() -> None:
+        tmp = receipt_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(receipt, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(receipt_path)
+
+    render = proj / "renders" / "final.mp4"
+    if send:
+        settings = config.load()
+        chats = list(dict.fromkeys([settings.tg_chat] + [c.strip() for c in os.environ.get("NEWS_TG_CHATS", "").split(",") if c.strip()]))
+        if not settings.tg_token or not settings.tg_chat:
+            raise RuntimeError("Telegram is not configured")
+        caption = caption_path.read_text(encoding="utf-8") if caption_path else story.get("headline", "")
+        if viral_line(story):
+            caption = viral_line(story) + "\n\n" + caption
+        sha = hashlib.sha256(render.read_bytes()).hexdigest() if render.is_file() else receipt.get("render_sha256")
+        if not sha:
+            raise RuntimeError("no existing render or delivery receipt")
+        if receipt.get("render_sha256") not in (None, sha):
+            raise RuntimeError("render differs from delivery receipt; reconcile before sending")
+        receipt["render_sha256"] = sha
+        for chat in chats:
+            old = receipt["telegram"].get(chat, {})
+            if old.get("status") == "sent":
+                print("telegram: acknowledged copy already delivered, skipping", flush=True)
+                continue
+            if old.get("status") == "sending":
+                raise RuntimeError("Telegram request interrupted; reconcile its receipt before retrying")
+            if not render.is_file():
+                raise RuntimeError("no existing render for pending Telegram copy")
+            receipt["telegram"][chat] = {"status": "sending", "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            save()
+            result = Telegram(settings.tg_token, chat, settings.tg_proxy).send_document(render, caption, f"{proj.name}.mp4")
+            if not result or not result.get("document"):
+                raise RuntimeError("Telegram did not acknowledge a video document")
+            receipt["telegram"][chat] = {"status": "sent", "message_id": result["message_id"],
+                                         "date": result.get("date"), "file_id": result["document"].get("file_id")}
+            save()
+            print(f"telegram: video document acknowledged (message {result['message_id']})", flush=True)
+    if kinescope:
+        kpath = proj / "kinescope.json"
+        if not kpath.is_file():
+            if not render.is_file():
+                raise RuntimeError("no existing render for Kinescope")
+            if subprocess.run([PY, "addons/news/kinescope_upload.py", str(proj), "--notify"], cwd=REPO).returncode:
+                raise RuntimeError("kinescope upload failed")
+        out = json.loads(kpath.read_text())
+        from addons.news.kinescope_upload import download_link
+        status, link = download_link(os.environ["KINESCOPE_API_TOKEN"], out["id"])
+        if status != "done" or not link:
+            raise RuntimeError(f"Kinescope is not ready: {status}")
+        receipt["kinescope"] = {"id": out["id"], "status": status, "play_link": out.get("play_link"), "download_link": link}
+        save()
+        print(f"disk: {drop_videos(proj) / 2**20:.0f} MB of this film's videos deleted — it is on Kinescope", flush=True)
+    if (proj / "project.json").is_file() and send and kinescope:
+        from lib.checkpoint import write_checkpoint
+
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        published = {"version": "1.0", "entries": [
+            {"platform": "telegram", "status": "published", "timestamp": timestamp,
+             "video_id": str(item["message_id"]), "visibility": "private"}
+            for item in receipt["telegram"].values() if item.get("status") == "sent"
+        ] + [{"platform": "kinescope", "status": "published", "timestamp": timestamp,
+              "video_id": receipt["kinescope"]["id"], "url": receipt["kinescope"]["play_link"]}],
+                     "metadata": {"master_output": "renders/final.mp4", "delivery_receipt": "delivery.json",
+                                  "reused_approved_render": True, "local_video_removed_after_upload": True}}
+        (proj / "artifacts").mkdir(exist_ok=True)
+        (proj / "artifacts/publish_log.json").write_text(json.dumps(published, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_checkpoint(proj.parent, proj.name, "publish", "completed", {"publish_log": published},
+                         human_approved=True, metadata={"authorization": "Explicit unattended full-run user authorization."})
+    lock.close()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=Path)
     ap.add_argument("--caption", type=Path, help="text file with the Telegram caption")
     ap.add_argument("--send", action="store_true")
     ap.add_argument("--kinescope", action="store_true")
+    ap.add_argument("--deliver-only", action="store_true", help="reuse the approved final.mp4; resume delivery using per-chat receipts")
     a = ap.parse_args()
     proj = (REPO / a.project).resolve() if not a.project.is_absolute() else a.project
     rel = proj.relative_to(REPO).as_posix()
@@ -178,6 +267,14 @@ def main() -> None:
     def fail(reason: str) -> None:
         print(f"PRODUCE_RESULT: FAILED {rel} {reason}", flush=True)
         sys.exit(1)
+
+    if a.deliver_only:
+        try:
+            deliver_existing(proj, story, a.caption, a.send, a.kinescope)
+        except Exception as exc:
+            fail(str(exc))
+        print(f"PRODUCE_RESULT: READY {rel}", flush=True)
+        return
 
     if not (proj / "assets" / "narration.mp3").is_file():
         fail("no voice yet: run build.py --voice-only and set the shots first")
