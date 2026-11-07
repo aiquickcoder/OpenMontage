@@ -11,6 +11,13 @@ strike: a calque of English («опроверг это Variety» ← «told Vari
 an anglicism out of place, machine or AI-slop phrasing, spelling, agreement, cases, broken or repeated phrases, the
 hook contradicting the text. Names in Latin are fine where they read naturally. «TEXT: …» lines — fix story.json and
 run it again; after PROOF_ROUNDS rounds its findings are notes (qa/proof.json). Exit 3 while there is something to fix.
+
+It also strikes out what makes a film sound like it is excusing itself (owner 2026-11-07, README «Голос ролика»:
+«"Отсутствие гарантии трудоустройства само по себе не доказывает мошенничество. До оплаты проверьте…" — вот такие
+моменты портят видео, ты слишком оправдываешься… текстовик должен такое править»; «ты цитируешь слишком много —
+"в репортаже Москва 24..."… оставлять только там, где уместно»): a hedge or a moral goes whole (an empty
+replacement), a needless «как сообщает…» goes, the needed wording of a claim («по версии следствия», «подозревают»)
+always stays — mend() refuses to strike it, the closing question or the closing line.
 """
 from __future__ import annotations
 
@@ -35,11 +42,34 @@ SYSTEM = """Ты — выпускающий редактор вертикаль�
 - слово или название, вырванное из контекста, англицизм не к месту, название без пояснения, кто это;
 - орфография, опечатки, согласование, род, падеж, управление, пропущенные или лишние слова, число или дата, которые
   голос прочтёт неверно;
-- оборванная или повторённая фраза, хук или тезис, противоречащий тексту.
-Названия латиницей сами по себе не ошибка, если стоят естественно («компания OpenAI»). Стиль, который и так хорош, не
-трогай. Ответ — только JSON: {"problems": [{"where": "voice|hook|thesis|caption", "quote": "точный фрагмент, как в
-тексте", "replace": "готовый текст вместо этого фрагмента (тот же смысл и факты, без новых чисел)", "problem": "что не
-так"}]}; ошибок нет — пустой список."""
+- оборванная или повторённая фраза, хук или тезис, противоречащий тексту;
+- перестраховка — фраза, которая оправдывает героя или канал, а не сообщает факт: «Отсутствие гарантии само по себе
+  не доказывает мошенничество», «Важно понимать, что…», «Не будем делать поспешных выводов», «Окончательную точку
+  поставит суд»; и дежурный совет или мораль: «До оплаты проверьте договор», «Будьте бдительны», «Читайте отзывы».
+  Вычеркни фразу целиком: "quote" — вся фраза с её точкой, "replace": "" (пустая строка). Совет оставь, только если
+  весь ролик о том, как уберечься (новая схема обмана, укол в метро), и он один. Осторожность внутри факта —
+  «подозревают», «по версии следствия», «школа утверждает», «обещают» — не перестраховка, её не трогай;
+- лишняя ссылка на источник: «как сообщает…», «в репортаже…», «по данным…», «отметили в…», «рассказали в…» у
+  бесспорного факта (что случилось, цена, дата, место) и каждая повторная ссылка на тот же источник. Убери ссылку,
+  оставив факт: "quote": "В репортаже Москвы 24 сообщили, что обучение", "replace": "Обучение" (или "quote": "Также
+  в репортаже отметили, что ", "replace": ""; вводный оборот в запятых — "quote" вместе с обеими запятыми). Ссылку
+  оставь у обвинения, спорного утверждения, прогноза, цифры, которую кто-то заявляет, прямой цитаты, громкого слова
+  («трибунал назвал это госпереворотом») — и одну короткую на ролик, когда источник сам по себе важен;
+- канцелярит вместо живой речи: «осуществляется», «в рамках», «данный», «стоит отметить», «на сегодняшний день»,
+  «в настоящее время», «производится» — простым словом.
+Только правь и вычёркивай: новых фактов, шуток, иронии и вопросов не добавляй. Вопрос в конце («Как думаете…») и
+строку «Пишите в комментариях…» не вычёркивай. Названия латиницей сами по себе не ошибка, если стоят естественно
+(«компания OpenAI»). Стиль, который и так хорош, — живая речь от нашего имени, лёгкая ирония к месту, вопросы
+«почему» по ходу рассказа, — не трогай. Ответ — только JSON: {"problems": [{"where": "voice|hook|thesis|caption",
+"quote": "точный фрагмент, как в тексте", "replace": "готовый текст вместо этого фрагмента (тот же смысл и факты, без
+новых чисел); пустая строка — вычеркнуть", "problem": "что не так"}]}; ошибок нет — пустой список."""
+# a strike-out never takes the wording that keeps a claim a claim (README «Текст: правила»: «по версии следствия»,
+# «подозревают» — a few words inside the fact are the film's legal safety), the closing fork or the closing line
+CLAIM = re.compile(r"по верси|подозрева|обвиня|утвержда|по слов|по мнени|якобы|предположительн|заявил|заявля|следстви"
+                   r"|полици|прокур", re.IGNORECASE)
+CLOSING = ("в комментари", "подписывайтесь")  # the closing line; «не подписывайте договор…» is a moral
+END = ".!?…"
+PUNCT = (",", ".", ";", ":", "!", "?", "…")
 
 
 def screen_texts(story: dict) -> dict:
@@ -57,13 +87,14 @@ def ai_findings(voice: str, story: dict, caption: str = "", screens: bool = True
            + ("\n\nТезисы:\n" + "\n".join(f"- {t}" for t in scr["theses"]) if scr["theses"] else "")
            + (f"\n\nПодпись к ролику:\n{caption[:1500]}" if caption else ""))
     v = llm.chat_json(_meter(), "shot_judge", os.environ.get("NEWS_JUDGE_MODEL", "gpt-6.1-sol"), SYSTEM, msg[:9000],
-                      max_tokens=900, timeout=300)
+                      max_tokens=1500, timeout=300)
     return [p for p in (v.get("problems") if isinstance(v, dict) else None) or [] if isinstance(p, dict) and p.get("quote")]
 
 
 def ai_problems(voice: str, story: dict, caption: str = "", screens: bool = True) -> list[str]:
     return [f"{p.get('where', 'voice')}: «{str(p['quote'])[:120]}» — {str(p.get('problem', ''))[:160]}"
-            f" → {str(p.get('replace', p.get('fix', '')))[:160]}" for p in ai_findings(voice, story, caption, screens)]
+            f" → {str(p.get('replace', p.get('fix', ''))).strip()[:160] or 'вычеркнуть'}"
+            for p in ai_findings(voice, story, caption, screens)]
 
 
 def voice_fields(story: dict) -> list[tuple[dict, str]]:
@@ -76,13 +107,50 @@ def voice_fields(story: dict) -> list[tuple[dict, str]]:
     return [(d, k) for d, k in out if isinstance(d.get(k), str) and d.get(k)]
 
 
-def safe(quote: str, repl: str) -> bool:
-    """A mend that only rewords: no markup touched, no new numbers, about the same length."""
-    if len(quote) < 3 or any(c in quote + repl for c in "[]*|"):
+def safe(quote: str, repl: str, text: str = "") -> bool:
+    """A mend that only rewords or strikes out: no markup touched, no new numbers, about the same length, and the
+    wording that keeps a claim a claim («по версии следствия», «подозревают», «утверждает») never lost. An empty repl
+    strikes the quote out (a hedge, a moral, a needless «как сообщает…»; README «Голос ролика»): never a question (the
+    closing fork, a «почему» of the story), never the closing line, at most two sentences and a third of the text."""
+    if len(quote.strip()) < 3 or any(c in quote + repl for c in "[]*|"):
         return False
     if not set(re.findall(r"\d+", repl)) <= set(re.findall(r"\d+", quote)):
         return False
+    if len(CLAIM.findall(repl)) < len(CLAIM.findall(quote)):
+        return False
+    if not repl.strip():
+        q = quote.strip()
+        return ("?" not in q and not any(w in q.lower() for w in CLOSING)
+                and len(re.findall(rf"[{END}]\s+\S", q)) <= 1 and len(q) <= len(text.strip()) / 3)
     return len(repl) <= 2 * len(quote) + 60
+
+
+def splice(text: str, quote: str, repl: str) -> str:
+    """text with its one quote replaced by repl, tidy at the seam: a struck-out sentence or lead-in leaves no double
+    space, no stray or doubled punctuation, and the sentence it opened starts with a capital letter."""
+    i = text.index(quote)
+    before, after = text[:i], text[i + len(quote):]
+    b, a = before.rstrip(), after.lstrip()
+    last = re.sub(r"(\s*\[[^\]]*\])+$", "", b).rstrip()[-1:]  # a [cue] is not text
+    opens = not last or last in END                            # the quote starts a sentence
+    if repl.strip():
+        if quote[:1].isupper() and repl[:1].islower() and opens:
+            repl = repl[0].upper() + repl[1:]
+        return re.sub(r"\s+([,.:;!?])", r"\1", before + repl + after).replace("  ", " ")
+    stop = quote.rstrip()[-1:]
+    if not opens and stop and stop in END:            # «…дорого, как сообщает Москва 24.» — the full stop stays
+        b = b.rstrip(",;:—– ") + stop
+        opens = True
+    elif b.endswith(",") and a[:1] in PUNCT:            # «Обучение, как сообщает Москва 24, стоит» — both commas go
+        b = b[:-1].rstrip()
+        a = a[1:].lstrip() if a[:1] == "," else a
+    elif opens and a[:1] in PUNCT[:4]:                  # the sentence went, its full stop was left behind
+        a = a[1:].lstrip()
+    if opens and a[:1].islower():
+        a = a[0].upper() + a[1:]
+    if not (a and b):
+        return a or b
+    return b + a if a[0] in PUNCT else f"{b} {a}"
 
 
 def mend(proj: Path, story: dict, voice: str, use_ai: bool = True) -> tuple[list[str], list[str]]:
@@ -99,12 +167,13 @@ def mend(proj: Path, story: dict, voice: str, use_ai: bool = True) -> tuple[list
     applied, left = [], []
     fields = voice_fields(story)
     for p in found:
-        q, r = str(p.get("quote") or ""), str(p.get("replace") if p.get("replace") is not None else "")
+        # "replace": "" strikes the fragment out; no "replace" at all is a remark, never a strike-out
+        q, r = str(p.get("quote") or ""), p.get("replace", p.get("fix"))
         hits = [(d, k) for d, k in fields if d[k].count(q) == 1]
-        if r != q and safe(q, r) and len(hits) == 1:
+        if isinstance(r, str) and r != q and len(hits) == 1 and safe(q, r, hits[0][0][hits[0][1]]):
             d, k = hits[0]
-            d[k] = re.sub(r"\s+([,.:;!?])", r"\1", d[k].replace(q, r)).replace("  ", " ")
-            applied.append(f"«{q}» → «{r}» ({str(p.get('problem', ''))[:100]})")
+            d[k] = splice(d[k], q, r)
+            applied.append(f"«{q}» → {f'«{r}»' if r.strip() else 'вычеркнуто'} ({str(p.get('problem', ''))[:100]})")
         else:
             left.append(f"«{q[:100]}» — {str(p.get('problem', ''))[:140]} (not applied)")
     qa = proj / "qa"

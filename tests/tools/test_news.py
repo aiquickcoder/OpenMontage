@@ -1894,6 +1894,60 @@ def test_the_editor_mends_the_voice_text_itself(tmp_path, monkeypatch):
     assert proofread.mend(tmp_path, story, "", use_ai=False) == ([], [])
 
 
+def test_the_editor_strikes_out_hedges_and_needless_attributions(tmp_path, monkeypatch):
+    # owner 2026-11-07: «"Отсутствие гарантии трудоустройства само по себе не доказывает мошенничество. До оплаты
+    # проверьте…" — вот такие моменты портят видео… текстовик должен такое править»; «ты цитируешь слишком много —
+    # "в репортаже Москва 24..."… оставлять только там, где уместно» (README «Голос ролика»)
+    from addons.news import proofread
+
+    text = ("В репортаже Москвы 24 сообщили, что обучение в московской модельной школе стоит до трёхсот пятидесяти "
+            "тысяч рублей. Работу после него не гарантируют. Отсутствие гарантии трудоустройства само по себе не "
+            "доказывает мошенничество. До оплаты проверьте, что обещают в рекламе и что записано в договоре. По версии "
+            "следствия, директор другой школы брал деньги за несуществующие контракты. Как думаете, это развод — или "
+            "честная цена за мечту? Пишите в комментариях — и подписывайтесь, чтобы первыми знать, что происходит.")
+    story = {"narration": {"text": text}}
+    (tmp_path / "story.json").write_text("{}")
+    monkeypatch.setattr(proofread, "ai_findings", lambda *a, **k: [
+        {"quote": "Отсутствие гарантии трудоустройства само по себе не доказывает мошенничество.", "replace": "",
+         "problem": "перестраховка"},
+        {"quote": "До оплаты проверьте, что обещают в рекламе и что записано в договоре", "replace": "",
+         "problem": "мораль"},                                                     # without its full stop: still tidy
+        {"quote": "В репортаже Москвы 24 сообщили, что ", "replace": "", "problem": "лишняя ссылка"},
+        {"quote": "По версии следствия, ", "replace": "", "problem": "лишняя ссылка"},   # the claim's wording: no
+        {"quote": "Как думаете, это развод — или честная цена за мечту?", "replace": "", "problem": "?"},  # the fork
+        {"quote": "Пишите в комментариях", "replace": "", "problem": "?"},             # the closing line: no
+        {"quote": "Работу после него не гарантируют.", "problem": "без замены"}])        # no "replace" — a remark
+    applied, left = proofread.mend(tmp_path, story, "")
+    assert story["narration"]["text"] == (
+        "Обучение в московской модельной школе стоит до трёхсот пятидесяти тысяч рублей. Работу после него не "
+        "гарантируют. По версии следствия, директор другой школы брал деньги за несуществующие контракты. Как "
+        "думаете, это развод — или честная цена за мечту? Пишите в комментариях — и подписывайтесь, чтобы первыми "
+        "знать, что происходит.")
+    assert len(applied) == 3 and len(left) == 4 and "вычеркнуто" in applied[0]
+    assert json.loads((tmp_path / "story.json").read_text())["narration"]["text"].startswith("Обучение в московской")
+    assert '"replace": ""' in proofread.SYSTEM and "перестраховка" in proofread.SYSTEM   # the editor is told to
+
+
+def test_a_strike_out_keeps_the_text_tidy_and_whole():
+    from addons.news import proofread
+
+    s = proofread.splice
+    assert s("Обучение, как сообщает Москва 24, стоит дорого.", "как сообщает Москва 24", "") == "Обучение стоит дорого."
+    assert s("Обучение, как сообщает Москва 24, стоит дорого.", ", как сообщает Москва 24,", "") == "Обучение стоит дорого."
+    assert s("Стоит дорого, как сообщает Москва 24. Работы нет.", "как сообщает Москва 24.", "") == "Стоит дорого. Работы нет."
+    assert s("Школа в центре. [bite] Также в репортаже отметили, что работы нет.", "Также в репортаже отметили, что ",
+             "") == "Школа в центре. [bite] Работы нет."
+    assert s("В репортаже Москвы 24 сообщили, что обучение дорогое.", "В репортаже Москвы 24 сообщили, что обучение",
+             "обучение") == "Обучение дорогое."                                    # a sentence still opens capitalised
+    long = ("Первая фраза о школе и ценах. Вторая фраза о работе после курсов. Третья фраза о том, что дальше. "
+            "Четвёртая фраза о договоре.")
+    assert proofread.safe("Вторая фраза о работе после курсов.", "", long)
+    assert not proofread.safe("Первая фраза о школе и ценах. Вторая фраза о работе после курсов.", "", long)  # > 1/3
+    assert not proofread.safe("Раз. Два. Три.", "", long * 3)                      # never more than two sentences
+    assert not proofread.safe("школу подозревают в обмане", "школа обманывает", long)   # a claim never turns a fact
+    assert proofread.safe("Не подписывайте договор, не прочитав его.", "", long)   # a moral, not the closing line
+
+
 def test_proofread_flags_slop_for_two_rounds_then_notes(tmp_path, monkeypatch):
     from addons.news import proofread
 

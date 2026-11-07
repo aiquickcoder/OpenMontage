@@ -40,6 +40,11 @@ will argue over, and an invitation in a presenter's own words, never dictating t
 комментариях и подписывайтесь, чтобы первыми знать, что происходит.» «Чем это
 закончится?» only when an open outcome is ahead and nothing sharper fits. The same question ends the caption. Honest:
 no new facts, no guilt before a verdict, no violence, nationality, religion or war.
+**Our voice** (owner 2026-11-07, README «Голос ролика»: «говорить как бы от своего имени… немного иронизировать, где к
+месту… Через почему»; «цитируешь слишком много»; «слишком оправдываешься»): the narrator is us, lively, the story a
+chain of «почему» (each phrase opens the next question); irony only at a paradox, never taking a side and never on
+victims or deaths; a loud word and each side's quote keep their authors, the plain course of events is told without
+«как сообщает…»; no disclaimers or morals.
 **Length is a guide, never a limit** (owner 2026-10-31: «Обрезай, только если можешь укоротить, не теряя смысл, не
 теряй ничего важного и не старайся любым способом уместиться в рамки»): about 40–60 s, but shorten only what can be
 said shorter with the same meaning; never drop a fact, a side's quote, the background, the latest turn or the next
@@ -57,7 +62,7 @@ pieces, a conflict story shows the conflict — troops, jets, ships, launches of
 this strike; README «Перевод цитат»: a quote not in Russian gets "translation";
 README «Цитаты — карточкой и редко»: a quote is a "quote_card" (a post or a news card, original verbatim, the
 translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
-text itself before voicing (calques, words torn out of context, slop) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
+text itself before voicing (calques, words torn out of context, slop, hedges, needless attributions) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
 story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); the angle before the text (owner 2026-11-04, README «Угол»: a plain news item is not always worth watching — find the stakes, the open question, what everyone will argue about; choose the news itself / conflict / paradox / myth vs reality / «а меня коснётся?» / will it or not / why; story.json "angle"; the hook is its tension, the body answers it, the hook never overpromises); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question
 broadly, for someone who does not follow the topic — who against whom and why, what came before, what is at stake;

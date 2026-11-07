@@ -62,8 +62,18 @@ for the pipeline steps; they all apply here.
   of the speaker or of the story.
 - **Text check** (owner 2026-11-04, README «Проверка текста»: «опроверг это Variety» — «англицизм не к месту… как
   ИИ-слоп», «текстовик ошибся»): build.py's editor mends the voice text itself before every new voice (calques, words
-  torn out of context, slop, grammar; the captions get the mended text) — write it clean anyway; proofread.py
-  projects/<slug> checks it earlier, with the hook, theses and caption. Names in Latin are fine.
+  torn out of context, slop, grammar, hedges and morals struck out, needless «как сообщает…» trimmed; the captions get
+  the mended text) — write it clean anyway; proofread.py projects/<slug> checks it earlier, with the hook, theses and
+  caption. Names in Latin are fine.
+- **Our voice, no hedging** (owner 2026-11-07, README «Голос ролика»: «ты слишком оправдываешься… перестраховываешься»;
+  «цитируешь слишком много — "в репортаже Москва 24..."»; «говорить как бы от своего имени… немного иронизировать, где к
+  месту… подогревая интерес. Через почему»): the narrator is us, lively and sure («смотрите, что получается», «и вот тут
+  странно», «казалось бы…» — once or twice a film); the story is a chain of «почему» — each phrase opens the next
+  question, the answer comes a beat later; light irony where it fits (an absurd law, a celebrity, an official's
+  paradox), never on victims, deaths, illness or children; no sentence defending the subject or us («само по себе не
+  доказывает…») and no moral («до оплаты проверьте…») unless the film is about protecting yourself — legal safety is a
+  few words inside the fact («подозревают», «по версии следствия», «утверждает»); a source only for an accusation, a
+  disputed claim, a forecast, a claimed figure, a quote or a loud word, said once — plain facts plainly.
 - **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
   в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
   strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision
