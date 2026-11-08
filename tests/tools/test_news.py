@@ -602,6 +602,92 @@ def test_a_thesis_sits_on_its_picture_and_the_captions_give_way(tmp_path: Path):
     assert build.around(caps, spans) == [(1.0, 2.0, "до"), (6.0, 6.5, "после")]
 
 
+def _spoken(text: str, t: float = 1.0, step: float = 0.4, pause_after: tuple = ()) -> list[list]:
+    out = []
+    for k, w in enumerate(text.split()):
+        out.append([w, round(t, 2), round(t + step - 0.05, 2)])
+        t += step + (0.8 if k in pause_after else 0)
+    return out
+
+
+KARAOKE_TEXT = ("Около девяти утра загорелся санаторий «Узкое» — бывшая дворянская усадьба. Огонь охватил кровлю "
+                "двухэтажного здания, которое стоит на реконструкции. Будьте внимательны в толпе и сразу обращайтесь "
+                "к сотрудникам метро и к врачу высокопоставленного человеконенавистнического")
+
+
+def test_karaoke_captions_are_short_lines_split_on_phrases(tmp_path: Path):
+    # owner 2026-11-07: «более качественные субтитры в нашем стиле и… произносимое слово подсвечивалось красным»
+    caps = build.cap_chunks(_spoken(KARAOKE_TEXT))
+    shown = [w for c in caps for w in c[3]]
+    assert [w[0] for w in shown] == [build.cap_word(w) for w in KARAOKE_TEXT.split() if w != "—"]  # every word, once
+    for a, b, text, ws in caps:
+        ts = [w[0] for w in ws]
+        lines = build.cap_lines(ts)
+        assert text == " ".join(ts) and 1 <= len(ts) <= build.CAP_WORDS
+        if len(ts) > 1:  # a single word too long for a line is shrunk by cap_html (below)
+            assert lines and len(lines) <= 2 and (len(lines) == 1 or len(ts) <= build.CAP_TWO)
+            assert all(len(" ".join(x)) <= build.CAP_LINE and build.cap_width(x) <= build.CAP_W for x in lines)
+        assert not any(t.endswith((",", ".")) or t == "—" for t in ts)  # no commas, full stops or dashes on screen
+        assert a == ws[0][1] and b > a                                   # on screen from its first word
+    assert all(c[1] <= n[0] for c, n in zip(caps, caps[1:]))             # one chunk at a time
+    assert sum(len(c[3]) for c in caps) / len(caps) >= 2                 # 2–4 words a chunk, not a word a flash
+    ends = [c[3][-1][0] for c in caps]
+    assert "усадьба" in ends and "реконструкции" in ends and "«Узкое»" in ends   # a phrase ends a chunk
+    assert not any(e.lower() in build.CAP_HANG for e in ends[:-1])       # «…и» / «…к» open the next chunk instead
+    assert [c[2] for c in build.cap_chunks(_spoken("Около девяти утра"))] == ["Около девяти утра"]
+    assert [c[2] for c in build.cap_chunks(_spoken("Около девяти утра", pause_after=(0,)))] == ["Около", "девяти утра"]
+
+
+def test_karaoke_caption_has_a_span_per_word_and_the_red_box_moves_with_the_voice():
+    caps = build.cap_chunks(_spoken(KARAOKE_TEXT))
+    for i, c in enumerate(caps):
+        html, js = build.cap_html(i, *c), build.cap_js(i, *c)
+        a, b, _, ws = c
+        assert html.count('class="w"') == len(ws) and f'id="cap{i}"' in html and 'class="clip cap"' in html
+        assert f'data-start="{a}" data-duration="{b - a:.2f}"' in html
+        assert 1 <= html.count('class="ln"') <= 2
+        assert f'tl.from("#cap{i} .ln"' in js                                          # a short entrance
+        for k, (w, s, _) in enumerate(ws):
+            assert f'>{build.esc(w)}</span>' in html and f'id="cap{i}w{k}"' in html
+            assert f'tl.set("#cap{i}w{k}", {{attr: {{class: "w on"}}}}, {max(s, a):.2f});' in js   # red at its start
+            if k + 1 < len(ws):                                                          # back at the next word's
+                assert f'tl.set("#cap{i}w{k}", {{attr: {{class: "w"}}}}, {ws[k + 1][1]:.2f});' in js
+    assert ".cap .w.on { background: #e3001b;" in build.CAP_CSS and "text-transform: uppercase" in build.CAP_CSS
+    assert f'url("assets/{build.CAP_FONT.name}")' in build.CAP_CSS and build.CAP_FONT.is_file()  # Cyrillic, ours
+    assert f"bottom: {build.H - build.SAFE_BOTTOM}px" in build.CAP_CSS and f"left: {build.SAFE_X}px" in build.CAP_CSS
+    two = 2 * 1.3 * build.CAP_PX                               # two lines at most: inside the captions' room
+    assert two <= build.CAP_ROOM
+    long = [w for w in caps if len(w[3]) == 1 and build.cap_width([w[2]]) > build.CAP_W]
+    assert long, "the test text has a word longer than a line"
+    i = caps.index(long[0])
+    px = int(build.cap_html(i, *long[0]).split("font-size:")[1].split("px")[0])
+    assert px < build.CAP_PX and build.cap_width([long[0][2]], px) <= build.CAP_W     # shrunk to fit one line
+
+
+def test_karaoke_captions_give_way_to_theses_with_their_words_and_build_into_the_film(tmp_path: Path):
+    caps = build.cap_chunks(_spoken("Огонь охватил кровлю двухэтажного здания на реконструкции"))
+    kept = build.around(caps, [(caps[1][0], caps[1][1] + 0.01)])
+    assert kept[0] == caps[0] and all(len(c) == 4 for c in kept) and caps[1] not in kept
+    a, b, _, ws = caps[0]
+    cut = build.around([caps[0]], [(ws[1][1] + 0.1, 99.0)])[0]                    # a thesis comes mid-chunk
+    js = build.cap_js(0, *cut)
+    assert abs(cut[1] - (ws[1][1] + 0.1)) < 1e-9
+    assert 'tl.set("#cap0w2"' not in js and 'tl.set("#cap0w1", {attr: {class: "w on"}}' in js  # no box after the cut
+    proj = tmp_path / "p"
+    (proj / "assets").mkdir(parents=True)
+    for f in ("broll0.mp4", "narration.mp3"):
+        (proj / "assets" / f).write_bytes(b"x")
+    words = _spoken("Пожар в старинной усадьбе, огонь охватил кровлю.")
+    timing = {"duration": 6.0, "windows": [[0.0, 6.0]], "words": words, "bite_words": _spoken("Мы на месте", 4.5)}
+    ws_ = build.write_workspace(proj, {"slug": "t", "headline": "Пожар"}, timing, [])
+    html = (ws_ / "index.html").read_text(encoding="utf-8")
+    assert (ws_ / "assets" / build.CAP_FONT.name).is_file() and build.CAP_CSS in html
+    assert html.count('class="clip cap"') == len(build.cap_chunks(sorted(words + timing["bite_words"],
+                                                                         key=lambda w: w[1])))
+    assert 'id="cap0w0" class="w">Пожар</span>' in html and 'tl.set("#cap0w0", {attr: {class: "w on"}}, 1.00);' in html
+    assert ">месте</span>" in html                                               # a sound bite is captioned too
+
+
 def test_thesis_warnings_keep_them_short_and_few():
     story = {"stories": [{"shots": [{"thesis": "*Трое* под стражей"}, {"thesis": "x" * 50},
                                     {"thesis": "a"}, {"thesis": "b"}]},

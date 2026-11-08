@@ -51,7 +51,7 @@ REPO = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO))
 
-from addons.mural.build import FPS, H, W, find_music, render, word_cues  # noqa: E402
+from addons.mural.build import CUE_PUNCT, FPS, H, W, find_music, render  # noqa: E402
 from addons.news import anchor as anc  # noqa: E402
 
 SHOT_S = 3.0
@@ -1317,16 +1317,144 @@ def theses(items: list[dict], not_before: float = 0.0) -> tuple[list[str], list[
     return html, js, spans
 
 
-def around(caps: list[tuple[float, float, str]], spans: list[tuple[float, float]]) -> list[tuple[float, float, str]]:
-    """Captions outside the theses: one that runs into a thesis is cut where it starts, one under it is dropped."""
+def around(caps: list[tuple], spans: list[tuple[float, float]]) -> list[tuple]:
+    """Captions outside the theses: one that runs into a thesis is cut where it starts, one under it is dropped.
+    (start, end, text, …): whatever rides after the text (a chunk's timed words) is kept as it is."""
     out = []
-    for a, b, t in caps:
+    for a, b, *rest in caps:
         if any(s <= a < e for s, e in spans):
             continue
         b = min([b, *(s for s, _ in spans if a < s < b)])
         if b - a >= 0.05:
-            out.append((a, b, t))
+            out.append((a, b, *rest))
     return out
+
+
+# -- captions: karaoke in our style (owner 2026-11-07: «Нужно сделать более качественные субтитры в нашем стиле и в
+# идеале произносимое слово подсвечивалось красным») — a few heavy white capitals with a black outline, the word being
+# said on our red box ----------------------------------------------------------------------------------------------
+CAP_FONT = HERE / "fonts" / "Montserrat-Black.ttf"  # SIL Open Font License 1.1 (fonts/OFL-Montserrat.txt)
+CAP_PX = 64                 # the font size; a single word too long for the line gets smaller
+CAP_WORDS, CAP_TWO = 4, 3   # a chunk: at most 4 words in one line, 3 in two (never more lines)
+CAP_LINE = 22               # characters a line at most — and the safe width at CAP_PX
+CAP_W = W - 2 * SAFE_X - 16  # px a line may take (the outline needs a few px a side)
+CAP_PAD = 0.16              # em: the red box's side padding (every word has it, so the line does not jump)
+CAP_PAUSE = 0.5             # s: a pause this long starts a new chunk
+CAP_RED = "#e3001b"
+CAP_HANG = set("а в во и к ко на не ни но о об от по с со у за из до для при под над без как что".split())
+CAP_CSS = f"""
+    @font-face {{ font-family: "Montserrat Black"; src: url("assets/{CAP_FONT.name}"); font-weight: 900; }}
+    .cap {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; bottom: {H - SAFE_BOTTOM}px; text-align: center;
+            z-index: 7; }}
+    .cap .ln {{ display: block; font-family: "Montserrat Black", "Arial Black", sans-serif; font-weight: 900;
+               font-size: {CAP_PX}px; line-height: 1.3; letter-spacing: 0; text-transform: uppercase; color: #fff;
+               text-shadow: .045em .045em 0 #000, -.045em .045em 0 #000, .045em -.045em 0 #000, -.045em -.045em 0 #000,
+                            0 .065em 0 #000, 0 -.065em 0 #000, .065em 0 0 #000, -.065em 0 0 #000,
+                            0 .1em .25em rgba(0,0,0,.6); }}
+    .cap .w {{ display: inline-block; line-height: 1; padding: .12em {CAP_PAD}em; border-radius: .14em; }}
+    .cap .w.on {{ background: {CAP_RED}; text-shadow: none; box-shadow: 0 .06em .2em rgba(0,0,0,.35); }}"""
+_CAP_FONTS: dict = {}
+
+
+def is_word(token: str) -> bool:
+    return any(ch.isalnum() for ch in token)
+
+
+def cap_word(token: str) -> str:
+    """A word as the captions show it: no comma or full stop at its end (a chunk is a phrase); «?», «!», «…» stay."""
+    token = str(token).strip()
+    return token if token.endswith("...") else token.rstrip(",.;:")
+
+
+def cap_width(words: list[str], px: int = CAP_PX) -> float:
+    """Pixels of a caption line: the words in capitals with their spaces, plus every word's box padding."""
+    if px not in _CAP_FONTS:
+        from PIL import ImageFont
+
+        _CAP_FONTS[px] = ImageFont.truetype(str(CAP_FONT), px)
+    return _CAP_FONTS[px].getlength(" ".join(words).upper()) + len(words) * 2 * CAP_PAD * px
+
+
+def cap_lines(words: list[str], px: int = CAP_PX) -> Optional[list[list[str]]]:
+    """A chunk's words in lines of at most CAP_LINE characters and CAP_W px: one line if they fit, else the most even
+    split in two where a preposition stays with the word after it; None if two lines are not enough."""
+    def ok(line: list[str]) -> bool:  # a single word is held by the width only (cap_html shrinks a long one)
+        return (len(line) == 1 or len(" ".join(line)) <= CAP_LINE) and cap_width(line, px) <= CAP_W
+
+    if ok(words):
+        return [words]
+    best = None
+    for j in range(1, len(words)):
+        a, b = words[:j], words[j:]
+        if ok(a) and ok(b):
+            key = (a[-1].lower() in CAP_HANG, max(cap_width(a, px), cap_width(b, px)))
+            best = min(best or (key, [a, b]), (key, [a, b]))
+    return best[1] if best else None
+
+
+def cap_chunks(words: list) -> list[tuple[float, float, str, list]]:
+    """Karaoke captions from the word timings: (start, end, text, [[word, start, end], …]). A chunk is at most
+    CAP_WORDS words in one line, or CAP_TWO words in two (cap_lines); it ends after a phrase's punctuation or before a
+    pause, and a preposition or a conjunction never hangs at its end (it opens the next one). On screen while spoken,
+    as word_cues: from the first word to just after the last, never into the next chunk."""
+    def fits(ws: list) -> bool:
+        lines = cap_lines([w[0] for w in ws]) if len(ws) <= CAP_WORDS else None
+        return bool(lines) and (len(lines) == 1 or len(ws) <= CAP_TWO)
+
+    groups, cur = [], []
+    for raw, a, b in ((w[0], float(w[1]), float(w[2])) for w in words):
+        t = cap_word(raw)
+        if t and is_word(t):  # a dash or a lone quote is never shown: it only ends the phrase before it
+            w = [t, a, b]
+            if cur and (a - cur[-1][2] >= CAP_PAUSE or not fits(cur + [w])):
+                carry = [cur.pop()] if len(cur) > 1 and cur[-1][0].lower() in CAP_HANG and \
+                    a - cur[-1][2] < CAP_PAUSE and fits([cur[-1], w]) else []
+                groups.append(cur)
+                cur = carry
+            cur.append(w)
+        if cur and str(raw).rstrip(" »\"')").endswith(CUE_PUNCT):  # «…сказал он.» ends a phrase too
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    out = []
+    for g in groups:
+        a, b = g[0][1], max(g[-1][2] + 0.15, g[0][1] + 0.6)
+        out.append((round(a, 2), round(b, 2), " ".join(w[0] for w in g),
+                    [[w[0], round(w[1], 2), round(w[2], 2)] for w in g]))
+    for k in range(len(out) - 1):  # never overlap the next chunk
+        if out[k][1] > out[k + 1][0]:
+            out[k] = (out[k][0], out[k + 1][0], *out[k][2:])
+    return [c for c in out if c[1] - c[0] >= 0.05]  # no duration would mean «on to the end of the film»
+
+
+def cap_html(i: int, a: float, b: float, text: str, words: list) -> str:
+    """A chunk: its lines (.ln), a span per word (#cap{i}w{k}); a single word too long for a line gets smaller."""
+    ts, px = [w[0] for w in words], CAP_PX
+    while px > 36 and not cap_lines(ts, px):
+        px -= 2
+    size, k, lines = f' style="font-size:{px}px"' if px != CAP_PX else "", 0, []
+    for line in cap_lines(ts, px) or [ts]:
+        lines.append(f'<span class="ln"{size}>' + " ".join(  # spans: a clip with nested divs is a sub-composition
+            f'<span id="cap{i}w{k + n}" class="w">{esc(t)}</span>' for n, t in enumerate(line)) + "</span>")
+        k += len(line)
+    return (f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
+            f'{"".join(lines)}</div>')
+
+
+def cap_js(i: int, a: float, b: float, text: str, words: list) -> str:
+    """A short entrance, then the red box («w on») on each word from its start to the next word's start; the last
+    word keeps it while the chunk is on screen. tl.set at fixed times — the same frame whatever the seek order."""
+    js = [f'  tl.from("#cap{i} .ln", {{opacity: 0, y: 14, scale: 0.94, duration: 0.14, ease: "power2.out"}}, {a});']
+    for k, (_, s, _) in enumerate(words):
+        s = max(s, a)
+        nxt = words[k + 1][1] if k + 1 < len(words) else b
+        if s >= min(nxt, b) - 0.01:  # said at once with the next word, or after the chunk is cut: no box
+            continue
+        js.append(f'  tl.set("#cap{i}w{k}", {{attr: {{class: "w on"}}}}, {s:.2f});')
+        if nxt < b - 0.01:
+            js.append(f'  tl.set("#cap{i}w{k}", {{attr: {{class: "w"}}}}, {nxt:.2f});')
+    return "\n".join(js)
 
 
 def thesis_warnings(story: dict) -> list[str]:
@@ -1424,13 +1552,10 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     thesis_html, thesis_js, spans = theses(items)
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
-    caps = around(word_cues(sorted(timing["words"] + timing.get("bite_words", []), key=lambda w: w[1])), spans)
-    caps_html = "\n".join(
-        f'    <div id="cap{i}" class="clip cap" data-start="{a}" data-duration="{b - a:.2f}" data-track-index="5">'
-        f'<span>{esc(t)}</span></div>' for i, (a, b, t) in enumerate(caps))
-    caps_js = "\n".join(
-        f'  tl.from("#cap{i} span", {{opacity: 0, scale: 0.92, duration: 0.14, ease: "power2.out"}}, {a});'
-        for i, (a, _, _) in enumerate(caps))
+    caps = around(cap_chunks(sorted(timing["words"] + timing.get("bite_words", []), key=lambda w: w[1])), spans)
+    shutil.copy2(CAP_FONT, ws / "assets" / CAP_FONT.name)
+    caps_html = "\n".join(cap_html(i, *c) for i, c in enumerate(caps))
+    caps_js = "\n".join(cap_js(i, *c) for i, c in enumerate(caps))
     chips, k = [], 0
     runs: list[dict] = []  # consecutive cuts with the same credit and box share one chip
     for it in items:
@@ -1573,12 +1698,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
                    text-shadow: 0 1px 2px rgba(0,0,0,.35); }}
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
     .chip.tr {{ left: 120px; right: 120px; font-size: 34px; line-height: 1.25; color: #111; background: rgba(255,255,255,.94);
-               padding: 14px 22px; border-radius: 10px; text-align: center; max-height: 150px; overflow: hidden; }}
-    .cap {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; bottom: {H - SAFE_BOTTOM}px; text-align: center;
-            z-index: 7; }}
-    .cap span {{ display: inline-block; font-weight: 900; font-size: 66px; line-height: 1.15; color: #fff;
-                 background: rgba(0,0,0,.55); padding: 8px 18px 10px; border-radius: 10px;
-                 text-shadow: 0 2px 6px rgba(0,0,0,.6); }}
+               padding: 14px 22px; border-radius: 10px; text-align: center; max-height: 150px; overflow: hidden; }}{CAP_CSS}
     #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}{quote_card.CSS if qc_html else ""}
   </style>
 </head>
