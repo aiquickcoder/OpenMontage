@@ -309,11 +309,12 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
     without them, assets/beats.json, else SHOT_S (the last shot of a story LAST_S)."""
     use: dict[str, dict] = {}
     timing_file, beats_file = proj / "assets" / "timing.json", proj / "assets" / "beats.json"
-    if timing_file.is_file():
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # run as a script: the repo is not on the path
-        from addons.news import build as nb
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # run as a script: the repo is not on the path
+    from addons.news import build as nb
 
-        phrases = nb.story_beats(story, json.loads(timing_file.read_text(encoding="utf-8")))
+    timing = json.loads(timing_file.read_text(encoding="utf-8")) if timing_file.is_file() else None
+    if timing is not None:
+        phrases = nb.story_beats(story, timing)
     else:
         phrases = json.loads(beats_file.read_text(encoding="utf-8")) if beats_file.is_file() else []
     for si, st in enumerate(story.get("stories") or [story]):  # a digest's stories, or a one-story film
@@ -349,6 +350,19 @@ def footage(proj: Path, story: dict) -> dict[str, dict]:
             u = use.setdefault(f"{src}@{t:g}", {"src": src, "start": t, "len": 0.0})
             u["len"] = max(u["len"], length)
             u["shown"] = max(u.get("shown", 0.0), (bs[j]["end"] - bs[j]["start"]) / (len(extras) + 1) if bs is not None and video else length)
+    # the opener's pictures (build.opener_item: the film's first [0, hold], from each one's "in") — the first frame
+    # must not carry a foreign logo either; without timings its longest possible window
+    hold = nb.opener_hold(story, timing) if timing is not None else (
+        min(float((story.get("opener") or {}).get("hold") or nb.OPENER_MAX), 6.0) if nb.opener_of(story) else 0.0)
+    for sh_ in nb.opener_shots(story) if hold else []:
+        src = sh_.get("src_orig") or sh_.get("src", "")
+        if not src.startswith("media/") or "/clean/" in src or (sh_.get("clean") == "none" and not sh_.get("src_orig")):
+            continue
+        video = Path(src).suffix.lower() in VIDEO
+        t = float(sh_.get("in_orig", sh_.get("in", 0.0))) if video else 0.0
+        u = use.setdefault(f"{src}@{t:g}", {"src": src, "start": t, "len": 0.0})
+        u["len"] = max(u["len"], round(hold + 0.3, 2) if video else 0.0)
+        u["shown"] = max(u.get("shown", 0.0), hold if video else 0.0)
     return use
 
 
@@ -547,7 +561,9 @@ def main() -> None:
             out = still
         p["out"] = out.relative_to(proj).as_posix()
     shutil.copy2(proj / "story.json", proj / "story.json.pre-clean")
-    for st in story.get("stories") or [story]:
+    from addons.news import build as nb
+
+    for st in (story.get("stories") or [story]) + [{"shots": nb.opener_shots(story)}]:  # and the opener's pictures
         pieces = [x for sh_ in st.get("shots", []) for x in [sh_] + [e for e in sh_.get("extra") or []
                                                                       if isinstance(e, dict) and e.get("src")]]
         for s in pieces:  # each shot and its «extra» pieces (README «Темп»)
