@@ -17,8 +17,8 @@ Then read `addons/news/story.example.json`, the approved reference (the «Узк
 One story, one film: no digest, no cat, **no AI pictures at all**. A run makes two films from the two best stories
 with real pictures (README «Формат с 2026-10-30»): a one-story `story.json` (no `stories`, no `anchor`;
 `narration.text` 35–60 words, `"hook"`, `"loop": true`), its post's footage running whole, stills that move by
-themselves, a hook title card over the top for the whole film (the ПОТОК style: the whole story in one phrase,
-8–16 words, its strongest part `*starred*` on the red marker — «СОСЕД-АЛКОГОЛИК *«ЗАМУРОВАЛ» КВАРТИРУ* ПЕРМЯЧКИ
+themselves, a hook title card over the top (the ПОТОК style; since 2026-11-08 it slides in after the opener and
+stays — what the film is about, ≤ 8 words, its strongest part `*starred*` on the red marker — «СОСЕД-АЛКОГОЛИК *«ЗАМУРОВАЛ» КВАРТИРУ* ПЕРМЯЧКИ
 МОНТАЖНОЙ ПЕНОЙ»; the strongest honest bait: «ДО 10 ЛЕТ ЗА…», «ЖЁСТКОЕ ЗАДЕРЖАНИЕ СОБР», «НОВАЯ СХЕМА ОБМАНА»), fact
 theses at the bottom. Find real frames when the post is thin: `sources.py search`, the
 article's media (`article_video.py`), `library.py find`, `fetch_commons.py`, a map; put what you used into the base
@@ -34,7 +34,7 @@ sides people will argue over>? Пишите в комментариях — и �
 предупредите других»), never dictating the word to write («Пишите: А или Б», «Пишите цифру»: unprofessional, and
 Facebook demotes comment baiting); question up to
 12–14 words, the same question as the caption's last line; honest: no new facts, no «он виновен?» before a verdict, no
-blaming the victim, no violence, nationality, religion or war. Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
+blaming the victim, no violence, nationality, religion or war. The opener (owner 2026-11-07/08, README «Опенер»: «увлечь пользователя с первых секунд»): after the angle and the shot candidates, before the text, run `opener.py projects/<slug> --preview` — 2–5 huge words over the split frame; `narration.text` starts exactly with its line1 + line2; the hook is now the plate after it, ≤ 8 words. Voice: Fish `6731d6ce3b30456bae0a938a93d6d639`, model drama-3, cedar fallback. The sections
 below about the cat, digests and illustrations are history.
 
 A top story with no footage of its own (a trend, a study) is built from thematic YouTube footage the agent plans phrase by phrase (README «Новость без своих кадров», `news-world`). A big political or world story (owner 2026-10-31, README «Большая история») is the `news-world` agent's (`.claude/agents/news-world.md`: world.py, dossier.py); in short: build a dossier first —

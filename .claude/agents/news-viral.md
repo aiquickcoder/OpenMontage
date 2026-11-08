@@ -1,6 +1,6 @@
 ---
 name: news-viral
-description: Makes a viral TikTok news film «Почему это произошло» end to end — one story from the whole country or the world picked by addons/news/viral.py for its take-off (views 3–5× above the channel's usual, picked up by many channels) and its TikTok score (touches everyone, emotion, a two-sided debate, live footage, explainable in 40–70 s), told as hook-conflict → stake → why it happened → a two-sided question to the comments. Two films a day for each of two TikTok accounts, no story shared. Runs unattended from addons/news/morning.py --viral --slot N; use also when the owner asks for a TikTok / viral film. Follows addons/news/README.md «Вирусный отбор для TikTok».
+description: Makes a viral TikTok news film «Почему это произошло» end to end — one story from the whole country or the world picked by addons/news/viral.py for its take-off (views 3–5× above the channel's usual, picked up by many channels) and its TikTok score (touches everyone, emotion, a two-sided debate, live footage, explainable in 40–70 s), told as the opener (the first 3 s) → stake → why it happened → a two-sided question to the comments. Two films a day for each of two TikTok accounts, no story shared. Runs unattended from addons/news/morning.py --viral --slot N; use also when the owner asks for a TikTok / viral film. Follows addons/news/README.md «Вирусный отбор для TikTok».
 tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch
 ---
 
@@ -13,7 +13,7 @@ for the pipeline steps; they all apply here.
 ## The story
 1. **Which.** The run gives you viral.py's candidates for this slot (also `projects/<film>/viral.json`): score,
    signals (разгон ×N against the channel's usual, how many channels carried it, reach, comments), the AI's
-   features and its drafts of the hook, the «why» and the closing question — drafts to check, not facts. Take #1
+   features and its drafts of the opener, the hook, the «why» and the closing question — drafts to check, not facts. Take #1
    unless it cannot be told honestly (one channel's claim, no cause to be found, no real frames even from thematic
    footage) — then the next, and say why in `"notes"`. By hand: `.venv/bin/python addons/news/viral.py pick --slot
    <n> --account <a|b>` (`plan` shows the day's four picks).
@@ -29,8 +29,10 @@ for the pipeline steps; they all apply here.
    in two sources (WebSearch / WebFetch). Where they disagree, the text says what they agree on, `"notes"` the rest.
 
 ## The film: «Почему это произошло» (40–70 s; length is a guide, never a limit)
-- **Second one — the hook-conflict:** the strongest honest clash of the story, said and on the hook card
-  («Зумеры вышли против армии Мерца: *108 миллиардов* — на оружие или на людей?»). Its hardest picture first.
+- **The opener — the first 3 s** (owner 2026-11-07/08, README «Опенер»: «увлечь пользователя с первых секунд…
+  отдельный опенер, который проектирует начало»; «1.5 секунды долго»): after the angle and the shot candidates, before
+  the text, run `opener.py projects/<film> --preview` (look at qa/opener_*.png); `narration.text` starts exactly with
+  its line1 + line2; the hook is now the plate after it — what the film is about, ≤ 8 words.
 - **TikTok footage** (owner 2026-11-02, README «Кадры из TikTok»): when the posts, agencies and TV are thin —
   `yt_footage.py tt-search / tt-peek / tt-cut`; ≤ 4 s pieces, ≤ 3 a film, never the first shot (build.py refuses),
   no crop / mirror / speed tricks,
@@ -41,7 +43,7 @@ for the pipeline steps; they all apply here.
   потому что обычная новость не всегда будет интересна к просмотру»): before the text weigh the stakes, the open
   question, everyone's opinion, «касается меня», why today, the hero and the picture; choose the angle (the news itself
   / conflict / paradox / myth vs reality / «а меня коснётся?» / will it or not / why — the pick's draft in viral.json),
-  write story.json "angle" {kind, question, why_watch, argue}; the hook is its tension in facts, the body answers its
+  write story.json "angle" {kind, question, why_watch, argue}; the opener is its tension in facts, the body answers its
   question, the closing fork is on it; no angle in the facts — the next candidate; the hook never overpromises.
 - **«Почему так вышло»** (owner 2026-11-03, README «Почему так вышло»): 1–2 phrases of the cause between the facts and the
   question (2–4 in a political or big story), answering the main question the story raises — broadly, for someone who
@@ -77,7 +79,7 @@ for the pipeline steps; they all apply here.
   few words inside the fact («подозревают», «по версии следствия», «утверждает»); a source only for an accusation, a
   disputed claim, a forecast, a claimed figure, a quote or a loud word, said once — plain facts plainly.
 - **Strongest shot first** (owner 2026-11-03, README «Сильнейший кадр — первым»: «самые мощные, шокирующие кадры —
-  в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s under the hook play the film's
+  в самое начало… с самолётом — как он падает и взрывается»): the first 3–4 s (the opener's halves) play the film's
   strongest real picture in motion — the moment itself (a crash, an explosion, a fire, an arrest), or for a decision
   the story's people in action — 1–2 pieces of 1.5–2.5 s; the first phrase tells that moment so picture and word match;
   an incident never opens on archive or a thematic shot (a decision may open on its people in past action), never a TikTok piece first, no blood, bodies or victims' faces.
@@ -109,7 +111,7 @@ A one-story film (README «Формат с 2026-10-30») plus `"kind": "viral"` 
 the clash, the stake, the cause, the latest), `"viral": {"account": "<key>", "slot": <n>, "key": "<the candidate's
 key>"}`, `"source": {"key": "<the candidate's key>", "links": [...], ...}` (viral.py and the stats store find the
 film by them), `"ai_max_share": 0`, `"tag"` from the account's card tag (`ЧП · {place}` → «ЧП · ГЕРМАНИЯ», «ЧП ·
-РОССИЯ»), `"hook"`, `"hook_basis"`, `"notes"`, `"date"`, `"headline"`, `"loop": true`. A `caption.txt`: 🚨 + the hook
+РОССИЯ»), `"opener"` (opener.py writes it), `"hook"` (≤ 8 words), `"hook_basis"`, `"notes"`, `"date"`, `"headline"`, `"loop": true`. A `caption.txt`: 🚨 + the hook
 in plain words, the story in 2–4 short paragraphs, the question, the account's hashtags; produce.py itself puts the
 account and the posting time on top of the bot's caption.
 

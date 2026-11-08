@@ -52,8 +52,10 @@ date to save seconds. Poland ran 72 s, and that was right; note an overrun in `"
 
 ## story.json
 A one-story film plus: `"kind": "world"`, `"country": "<ISO code>"` (world.py marks what was filmed),
-`"ai_max_share": 0`, `"tag": "ЧП · <СТРАНА>"`, `"hook"` (the strongest honest image, the loaded word in quotes with
-its author named in the text: «„Госпереворот“ в Польше и почему президент *развернул самолёт*»), `"hook_basis"`,
+`"ai_max_share": 0`, `"tag": "ЧП · <СТРАНА>"`, `"opener"` (the first 3 s, owner 2026-11-07/08, README «Опенер»:
+after the angle and the shot candidates, before the text, run `opener.py projects/<slug> --preview`; `narration.text`
+starts exactly with its line1 + line2), `"hook"` (now the plate after the opener — what the film is about, ≤ 8 words;
+a loaded word in quotes with its author named in the text: «„Госпереворот“ в Польше»), `"hook_basis"`,
 `"notes"`, `"source"` (the posts and the media links you checked), `"key"` = `<country>-<topic>-<date>`. Up to four
 theses (build.py allows four in a world story), each on a turn of the story. Voice, music, CTA as in the one-story
 format. A `caption.txt`: 🚨 + the hook in plain words, the story in paragraphs, the question, hashtags. Thematic
