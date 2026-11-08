@@ -15,7 +15,18 @@ A shot in story.json:
 film's HTML over it: white, whole, inside the text-safe zone, under the hook and above the captions, with a gentle
 push-in. No platform logos (a foreign logo reads as a watermark), the platform by name.
 
+Since 2026-11-07 the card goes over the footage (owner: «цитаты надо ставить с анимацией поверх футажа. То есть мы не
+прерываем видео ряд, а с анимацией и прозрачностью накладываем эту цитату поверх кадра»): a video shot (or an "extra"
+piece) of the story under the phrase carries the card, the screenshot stays in the card as "proof" (never shown):
+    {"src": "media/clean/vance_briefing.clean.mp4", "role": "event", "beat": "…",
+     "quote_card": {…, "proof": "media/cards/vance.png"}, "translation": "…"}
+The clip plays as usual; the card, translucent white over a soft blur of the picture, rises in (OVER_IN s, a beat
+after the cut), pushes in gently and leaves before the cut (OVER_OUT s). A still with "quote_card" (an old project)
+builds as before: the screenshot blurred behind the card, the card in and pushing in to the cut.
+
     .venv/bin/python addons/news/quote_card.py preview <cards.json> <out.png> [--bg <picture>]   # the card alone
+    .venv/bin/python addons/news/quote_card.py preview <cards.json> <out.png> --bg <picture> --over [--at 0.3,1.6]
+        # the card over the picture as footage: frames at those seconds of a --dur (3) s shot — entering, fully in
     .venv/bin/python addons/news/quote_card.py avatars [key,key] [--force]   # the popular sources' pictures
 """
 from __future__ import annotations
@@ -37,6 +48,10 @@ BOTTOM = 1282                # above the captions' room (SAFE_BOTTOM 1500 − CA
 PAD_TOP, PAD_BOTTOM, PAD_X = 34, 30, 38
 INNER_W = W - LEFT - RIGHT - 2 * PAD_X
 PUSH = 0.04                  # «небольшой наезд камеры»: 1.00 → 1.04 over the shot
+# over footage (07.11): in over OVER_IN s, OVER_LEAD s after the cut (the picture is seen first), out over OVER_OUT s
+# and gone OVER_TAIL s before the cut; a card readable under OVER_READ s is too short (build.py warns)
+OVER_IN, OVER_OUT, OVER_LEAD, OVER_TAIL, OVER_READ = 0.35, 0.3, 0.15, 0.05, 2.0
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv"}  # build.py's: a card on such a "src" goes over the footage
 SIZES = (46, 42, 38, 35, 32, 29, 27)
 CHAR_EM = 0.58               # Inter's mean advance for mixed Latin/Cyrillic text, with room for word wrap
 HERE = Path(__file__).resolve().parent
@@ -75,7 +90,11 @@ CSS = f"""
     .qword {{ font-weight: 800; font-size: 34px; letter-spacing: .5px; white-space: nowrap; overflow: hidden;
              text-overflow: ellipsis; }}
     .qcard.news .qheadline {{ font-weight: 800; line-height: 1.16; color: #111; }}
-    .qcard.news .qtext {{ margin-top: 14px; color: #2b3238; }}"""
+    .qcard.news .qtext {{ margin-top: 14px; color: #2b3238; }}
+    .qin {{ width: 100%; }}
+    .qwrap.over .qcard {{ background: rgba(255,255,255,.9); -webkit-backdrop-filter: blur(16px) saturate(1.1);
+                         backdrop-filter: blur(16px) saturate(1.1); box-shadow: 0 22px 60px rgba(0,0,0,.42); }}
+    .qwrap.over .qmast.light {{ background: transparent; }}"""
 
 VERIFIED = ('<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1d9bf0"/><path d="M7 12.4l3.3 3.3 '
             '6.7-7" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
@@ -189,15 +208,44 @@ def top_under(hook_bottom: int) -> int:
     return max(TOP_MIN, hook_bottom + 24)
 
 
+def over_times(start: float, dur: float) -> tuple[float, float, float, float]:
+    """An overlay card's timing in its shot: (in at, in for, out at, out for); a short shot squeezes it."""
+    lead, d_in, d_out = min(OVER_LEAD, 0.08 * dur), min(OVER_IN, 0.25 * dur), min(OVER_OUT, 0.2 * dur)
+    return round(start + lead, 3), round(d_in, 3), round(start + dur - min(OVER_TAIL, 0.04 * dur) - d_out, 3), \
+        round(d_out, 3)
+
+
+def readable(dur: float) -> float:
+    """How long an overlay card stands fully in a shot of this length."""
+    a, d_in, b, _ = over_times(0.0, dur)
+    return round(b - a - d_in, 2)
+
+
 def clip(k: int, card: dict, translation: str, start: float, dur: float, avatar_src: str = "",
-         top: int = TOP_MIN) -> tuple[str, str]:
+         top: int = TOP_MIN, over: bool = False) -> tuple[str, str]:
     """HTML and timeline for the card of one shot in build.py's composition: in with a short rise, a gentle push-in
-    across the shot."""
-    html = (f'    <div id="qc{k}" class="clip qwrap" style="top:{top}px;height:{BOTTOM - top}px" data-start="{start}" '
-            f'data-duration="{dur}" data-track-index="5">{card_html(card, translation, avatar_src, BOTTOM - top)}</div>')
-    js = (f'  tl.from("#qc{k} .qcard", {{opacity: 0, y: 26, duration: 0.3, ease: "power2.out"}}, {start:.2f});\n'
-          f'  tl.fromTo("#qc{k} .qcard", {{scale: 1.0}}, {{scale: {1 + PUSH:g}, duration: {dur:.2f}, ease: "none"}}, '
-          f'{start:.2f});')
+    across the shot. Over footage ("over": a video shot, 07.11) it rises in with a slight scale a beat after the cut
+    and leaves before the cut; the fade is on the card itself (its backdrop blur fades with it), the motion on .qin."""
+    inner = card_html(card, translation, avatar_src, BOTTOM - top)
+    html = (f'    <div id="qc{k}" class="clip qwrap{" over" if over else ""}" style="top:{top}px;height:{BOTTOM - top}px" '
+            f'data-start="{start}" data-duration="{dur}" data-track-index="5">'
+            + (f'<div class="qin">{inner}</div>' if over else inner) + "</div>")
+    if not over:
+        js = (f'  tl.from("#qc{k} .qcard", {{opacity: 0, y: 26, duration: 0.3, ease: "power2.out"}}, {start:.2f});\n'
+              f'  tl.fromTo("#qc{k} .qcard", {{scale: 1.0}}, {{scale: {1 + PUSH:g}, duration: {dur:.2f}, ease: "none"}}, '
+              f'{start:.2f});')
+        return html, js
+    a, d_in, b, d_out = over_times(start, dur)
+    js = (f'  tl.fromTo("#qc{k} .qin", {{y: 56, scale: 0.94}}, {{y: 0, scale: 1, duration: {d_in:g}, '
+          f'ease: "power3.out"}}, {a:.3f});\n'
+          f'  tl.fromTo("#qc{k} .qcard", {{opacity: 0}}, {{opacity: 1, duration: {d_in * 0.8:.3f}, ease: "power1.out"}}, '
+          f'{a:.3f});\n'
+          f'  tl.fromTo("#qc{k} .qcard", {{scale: 1.0}}, {{scale: {1 + PUSH:g}, duration: {b + d_out - a:.3f}, '
+          f'ease: "none", immediateRender: false}}, {a:.3f});\n'  # one baseline a target (HyperFrames lint)
+          f'  tl.fromTo("#qc{k} .qin", {{y: 0, scale: 1}}, {{y: -22, scale: 0.97, duration: {d_out:g}, ease: "power2.in", '
+          f'immediateRender: false}}, {b:.3f});\n'
+          f'  tl.fromTo("#qc{k} .qcard", {{opacity: 1}}, {{opacity: 0, duration: {d_out:g}, ease: "power2.in", '
+          f'immediateRender: false}}, {b:.3f});')
     return html, js
 
 
@@ -226,6 +274,11 @@ def problems(shots: list[dict]) -> list[str]:
                 out.append(f"shot {i}: quote_card text too long for the card — keep the key sentence")
             if not c.get("url"):
                 out.append(f"shot {i}: quote_card without \"url\" of the original")
+            if p.get("src") and Path(str(p["src"])).suffix.lower() not in VIDEO_EXT:  # an old still card: builds
+                out.append(f"shot {i}: quote_card on a still — put it over a video shot of the story under the phrase, "
+                           f"the screenshot as \"proof\" (README «Цитаты — карточкой и редко», 07.11)")
+            elif p.get("src") and not c.get("proof"):
+                out.append(f"shot {i}: quote_card over footage without \"proof\" — keep the screenshot of the original")
     return out
 
 
@@ -243,22 +296,56 @@ color:#888;font:700 26px monospace;display:flex;align-items:flex-end;justify-con
 </style></head><body><div id="f"><div class="bg"></div><div class="hook">хук ролика</div>
 <div class="qwrap" style="top:{top}px;height:{h}px;transform:scale({scale})">{card}</div>
 <div class="cap"><span>титры</span></div></div></body></html>"""
+# over footage: the picture framed as build.py frames a clip (a wide one in the box over a blurred copy, a tall one on
+# the whole screen), the card clip and its own timeline, seeked to one moment
+PAGE_OVER = """<!doctype html><html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=PT+Serif:wght@700&family=Playfair+Display:wght@700;800&family=Roboto+Condensed:wght@700;800&display=swap" rel="stylesheet">
+<script src="{gsap}"></script>
+<style>body{{margin:0;background:#0b0b0d}}#f{{position:relative;width:{W}px;height:{H}px;overflow:hidden;background:#0b0b0d}}
+#f .fill{{position:absolute;inset:-40px;background:url('{bgimg}') center/cover;filter:blur(28px) brightness(.88) saturate(.8)}}
+#f .pic{{position:absolute;left:0;width:{W}px;object-fit:cover}}
+.hook{{position:absolute;left:0;right:0;top:0;height:{hb}px;background:linear-gradient(#0a0a0c 82%,rgba(10,10,12,0));
+color:#888;font:700 26px monospace;display:flex;align-items:flex-end;justify-content:center;padding-bottom:30px;box-sizing:border-box}}
+.cap{{position:absolute;left:{L}px;right:{L}px;bottom:{cb}px;text-align:center;z-index:7}}
+.cap span{{display:inline-block;font:900 66px Arial Black,Arial;color:#fff;background:rgba(0,0,0,.55);padding:8px 18px 10px;border-radius:10px}}
+{css}
+</style></head><body><div id="f"><div class="fill"></div><img class="pic" src="{bgimg}" style="top:{py}px;height:{ph}px" alt="">
+<div class="hook">хук ролика</div>
+{clip}
+<div class="cap"><span>титры</span></div></div>
+<script>const tl = gsap.timeline({{paused: true}});
+{js}
+tl.seek({at});</script></body></html>"""
+GSAP = HERE.parent / "mural" / "vendor" / "gsap.min.js"
 
-CHROME = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium",
+CHROME =["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium",
           "chromium-browser"]
 
 
-def preview(spec: dict, out: Path, bg: str = "", scale: float = 1.0) -> Path:
-    """The card alone in a 1080x1920 frame (hook and caption zones marked) — for a look without a build."""
+def preview(spec: dict, out: Path, bg: str = "", scale: float = 1.0, at: float | None = None,
+            dur: float = 3.0) -> Path:
+    """The card alone in a 1080x1920 frame (hook and caption zones marked) — for a look without a build. With "at"
+    (seconds into a "dur" s shot) the card is over "bg" as footage, at that moment of its animation."""
     out = out.resolve()
     tmp = Path(tempfile.mkdtemp())
     avatar = ""
     f = Path(spec["avatar_file"]) if spec.get("avatar_file") else avatar_file(spec["quote_card"])
     if f and f.is_file():
         avatar = f.resolve().as_uri()
-    page = PAGE.format(W=W, H=H, L=LEFT, hb=TOP_MIN - 24, cb=H - 1500, top=TOP_MIN, h=BOTTOM - TOP_MIN, scale=scale,
-                       bg="#1b1d22", bgimg=Path(bg).resolve().as_uri() if bg else "", css=CSS,
-                       card=card_html(spec["quote_card"], spec.get("translation", ""), avatar))
+    if at is None:
+        page = PAGE.format(W=W, H=H, L=LEFT, hb=TOP_MIN - 24, cb=H - 1500, top=TOP_MIN, h=BOTTOM - TOP_MIN,
+                           scale=scale, bg="#1b1d22", bgimg=Path(bg).resolve().as_uri() if bg else "", css=CSS,
+                           card=card_html(spec["quote_card"], spec.get("translation", ""), avatar))
+    else:
+        from PIL import Image
+
+        w, h = Image.open(bg).size
+        ph = H if h / w >= 1.25 else int(min(1000, max(760, W * h / w)))  # build.frame_box of a clip, roughly
+        html, js = clip(0, spec["quote_card"], spec.get("translation", ""), 0.0, dur, avatar, TOP_MIN, over=True)
+        page = PAGE_OVER.format(W=W, H=H, L=LEFT, hb=TOP_MIN - 24, cb=H - 1500, bgimg=Path(bg).resolve().as_uri(),
+                                py=0 if ph == H else 930 - ph // 2, ph=ph, css=CSS, clip=html, js=js, at=at,
+                                gsap=GSAP.as_uri())
     (tmp / "card.html").write_text(page, encoding="utf-8")
     exe = next((c for c in CHROME if Path(c).exists() or shutil.which(c)), None)
     if not exe:
@@ -319,10 +406,17 @@ def main() -> None:
     if len(sys.argv) >= 4 and sys.argv[1] == "preview":
         bg = sys.argv[sys.argv.index("--bg") + 1] if "--bg" in sys.argv else ""
         specs = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+        specs = specs if isinstance(specs, list) else [specs]
         out = Path(sys.argv[3])
-        for n, spec in enumerate(specs if isinstance(specs, list) else [specs], 1):
+        ats = [float(x) for x in (sys.argv[sys.argv.index("--at") + 1] if "--at" in sys.argv else "0.3,1.6").split(",")]
+        dur = float(sys.argv[sys.argv.index("--dur") + 1]) if "--dur" in sys.argv else 3.0
+        for n, spec in enumerate(specs, 1):
             dst = out if len(specs) == 1 else out.with_name(f"{out.stem}_{n}{out.suffix}")
-            print(preview(spec, dst, spec.get("bg") or bg))
+            if "--over" not in sys.argv:
+                print(preview(spec, dst, spec.get("bg") or bg))
+                continue
+            for t in ats:  # over footage: a frame for each moment
+                print(preview(spec, dst.with_name(f"{dst.stem}_{t:g}s{dst.suffix}"), spec.get("bg") or bg, at=t, dur=dur))
         return
     print(__doc__)
 

@@ -56,10 +56,12 @@ for the pipeline steps; they all apply here.
   role context, never passed off as this strike — no on-screen mark, never "label": it means an AI picture and
   build.py refuses the film); a quote not in Russian gets "translation" (shown on screen).
 - **Quotes — a card, and few** (owner 2026-11-03, README «Цитаты — карточкой и редко»: «упаковывать в UI типа как твит
-  / или новость… оригинал, а далее там же переведённый текст»; «цитат стало очень много»): a quote shot is
-  "quote_card" (post: name, handle, platform, text verbatim; news: outlet, headline) with "translation" inside, the
-  screenshot as "src"; never two cards in a row, at most one per ~25 s (shot_judge.py refuses more) — the rest is video
-  of the speaker or of the story.
+  / или новость… оригинал, а далее там же переведённый текст»; «цитат стало очень много»): a quote is a
+  "quote_card" (post: name, handle, platform, text verbatim; news: outlet, headline) with "translation" inside, laid
+  over a video shot of the story under that phrase (2026-11-07: «не прерываем видео ряд… накладываем эту цитату поверх
+  кадра» — the shot keeps its role event / context, no "extra" on it), the screenshot as the card's "proof" (not shown),
+  never a separate still shot; never two cards in a row, at most one per ~25 s (shot_judge.py counts the cards over
+  footage too and removes one too many) — the rest is video of the speaker or of the story.
 - **Text check** (owner 2026-11-04, README «Проверка текста»: «опроверг это Variety» — «англицизм не к месту… как
   ИИ-слоп», «текстовик ошибся»): build.py's editor mends the voice text itself before every new voice (calques, words
   torn out of context, slop, grammar; the captions get the mended text) — write it clean anyway; proofread.py
