@@ -46,6 +46,7 @@ REPEAT_GAP_S, SAME_PICTURE = 3.0, 4
 # quotes season a film, they are not the film (owner 2026-11-03: «цитат стало очень много» — Iran 03.11: 15 cards of 41
 # shots, the hockey film 21 stills of 38): never two cards in a row, at most one per QUOTE_EVERY_S of the film
 QUOTE_EVERY_S = 25.0  # seconds between two moments of one clip; dhash bits that still mean «the same»
+QUOTE_RULES = ("a quote card right after another", "quote card ")  # what hard_rules says of a card too many
 RUBRIC = """Балл плана 0–10 = сумма четырёх оценок:
 - meaning 0–4 — кадр показывает то, о чём говорится в эти секунды: 4 — само событие, человек, место, документ из
   фразы; 2 — общий контекст той же темы; 0 — не про это, или нагнетание (кровь, жертвы, драма, которой нет в событии).
@@ -298,11 +299,12 @@ def hard_rules(items: list[dict], mids: list) -> dict[int, list[str]]:
                     and same_paper_quote(it, o)):
                 bad.setdefault(i, []).append(f"looks the same as shot {j + 1}")
                 break
-    q = [i for i, it in enumerate(items) if it.get("role") == "quote" and (it["still"] or it.get("quote_card"))]
+    # a card over footage (07.11) is a quote on screen as much as a still one: both count
+    q = [i for i, it in enumerate(items) if it.get("quote_card") or (it.get("role") == "quote" and it["still"])]
     for a, b in zip(q, q[1:]):
         if b == a + 1:
             bad.setdefault(b, []).append(f"a quote card right after another (shot {a + 1}) — one card a statement, a "
-                                         f"video between (README «Цитаты — карточкой и редко»)")
+                                         f"shot without a card between (README «Цитаты — карточкой и редко»)")
     if items and q:
         film = float(items[-1].get("start", 0)) + float(items[-1].get("dur", 0)) - float(items[0].get("start", 0))
         most = max(2, round(film / QUOTE_EVERY_S))
@@ -366,6 +368,8 @@ def ai_scores(items: list[dict], strips: list, batch: int = 6) -> dict[int, dict
             parts.append({"type": "text", "text": f"\n### план {i + 1} · {'фото' if it['still'] else 'видео'} · "
                                                   f"{it['dur']:.1f} с · роль: {it.get('role') or 'не указана'} · "
                                                   f"перевод на экране: {'есть' if it.get('translation') else 'нет'} · "
+                                                  + ("поверх видео — карточка цитаты · "
+                                                     if it.get("quote_card") and not it["still"] else "") +
                                                   f"источник: {it.get('credit') or Path(it['src_key']).name}\n"
                                                   f"говорится: «{it['said'][:300]}»"})
             parts.append(llm.image_part_array(strips[i], 1024))
@@ -423,7 +427,9 @@ def autofix(proj: Path, story: dict, items: list[dict], hard: dict[int, list[str
     он должен вносить правки и билд должен продолжаться»): a "label" on real footage is removed; a broken piece (a
     repeat, a look-alike, a still «around» the story, a second map, a quote card in a row or over the limit, a score
     under MIN_SHOT) becomes another moment of the film's own video — the nearest clip of the same story, ≥ REPEAT_GAP_S
-    from every moment already shown, never TikTok. (changed, could not)."""
+    from every moment already shown, never TikTok. A card over footage (07.11) is not the footage: one card too many
+    loses only the card, the clip stays; a clip broken otherwise is replaced and its card rides on the new one.
+    (changed, could not)."""
     import build
 
     changed, left = [], []
@@ -448,6 +454,16 @@ def autofix(proj: Path, story: dict, items: list[dict], hard: dict[int, list[str
         if tgt is None:
             left.append(f"shot {i + 1}: {reason[:160]} — not a piece of story.json, left as is")
             continue
+        over = bool(it.get("quote_card")) and not it["still"]  # a card over footage
+        why = [r for r in hard.get(i, []) if not r.startswith('"label"')]
+        quote = [r for r in why if r.startswith(QUOTE_RULES)]
+        if over and quote and len(quote) == len(why) and (scores.get(i) or {}).get("total", MIN_SHOT) >= MIN_SHOT:
+            tgt.pop("quote_card", None)
+            tgt.pop("translation", None)  # it was the card's
+            tgt["auto"] = f"shot_judge {day}: card removed — {reason[:120]}"
+            changed.append(f"shot {i + 1}: {reason[:120]} → the card removed, the footage stays")
+            continue
+        keep = {k: tgt[k] for k in ("quote_card", "translation") if k in tgt} if over and not quote else {}
         d, pick = float(it["dur"]), None
         for j in sorted(donors, key=lambda j: (items[j].get("w") != it.get("w"), abs(j - i),
                                                -(scores.get(j) or {}).get("total", 7))):
@@ -478,6 +494,7 @@ def autofix(proj: Path, story: dict, items: list[dict], hard: dict[int, list[str
         for k in ("credit", "clean"):
             if donor.get(k):
                 new[k] = donor[k]
+        new.update(keep)  # the card over the broken clip goes over the new one
         tgt.clear()
         tgt.update(new)
         used.setdefault(orig, []).append((t, d))

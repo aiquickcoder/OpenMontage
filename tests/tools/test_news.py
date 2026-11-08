@@ -1691,6 +1691,79 @@ def test_a_quote_is_a_card_with_its_translation_inside_and_a_gentle_push(monkeyp
     assert "boxblur" in flt and "overlay" not in flt                                    # only the source, blurred
 
 
+def test_a_quote_card_goes_over_the_running_footage(tmp_path, monkeypatch):
+    """Owner 2026-11-07: «цитаты надо ставить с анимацией поверх футажа. То есть мы не прерываем видео ряд, а с
+    анимацией и прозрачностью накладываем эту цитату поверх кадра»."""
+    from addons.news import quote_card as qc
+
+    card = {"kind": "post", "name": "JD Vance", "handle": "@JDVance", "platform": "X", "text": "We have not set a deadline.",
+            "url": "https://x.com/JDVance", "proof": "media/cards/vance.png"}
+    # the clip under the card is the clip as always: framed over its blurred fill, not the card's blurred-only source
+    calls = []
+    monkeypatch.setattr(build, "probe", lambda p: (1920, 1080, 10.0))
+    monkeypatch.setattr(build, "sh", lambda cmd: calls.append(cmd))
+    clip = {"path": Path("media/clean/vance.mp4"), "dur": 3.0, "video": True, "in": 1.0, "role": "event", "fit": True}
+    build.segment({**clip, "quote_card": card, "translation": "Мы не устанавливали срок."}, Path("/tmp/s.mp4"))
+    build.segment(clip, Path("/tmp/s.mp4"))
+    over, plain = (c[c.index("-filter_complex") + 1] for c in calls)
+    assert over == plain and "overlay=" in over and "brightness=-0.22" not in over
+    # the card: translucent over the picture, in a beat after the cut, out before it
+    html, js = qc.clip(3, card, "Мы не устанавливали срок.", 10.0, 3.0, over=True)
+    assert 'class="clip qwrap over"' in html and '<div class="qin"><div class="qcard post">' in html
+    assert "media/cards/vance.png" not in html                                          # the proof is not shown
+    assert '#qc3 .qin", {y: 56, scale: 0.94}, {y: 0, scale: 1, duration: 0.35' in js and "}, 10.150);" in js
+    assert '{opacity: 1}, {opacity: 0, duration: 0.3, ease: "power2.in", immediateRender: false}, 12.650);' in js
+    assert "scale: 1.04" in js and "rgba(255,255,255,.9)" in qc.CSS and "backdrop-filter" in qc.CSS
+    assert qc.readable(3.0) >= qc.OVER_READ > qc.readable(1.2)                           # a short piece: build warns
+    # the film's HTML: the card over the clip comes and goes; an old still card builds as before
+    for f in ("assets/broll0.mp4", "assets/narration.mp3"):
+        (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / f).write_bytes(b"x")
+    story = {"slug": "t", "headline": "Вэнс", "hook": "Вэнс: *срока нет*", "shots": []}
+    timing = {"duration": 6.0, "windows": [[0.0, 6.0]], "words": [["Вэнс", 0.4, 0.8], ["заявил", 0.9, 1.4]]}
+    items = [{**clip, "w": 0, "start": 0.0, "quote_card": card, "translation": "Мы не устанавливали срок."},
+             {"path": Path("media/cards/q.png"), "video": False, "role": "quote", "w": 0, "start": 3.0, "dur": 3.0,
+              "quote_card": {**card, "text": "Second."}}]
+    page = (build.write_workspace(tmp_path, story, timing, items) / "index.html").read_text(encoding="utf-8")
+    assert 'id="qc0" class="clip qwrap over"' in page and 'id="qc1" class="clip qwrap"' in page
+    assert '#qc0 .qin' in page and "immediateRender: false}, 2.650);" in page
+    assert 'tl.from("#qc1 .qcard", {opacity: 0, y: 26' in page and "#qc1 .qin" not in page
+    assert "rgba(255,255,255,.9)" in page and 'class="clip chip tr"' not in page       # the translation is in the card
+    # the writer is told: a card goes over footage, the screenshot is its proof
+    assert qc.problems([{"src": "media/clean/vance.mp4", "quote_card": card, "translation": "…"}]) == []
+    assert any("over footage without \"proof\"" in w for w in qc.problems(
+        [{"src": "media/clean/vance.mp4", "quote_card": {k: v for k, v in card.items() if k != "proof"}, "translation": "…"}]))
+    assert any("quote_card on a still" in w for w in qc.problems([{"src": "media/cards/q.png", "quote_card": card,
+                                                                   "translation": "…"}]))
+
+
+def test_quote_cards_over_footage_count_and_lose_only_the_card(tmp_path, monkeypatch):
+    from addons.news import shot_judge as sj
+
+    card = {"kind": "post", "name": "JD Vance", "text": "No deadline."}
+    story = {"narration": {"text": "x"}, "shots": [
+        {"src": "media/yt/a.mp4", "in": 0, "role": "event", "quote_card": card, "translation": "Срока нет."},
+        {"src": "media/yt/b.mp4", "in": 0, "role": "context", "beat": "и ещё", "quote_card": card, "translation": "…"},
+        {"src": "media/yt/c.mp4", "in": 0, "role": "event"},
+        {"src": "media/yt/d.mp4", "in": 0, "role": "event", "beat": "Вэнс", "quote_card": card, "translation": "Срок"}]}
+    items = [{**s, "_ref": [n, None], "w": 0, "start": n * 25.0, "dur": 25.0, "still": False, "src_key": s["src"]}
+             for n, s in enumerate(story["shots"])]
+    bad = sj.hard_rules(items, [None] * 4)
+    assert any("right after another (shot 1)" in w for w in bad[1])                     # a card over footage counts
+    assert 0 not in bad and 2 not in bad and 3 not in bad                               # a video, not a still
+    short = [{**it, "start": n * 3.0, "dur": 3.0} for n, it in enumerate(items)]       # 12 s: at most 2
+    assert any("quote card 3 of 3" in w for w in sj.hard_rules(short, [None] * 4)[3])
+    import build as b
+
+    monkeypatch.setattr(b, "probe", lambda p: (1920, 1080, 120.0))
+    changed, left = sj.autofix(tmp_path, story, items, bad, {3: {"total": 4, "problem": "не про это"}})
+    one, three = story["shots"][1], story["shots"][3]
+    assert one["src"] == "media/yt/b.mp4" and one["beat"] == "и ещё" and one["role"] == "context"   # the clip stays
+    assert "quote_card" not in one and "translation" not in one and one["auto"].startswith("shot_judge")
+    assert three["src"] != "media/yt/d.mp4" and three["quote_card"] == card and three["translation"] == "Срок"
+    assert three["beat"] == "Вэнс" and story["shots"][0]["quote_card"] == card and len(changed) == 2 and not left
+
+
 def test_the_judge_mends_the_film_instead_of_stopping_it(tmp_path, monkeypatch):
     from addons.news import shot_judge as sj
 

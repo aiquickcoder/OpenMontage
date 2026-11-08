@@ -61,7 +61,9 @@ pace and conflict (owner 2026-11-03, README «Темп и кадры конфл�
 pieces, a conflict story shows the conflict — troops, jets, ships, launches of the same sides, never passed off as
 this strike; README «Перевод цитат»: a quote not in Russian gets "translation";
 README «Цитаты — карточкой и редко»: a quote is a "quote_card" (a post or a news card, original verbatim, the
-translation inside), never two in a row, at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
+translation inside) laid over a video shot of the story under that phrase, the screenshot as its "proof" — never a
+separate still (owner 2026-11-07: «не прерываем видео ряд… накладываем эту цитату поверх кадра»), never two in a row,
+at most one per ~25 s; README «Проверка текста»: build.py's editor mends the voice
 text itself before voicing (calques, words torn out of context, slop, hedges, needless attributions) — write it clean anyway; README «Сильнейший кадр — первым»: the first 3–4 s
 under the hook play the strongest real picture of this event in motion — the crash, the blast, the arrest, or the
 story's people in action — and the first phrase tells that moment; an incident never opens on archive or a thematic shot, never TikTok first); the angle before the text (owner 2026-11-04, README «Угол»: a plain news item is not always worth watching — find the stakes, the open question, what everyone will argue about; choose the news itself / conflict / paradox / myth vs reality / «а меня коснётся?» / will it or not / why; story.json "angle"; the hook is its tension, the body answers it, the hook never overpromises); «почему так вышло» (owner 2026-11-03, README «Почему так вышло»: 2–4 phrases answering the story's main question

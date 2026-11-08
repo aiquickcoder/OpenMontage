@@ -710,6 +710,8 @@ def unused_post_media(proj: Path, story: dict) -> list[str]:
     if not wm.is_file():
         return []
     used = {Path(s.get("src_orig") or s["src"]).name for st in stories(story) for s in st.get("shots", [])}
+    used |= {Path(str(p["quote_card"]["proof"])).name for p in all_pieces(story)  # a screenshot quoted by its card
+             if isinstance(p.get("quote_card"), dict) and p["quote_card"].get("proof")}
     return [f"{name} from the post is not shown in any shot — the post's own picture goes first"
             for name in json.loads(wm.read_text()) if name not in used]
 
@@ -970,7 +972,9 @@ def segment(item: dict, dst: Path) -> None:
     hold = f"tpad=stop_mode=clone:stop_duration={d:.3f}," if item["video"] else ""
     flt = (f"[0:v]{pre}fps={FPS},{hold}split[a][b];{bg};{fg};[bg][fg]overlay={x0}:{y}:shortest=1,"
            f"trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
-    if item.get("quote_card"):  # the card itself is HTML over this (quote_card.py): only its source, blurred, behind
+    # the card itself is HTML over this (quote_card.py): a still card (an old project) has only its source, blurred,
+    # behind; a card over footage (owner 2026-11-07: «не прерываем видео ряд») leaves the clip as it is
+    if item.get("quote_card") and not item["video"]:
         flt = (f"[0:v]{pre}fps={FPS},{hold}scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                f"boxblur=28:2,eq=brightness=-0.22:saturation=0.7,trim=duration={d:.3f},setsar=1,format=yuv420p[v]")
     sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
@@ -1463,17 +1467,21 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
                          f'{esc(it["credit"])}</div>')
             k += 1
     # a quote as a component (owner 2026-11-03, README «Цитаты — карточкой и редко»): the card in the film's HTML,
-    # the original and its translation inside, a gentle push-in
+    # the original and its translation inside, a gentle push-in; on a video shot it comes and goes over the running
+    # footage (owner 2026-11-07: «с анимацией и прозрачностью накладываем эту цитату поверх кадра»)
     from addons.news import quote_card
 
     qc_html, qc_js = [], []
     qtop = quote_card.top_under(hook_text_bottom(story))
     for n, it in enumerate(i for i in items if i.get("quote_card")):
-        c, ava = it["quote_card"], ""
+        c, ava, over = it["quote_card"], "", bool(it.get("video"))
         if f := quote_card.avatar_file(c, proj):  # its own, else the popular source's (quote_sources.json)
             ava = f"assets/qc{n}_ava{f.suffix.lower()}"
             shutil.copy2(f, ws / ava)
-        h_, j_ = quote_card.clip(n, c, it.get("translation", ""), it["start"], it["dur"], ava, qtop)
+        if over and quote_card.readable(it["dur"]) < quote_card.OVER_READ:
+            print(f"warning: quote card at {it['start']:.1f}s stands {quote_card.readable(it['dur']):.1f}s — too short "
+                  f"to read: give its shot the whole phrase (no \"extra\")", flush=True)
+        h_, j_ = quote_card.clip(n, c, it.get("translation", ""), it["start"], it["dur"], ava, qtop, over)
         qc_html.append(h_)
         qc_js.append(j_)
     chips += qc_html
