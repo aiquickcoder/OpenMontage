@@ -2511,7 +2511,7 @@ def test_the_opener_is_on_screen_from_frame_0_and_the_hook_theses_and_captions_c
     starts = [float(x.split('"')[0]) for x in page.split('class="clip cap" data-start="')[1:]]
     assert starts and min(starts) >= hold                                                          # captions after it
     assert ">Трампу</span>" not in page and ">Палату</span>" not in page   # its own lines are on the big text
-    assert ">Теперь</span>" not in page                                     # under the thesis, as always
+    assert ">Теперь</span>" in page                       # under a thesis too (owner 2026-11-09: «субтитры не рисуются»)
     assert ">президента.</span>" in page or ">президента</span>" in page
     assert f'class="clip thesis" data-start="{hold}"' in page.replace("thesis over", "thesis")  # the thesis after it
     # inside the safe zone: the chip under the app's top, the text and the note above the bottom, on the seam
@@ -2537,8 +2537,7 @@ def test_a_story_without_an_opener_builds_as_before(tmp_path: Path):
     assert 'id="hook" class="clip" data-start="0" data-duration="7.0"' in page and 'tl.from("#hook"' not in page
     assert build.hook_html(s, 7.0) == build.hook_html(s, 7.0, 0.0) and build.hook_html(s, 7.0)[1] == ""
     assert 'class="clip thesis" data-start="0.0"' in page.replace("thesis over", "thesis")
-    assert page.count('class="clip cap"') == len(build.around(build.cap_chunks(timing["words"]),
-                                                              build.theses(items)[2]))
+    assert page.count('class="clip cap"') == len(build.cap_chunks(timing["words"]))   # captions under theses too
     assert '<audio id="voice" src="assets/narration.mp3" data-start="0.3" ' in page
     assert build.voice_at(s) == build.VOICE_AT and build.opener_item(tmp_path, s, timing) is None
     assert build.after_opener(items, build.opener_hold(s, timing)) == items

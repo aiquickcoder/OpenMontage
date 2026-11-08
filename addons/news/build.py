@@ -1892,7 +1892,10 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
     said = [w for w in timing["words"] + timing.get("bite_words", []) if float(w[1]) >= hold]
-    caps = around(cap_chunks(sorted(said, key=lambda w: w[1])), spans + ([(0.0, hold)] if hold else []))
+    # the captions run under the theses too (owner 2026-11-09: «Когда на экране появляется текст, то субтитры не
+    # рисуются — это надо поправить»; a thesis ends above the captions' room, thesis_bottom()) — only the opener's
+    # own first seconds have none: its big text is the first phrase
+    caps = around(cap_chunks(sorted(said, key=lambda w: w[1])), [(0.0, hold)] if hold else [])
     shutil.copy2(CAP_FONT, ws / "assets" / CAP_FONT.name)
     caps_html = "\n".join(cap_html(i, *c) for i, c in enumerate(caps))
     caps_js = "\n".join(cap_js(i, *c) for i, c in enumerate(caps))
