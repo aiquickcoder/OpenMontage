@@ -2182,3 +2182,197 @@ def test_shot_judge_refuses_label_on_real_footage():
 
     bad = sj.hard_rules([{"src_key": "media/a.mp4", "still": False, "role": "context", "label": "Архивные кадры"}], [1])
     assert any("reserved for AI illustrations" in w for w in bad[0])
+
+
+# -- the opener (owner 2026-11-07: «Самое важное увлечь пользователя с первых секунд… отдельный опенер, который
+# проектирует начало: хуки и кадры + текст на первых нескольких секундах»; 2026-11-08 layout B, «1.5 секунды долго») ---
+def _opener(**kw):
+    base = {"kind": "quote", "screen": "«МЫ ВРЕЖЕМСЯ|В *ЗЕМЛЮ!*»", "note": "пилот — диспетчеру, запись New York Post",
+            "line1": "«Мы врежемся в землю!» — кричит пилот диспетчеру.",
+            "line2": "Бизнес-джет рухнул на жилую улицу и взорвался.", "layout": "split",
+            "shots": [{"src": "media/a.mp4", "in": 2.4, "focus": [0.5, 0.4]}, {"src": "media/b.mp4", "in": 0.0}],
+            "basis": "New York Post: запись переговоров — пилот: «We're going to hit the ground»"}
+    return {**base, **kw}
+
+
+def test_opener_code_limits_words_lines_note_tiktok_and_the_split():
+    from addons.news import opener as op
+
+    assert op.limit_problems(_opener()) == []
+    assert op.words("*350 ТЫСЯЧ* —|РАБОТУ НЕ ГАРАНТИРУЮТ") == ["350", "ТЫСЯЧ", "РАБОТУ", "НЕ", "ГАРАНТИРУЮТ"]  # a dash
+    assert "6 words" in op.limit_problems(_opener(screen="ОДИН ДВА ТРИ ЧЕТЫРЕ ПЯТЬ ШЕСТЬ"))[0]
+    assert any("4 lines" in p for p in op.limit_problems(_opener(screen="РАЗ|ДВА|ТРИ|ЧЕТЫРЕ")))
+    assert any("line1: 9 words" in p
+               for p in op.limit_problems(_opener(line1="раз два три четыре пять шесть семь восемь девять")))
+    assert any("needs its \"note\"" in p for p in op.limit_problems(_opener(note="")))
+    assert op.limit_problems(_opener(kind="question", note="")) == []                    # a question needs no note
+    tt = _opener(shots=[{"src": "media/tt/crash.mp4", "in": 0}, {"src": "media/b.mp4", "in": 0}])
+    assert any("TikTok" in p for p in op.limit_problems(tt))
+    one = _opener(shots=[{"src": "media/a.mp4", "in": 1.0}, {"src": "media/a.mp4", "in": 2.5}])
+    assert any("one moment" in p for p in op.limit_problems(one))                          # < 3 s apart
+    assert op.limit_problems(_opener(shots=[{"src": "media/a.mp4", "in": 1.0}, {"src": "media/a.mp4", "in": 4.0}])) == []
+    assert any("two shots" in p for p in op.limit_problems(_opener(shots=[{"src": "media/a.mp4", "in": 1.0}])))
+    assert op.limit_problems(_opener(layout="full", shots=[{"src": "media/a.mp4", "in": 1.0}])) == []
+    assert op.starts_with("«Мы врежемся в землю!» — кричит пилот диспетчеру. Бизнес-джет рухнул на жилую улицу и "
+                          "взорвался. А теперь — почему.", _opener())
+    assert not op.starts_with("Бизнес-джет рухнул на жилую улицу.", _opener())
+
+
+def test_opener_takes_the_best_honest_candidate_and_a_kind_used_lately_loses_points():
+    from addons.news import opener as op
+
+    good = {k: 8 for k in op.WEIGHTS}
+    assert op.weighted(good) == 80.0
+
+    def cands():
+        return [_opener(scores={**good, "honest": True}),                                              # 80
+                _opener(kind="number", screen="*350 ТЫСЯЧ* ЗА КУРСЫ", note="",
+                        scores={"loop": 8, "readable": 8, "stakes": 8, "match": 7, "turn": 8, "concrete": 8,
+                                "honest": True}),                                                         # 78.5
+                _opener(kind="question", screen="ОН ЗНАЛ?", scores={**{k: 10 for k in op.WEIGHTS}, "honest": False,
+                                                                   "problem": "вина до приговора"}),
+                _opener(kind="claim", screen="ОДИН ДВА ТРИ ЧЕТЫРЕ ПЯТЬ ШЕСТЬ",
+                        scores={**{k: 10 for k in op.WEIGHTS}, "honest": True})]
+    c = cands()
+    assert op.choose(c, recent=[]) == 0 and c[0]["score"] == 80.0
+    assert not c[2]["ok"] and "not honest" in c[2]["problems"][0]                 # honesty is a filter, not points
+    assert not c[3]["ok"] and "6 words" in c[3]["problems"][0]                    # so are the code limits
+    c = cands()
+    assert op.choose(c, recent=["quote", "paradox"]) == 1                         # 80 − 5 < 78.5
+    assert c[0]["penalty"] == op.REPEAT_PENALTY and c[0]["score"] == 75.0
+    assert op.choose([_opener(scores={**good, "honest": False})], []) is None
+
+
+def test_opener_kind_penalty_reads_the_accounts_last_two_delivered_films(tmp_path):
+    import os
+
+    from addons.news import opener as op
+
+    root = tmp_path / "projects"
+    films = [("news-viral-a-05-11-1", "a", "claim", 100), ("news-viral-a-06-11-1", "a", "number", 200),
+             ("news-viral-a-07-11-1", "a", "quote", 300), ("news-viral-b-07-11-2", "b", "question", 400),
+             ("news-viral-a-07-11-2", "a", "paradox", None)]                       # not delivered
+    for name, acc, kind, t in films:
+        d = root / name
+        d.mkdir(parents=True)
+        (d / "story.json").write_text(json.dumps({"viral": {"account": acc}, "opener": {"kind": kind}}))
+        if t:
+            (d / "kinescope.json").write_text("{}")
+            os.utime(d / "kinescope.json", (t, t))
+    me = root / "news-viral-a-08-11-1"
+    me.mkdir()
+    assert op.recent_kinds(me, {"viral": {"account": "a"}}) == ["quote", "number"]
+    assert op.recent_kinds(me, {"viral": {"account": "b"}}) == ["question"]
+
+
+def test_opener_drafts_scores_and_writes_the_contract_without_touching_the_text(tmp_path, monkeypatch):
+    import subprocess
+    import sys as _sys
+    import types
+
+    import addons.channels as channels_pkg
+    from addons.news import opener as op
+
+    proj = tmp_path / "projects" / "news-viral-a-08-11-1"
+    (proj / "media" / "tt").mkdir(parents=True)
+    for name in ("a.mp4", "b.mp4", "tt/c.mp4"):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=160x284:rate=10", "-t", "8",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(proj / "media" / name)], check=True)
+    text = "Бизнес-джет рухнул на жилую улицу. Пилот успел крикнуть диспетчеру."
+    story = {"hook": "Бизнес-джет рухнул на жилую улицу", "viral": {"account": "a"},
+             "angle": {"kind": "news", "question": "Почему упал самолёт?"}, "narration": {"text": text},
+             "shots": [{"src": "media/a.mp4", "in": 2.0, "role": "event", "score": 9},
+                       {"src": "media/tt/c.mp4", "in": 0.0, "role": "event"},
+                       {"src": "media/b.mp4", "in": 1.0, "role": "context", "score": 7}]}
+    (proj / "story.json").write_text(json.dumps(story, ensure_ascii=False))
+    draft = {"candidates": [
+        {"kind": "quote", "screen": "«МЫ ВРЕЖЕМСЯ | В *ЗЕМЛЮ!*»", "note": "пилот — диспетчеру, запись New York Post",
+         "line1": "«Мы врежемся в землю!» — кричит пилот диспетчеру.",
+         "line2": "Бизнес-джет рухнул на жилую улицу и взорвался.", "layout": "split",
+         "shots": [{"n": 1, "focus": [0.5, 0.4]}, {"n": 2, "focus": [2, -1]}], "audio": None,
+         "basis": "New York Post: запись переговоров"},
+        {"kind": "question", "screen": "ПОЧЕМУ ОН *УПАЛ?*", "line1": "Почему упал бизнес-джет?",
+         "line2": "Пилот успел крикнуть диспетчеру.", "layout": "split", "shots": [{"n": 1}, {"n": 2}], "basis": "x"},
+        {"kind": "number", "screen": "ЗА *30 СЕКУНД*", "line1": "Тридцать секунд до удара.", "line2": "И крик пилота.",
+         "layout": "full", "shots": [{"n": 2}], "basis": "y"}]}
+    scores = [{"c": 1, **{k: 8 for k in op.WEIGHTS}, "honest": True},
+              {"c": 2, **{k: 9 for k in op.WEIGHTS}, "honest": True},
+              {"c": 3, **{k: 10 for k in op.WEIGHTS}, "honest": False, "problem": "30 секунд — нет в источниках"}]
+    seen = []
+
+    def chat_json(db, purpose, model, system, user, **k):
+        seen.append(" ".join(p.get("text", "") for p in user if isinstance(p, dict)))
+        return draft if system == op.DRAFT_SYSTEM else scores
+
+    fake = types.SimpleNamespace(chat_json=chat_json, image_part_array=lambda img, side: {"type": "image", "url": "x"})
+    monkeypatch.setitem(_sys.modules, "addons.channels.llm", fake)
+    monkeypatch.setattr(channels_pkg, "llm", fake, raising=False)
+    r = op.design(proj)
+    assert [p["src"] for p in r["pool"]] == ["media/a.mp4", "media/b.mp4"]   # the plan's moments, event first
+    assert not any("/tt/" in p["src"] for p in r["pool"]) and "tt/c.mp4" not in seen[0]   # never a TikTok opener
+    got = json.loads((proj / "story.json").read_text(encoding="utf-8"))
+    o = got["opener"]
+    assert got["narration"]["text"] == text and got["hook"] == story["hook"]                  # the text is the agent's
+    assert o["picked"] == 1 and o["kind"] == "question"                                       # 90 beats 80; #3 dishonest
+    assert set(o) >= {"kind", "screen", "line1", "line2", "layout", "shots", "basis", "candidates", "picked"}
+    assert len(o["candidates"]) == 3 and not o["candidates"][2]["ok"]
+    first = o["candidates"][0]
+    assert first["screen"] == "«МЫ ВРЕЖЕМСЯ|В *ЗЕМЛЮ!*»" and first["score"] == 80.0
+    assert first["shots"] == [{"src": "media/a.mp4", "in": 2.0, "focus": [0.5, 0.4]},
+                              {"src": "media/b.mp4", "in": 1.0, "focus": [1.0, 0.0]}]
+    assert (proj / "qa" / "opener.json").is_file() and (proj / "story.json.pre-opener").is_file()
+
+
+def test_shot_judge_notes_the_opener_and_never_stops_on_it(monkeypatch):
+    import sys as _sys
+    import types
+
+    import addons.channels as channels_pkg
+    from addons.news import shot_judge as sj
+
+    said = {"text": "«Мы врежемся в землю!» — кричит пилот диспетчеру. Бизнес-джет рухнул на жилую улицу и взорвался."}
+    assert sj.opener_notes({"narration": said}, use_ai=False)[0].startswith("no \"opener\"")
+    assert sj.opener_notes({"stories": [{}, {}]}, use_ai=False) == []                    # a digest: no one opener
+    assert sj.opener_notes({"opener": _opener(), "narration": said, "hook": "Самолёт упал на улицу"}, use_ai=False) == []
+    late = sj.opener_notes({"opener": _opener(), "narration": {"text": "Бизнес-джет рухнул."}}, use_ai=False)
+    assert any("does not start with" in n for n in late)
+    tt = sj.opener_notes({"opener": _opener(shots=[{"src": "media/tt/x.mp4", "in": 0}, {"src": "media/b.mp4"}]),
+                          "narration": said}, use_ai=False)
+    assert any(n.startswith("limits:") and "TikTok" in n for n in tt)
+    long_hook = sj.opener_notes({"opener": _opener(), "narration": said,
+                                 "hook": "Москвичка дала бывшему мужу второй шанс — его обвиняют в её убийстве"},
+                                use_ai=False)
+    assert any("≤ 8 words" in n for n in long_hook)
+    assert any("no \"basis\"" in n for n in sj.opener_notes({"opener": _opener(basis=""), "narration": said},
+                                                            use_ai=False))
+    fake = types.SimpleNamespace(chat_json=lambda *a, **k: {"supported": False, "answers": True,
+                                                            "problem": "цитата склеена"})
+    monkeypatch.setitem(_sys.modules, "addons.channels.llm", fake)
+    monkeypatch.setattr(channels_pkg, "llm", fake, raising=False)
+    assert sj.opener_notes({"opener": _opener(), "narration": said}) == [
+        "the opener is not what its basis says: цитата склеена"]
+
+
+def test_the_opener_is_drafted_by_the_pick_kept_in_the_base_and_proofread(tmp_path):
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(build.__file__).parent))
+    import newsbase
+    import viral
+    from addons.news import proofread
+
+    assert "opener" in viral.SYSTEM and "до 8 слов" in viral.SYSTEM and "6–12" not in viral.SYSTEM
+    draft = {"kind": "paradox", "screen": "*350 ТЫСЯЧ* —|РАБОТУ НЕ ГАРАНТИРУЮТ", "note": "«Москва 24»",
+             "line1": "До трёхсот пятидесяти тысяч за курсы моделей.", "line2": "А работу после них не гарантируют.",
+             "shot": "занятие в школе"}
+    b = {"score": 70.0, "region": "russia", "place": "Москва", "topic": "деньги", "ai": True,
+         "features": {k: 7 for k in viral.AI_FEATURES}, "signal_features": {k: 0.5 for k in viral.SIGNALS},
+         "signals": {"velocity": 2, "channels": 5, "channels_3h": 3, "reach": 800_000, "comments": 200, "video_s": 0,
+                     "photos": 1, "age_h": 10}, "opener": draft, "hook": "х", "posts": []}
+    assert "опенер: парадокс «*350 ТЫСЯЧ* —|РАБОТУ НЕ ГАРАНТИРУЮТ»" in viral.describe(b)
+    con = newsbase.db(tmp_path / "n.db")
+    newsbase.save([{"key": "k", "signals": {}, "posts": [], "seed": {"plain": "x"},
+                    "ai": {"score": 80, "opener": draft}}], "pick", con=con)
+    assert json.loads(newsbase.listing(con=con)[0]["opener"])["kind"] == "paradox"
+    scr = proofread.screen_texts({"opener": draft, "hook": "Курсы моделей"})
+    assert scr["opener"] == "350 ТЫСЯЧ — РАБОТУ НЕ ГАРАНТИРУЮТ" and scr["opener_note"] == "«Москва 24»"

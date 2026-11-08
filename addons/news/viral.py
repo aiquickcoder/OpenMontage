@@ -27,7 +27,9 @@ two TikTok accounts, no story shared between them.
      channel's usual (a debate shows in the comments).
 5. The AI (Codex gpt-6.1-sol through the local codex-gateway, the channels engine's client) scores the best
    --ai stories for TikTok: everyone / emotion / debate / visual / explain (0–10), flags war / ru_politics / risky /
-   ad, local_only + a common hook for a regional story, and drafts the hook, the «why», the closing question.
+   ad, local_only + a common hook for a regional story, and drafts the opener (its kind, the 2–5 words on screen,
+   the first two spoken phrases, the shot; README «Опенер»), the hook (≤ 8 words: what the film is about), the «why»,
+   the closing question.
    Without the gateway the same features come from word lists («ИИ-оценки нет» in the list).
 6. Score (0..100) = Σ weight × feature (each 0..1) × freshness; the weights add up to 100 (WEIGHTS, tuned weekly from
    the films' TikTok numbers by viral_stats.py tune → <data>/weights.json). A regional story counts only with a
@@ -738,8 +740,8 @@ def taken(story: dict, made: list[dict], claims: list[dict], done_links: set[str
 
 # -- the AI -----------------------------------------------------------------------------------------------------------
 SYSTEM = """Ты — шеф-редактор новостного TikTok для всей России (зрители 16–40 лет). Наш формат — инфоповод,
-сделанный интересным (угол): вертикальный ролик 40–70 секунд; в первую секунду — напряжение угла фактами, потом сам
-повод, потом ответ на главный вопрос ролика (причины, последствия, стороны, что на кону для обычного человека), в
+сделанный интересным (угол): вертикальный ролик 40–70 секунд; первые 3 секунды — опенер (2–5 огромных слов на кадре
+кульминации и самая сильная фраза голосом, напряжение угла фактами), потом сам повод, потом ответ на главный вопрос ролика (причины, последствия, стороны, что на кону для обычного человека), в
 конце развилка с двумя сторонами в комментарии. Обычная новость не всегда интересна: смотрят ради вопроса, на
 который хочется знать ответ, и спора, в который хочется влезть. Региональное заходит
 плохо, остросоциальное — отлично (пример: протесты зумеров в Германии против армии на сотни миллиардов — ролики
@@ -793,8 +795,20 @@ common_hook — для региональной истории: общий кр�
 полиции на Хэллоуин — запрещать такие тусовки или подросткам некуда пойти»); иначе null.
 topic — одно из: """ + ", ".join(TOPICS) + """.
 emotion_kind — одно из: возмущение, страх, восхищение, абсурд, сочувствие, нет.
-hook — хук-конфликт на первую секунду, 6–12 слов, только факты из текстов, без «шок» и без вины до приговора, без
-«как сообщает…»: источник в хуке — только у обвинения или громкого слова.
+opener — первые 3 секунды ролика (владелец 2026-11-07: «Самое важное увлечь пользователя с первых секунд… отдельный
+опенер, который проектирует начало: хуки и кадры + текст на первых нескольких секундах»): {"kind":
+"quote|claim|question|number|paradox", "screen": "2–5 огромных слов заглавными на экране с первого кадра, | — перенос
+строки, *ключевое слово* — на красной плашке", "note": "для цитаты и заявления — чьи слова или по чьим данным (мелкая
+строка-оговорка)", "line1": "первая фраза голоса — самая сильная, до 8 слов", "line2": "вторая — поворачивает первую:
+честная оговорка, неожиданность, ставка; до 8 слов", "shot": "какой кадр поставить: сверху момент события в движении,
+снизу лицо героя или последствие — из медиа постов"}. quote — слова человека дословно в «ёлочках» («МЫ ВРЕЖЕМСЯ В
+*ЗЕМЛЮ!*» — пилот по радио); question — вопрос о конкретной сцене («ТРАМПУ ГРОЗИТ *ИМПИЧМЕНТ?*»); claim — смелое
+утверждение, которое правда делают источники, с оговоркой во второй фразе («по крайней мере, так пишут в сети»), прогноз
+— как прогноз; number — цифра, которая бьёт; paradox — то, что не сходится («*350 ТЫСЯЧ* — РАБОТУ НЕ ГАРАНТИРУЮТ»).
+Нашим голосом, только из текстов: цитату не склеивать и не править, без вины до приговора, без «шок», без бренда и даты;
+ролик должен ответить на то, что обещает опенер.
+hook — плашка «о чём ролик» после опенера: до 8 слов, только факты из текстов, без «шок» и без вины до приговора, без
+«как сообщает…»: источник в хуке — только у обвинения или громкого слова; опенер она не повторяет.
 why — почему это произошло, одной фразой нашим голосом («А дело в том, что…», «Казалось бы… но…»): причина из текстов
 или общеизвестный контекст, без оговорок и морали; не выдумывай, если причины не видно — так и напиши «причина
 неясна».
@@ -827,9 +841,10 @@ score — твой итоговый балл 0–100: насколько эта 
 
 Ответ — только JSON-массив: [{"id": 1, "everyone": 8, "emotion": 7, "debate": 9, "visual": 6, "explain": 8,
 "war": false, "ru_politics": false, "risky": false, "ad": false, "local_only": false, "common_hook": null,
-"topic": "цены", "emotion_kind": "возмущение", "hook": "…", "why": "…", "question": "Как думаете, …?",
-"sides": ["…", "…"], "angle": {"kind": "conflict", "question": "…", "why_watch": "…", "argue": "…"}, "note": "…",
-"score": 74}]"""
+"topic": "цены", "emotion_kind": "возмущение", "opener": {"kind": "number", "screen": "*350 ТЫСЯЧ* —|РАБОТУ НЕ
+ГАРАНТИРУЮТ", "note": "…", "line1": "…", "line2": "…", "shot": "…"}, "hook": "…", "why": "…",
+"question": "Как думаете, …?", "sides": ["…", "…"], "angle": {"kind": "conflict", "question": "…", "why_watch": "…",
+"argue": "…"}, "note": "…", "score": 74}]"""
 
 # the first pass over every story (owner 2026-11-02: «отдал отбор новостей, их оценку и выходной балл — ИИ, а не
 # алгоритмам»): the AI reads one line a story and shortlists; the deep pass above scores the shortlist
@@ -1139,6 +1154,7 @@ def ai_score(stories: list[dict], batch: int = 8, workers: int = 3) -> int:
                         **{k: v.get(k) for k in ("common_hook", "topic", "emotion_kind", "hook", "why", "question",
                                                   "sides", "note")}, "ai": True,
                         "angle": v.get("angle") if isinstance(v.get("angle"), dict) else None,
+                        "opener": v.get("opener") if isinstance(v.get("opener"), dict) else None,
                         "score": _num(v.get("score"))}
             n += 1
         return n
@@ -1446,7 +1462,7 @@ def brief(st: dict, n: int | None = None) -> dict:
             "momentum": st.get("momentum"), "ai_score": st.get("ai_score"),
             "signals": st["signals"], "signal_features": st["sigf"], "features": st["features"], "ai": bool(v),
             "topic": v.get("topic"), "emotion_kind": v.get("emotion_kind"), "hook": v.get("hook"), "why": v.get("why"),
-            "angle": v.get("angle"),
+            "angle": v.get("angle"), "opener": v.get("opener"),
             "question": v.get("question"), "sides": v.get("sides"), "common_hook": v.get("common_hook"),
             "note": v.get("note"), "gate": st.get("note"), "skip": st.get("skip") or [], "sig": st.get("sig"),
             "tiktok": st.get("tiktok"),
@@ -1460,6 +1476,7 @@ def brief(st: dict, n: int | None = None) -> dict:
 
 ANGLE_RU = {"news": "сама новость", "conflict": "конфликт сторон", "paradox": "парадокс", "myth": "миф против реальности",
             "me": "«а меня коснётся?»", "will": "будет или нет", "why": "почему", "none": "угла нет"}
+OPENER_RU = {"quote": "цитата", "claim": "заявление", "question": "вопрос", "number": "цифра", "paradox": "парадокс"}
 
 
 def describe(b: dict) -> str:
@@ -1486,6 +1503,12 @@ def describe(b: dict) -> str:
         lines.append(f"   угол: {ANGLE_RU.get(ang.get('kind'), ang.get('kind') or '?')} — {ang.get('question') or ''}"
                      + (f" | досмотрят: {ang['why_watch']}" if ang.get("why_watch") else "")
                      + (f" | спорить: {ang['argue']}" if ang.get("argue") else ""))
+    op = b.get("opener") if isinstance(b.get("opener"), dict) else {}
+    if op.get("screen"):  # README «Опенер»: a draft for opener.py, not a fact
+        lines.append(f"   опенер: {OPENER_RU.get(op.get('kind'), op.get('kind') or '?')} «{op['screen']}»"
+                     + (f" ({op['note']})" if op.get("note") else "")
+                     + (f" | голос: {op.get('line1') or ''} / {op.get('line2') or ''}" if op.get("line1") else "")
+                     + (f" | кадр: {op['shot']}" if op.get("shot") else ""))
     for k, label in (("hook", "хук"), ("why", "почему"), ("question", "вопрос"), ("common_hook", "общий крючок")):
         if b.get(k):
             lines.append(f"   {label}: {b[k]}")
