@@ -14,6 +14,8 @@ story.json (see addons/news/README.md and story.example.json):
              "whoosh": {"src": "whoosh_transition.mp3", "volume": 0.35}}}      # anchor <-> b-roll cuts
   per shot: "sfx": {"src": "...", "volume": 0.4, "offset": 0} = one-shot at the cut; "audio": 0.35 = the clip's own
   sound (post footage is muted by default, owner 2026-10-28; "audio" > 0 brings one shot's sound back). SFX files live in SFX_DIRS.
+  "opener": {"screen", "note", "line1", "line2", "layout", "shots", "audio"?, "hold"?} = the first ~3 s of a one-story
+  film: two halves (or one frame) under big text (README «Опенер на экране»; opener_item, opener_html).
 
 Digest (several stories in one film): instead of "narration.text" + "shots", give
   "stories": [{"lead": "<the anchor's line before this story>", "text": "<voice-over>",
@@ -288,6 +290,7 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
     audio = A / "narration.mp3"
     text = full_text(story)
     bite = story.get("bite") if "[bite]" in (story.get("narration") or {}).get("text", "") else None
+    at = voice_at(story)  # VOICE_AT, or later: after the opener's own sound (the source's, played first)
     # A one-story recut changes pictures, not the already verified voice. Reuse
     # its word timings only while both the audio and the spoken script match.
     timing_path = A / "timing.json"
@@ -297,7 +300,7 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
         try:
             cached_timing = json.loads(timing_path.read_text(encoding="utf-8"))
             cached_text = " ".join(w[0] for w in cached_timing["words"])
-            if cached_text == " ".join(plain(text).split()):
+            if cached_text == " ".join(plain(text).split()) and cached_timing.get("voice_at", VOICE_AT) == at:
                 print("voice: reusing verified word timings", flush=True)
                 return cached_timing
         except (OSError, ValueError, KeyError, TypeError):
@@ -325,18 +328,20 @@ def voice(proj: Path, story: dict, retime: bool) -> dict:
             said = voice_text(story) if engine == "fishaudio" else plain(text) if engine == "openrouter" else text
             speak({**story["narration"], "text": said}, audio)
     heard = transcribe(audio)
-    words = [[w, round(a + VOICE_AT, 3), round(b + VOICE_AT, 3)] for w, a, b in script_words(text, heard)]
-    speech_end = float(max(words[-1][2], max((w["end"] for w in heard), default=0) + VOICE_AT))
+    words = [[w, round(a + at, 3), round(b + at, 3)] for w, a, b in script_words(text, heard)]
+    speech_end = float(max(words[-1][2], max((w["end"] for w in heard), default=0) + at))
     duration = round(speech_end + TAIL_S, 2)
     ws = story_windows(story, words, duration)
     timing = {"words": words, "speech_end": speech_end, "duration": duration, "windows": ws,
               "broll": [ws[0][0], ws[-1][1]]}
+    if at != VOICE_AT:  # write_workspace starts the voice there
+        timing["voice_at"] = at
     if bite:  # the agency's own words: their time, and what is said for the captions
         b0, b1 = json.loads((A / "bite.json").read_text())["span"]
-        timing["bite"] = [round(b0 + VOICE_AT, 3), round(b1 + VOICE_AT, 3)]
+        timing["bite"] = [round(b0 + at, 3), round(b1 + at, 3)]
         said = [w for w in heard if b0 - 0.1 <= w["start"] < b1]
         # the bite's own words for its captions: "text" as it was really said (whisper mangles some), at heard times
-        timing["bite_words"] = [[w, round(x + VOICE_AT, 3), round(y + VOICE_AT, 3)] for w, x, y in
+        timing["bite_words"] = [[w, round(x + at, 3), round(y + at, 3)] for w, x, y in
                                 (script_words(bite["text"], said) if bite.get("text") and said else
                                  [[w["word"].strip(), w["start"], w["end"]] for w in said])]
         if story.get("loop") or not story.get("stories"):  # one story: the pictures run to the end
@@ -671,7 +676,9 @@ def film_items(proj: Path, story: dict, timing: dict, phrases: list, strict: boo
     if narrator(story):
         per = cards(proj, story, timing, per)
     fit = bool(story.get("hook"))  # a one-story film shows every picture whole
-    return [{**it, "w": w, **({"fit": True} if fit else {})} for w, its in enumerate(per) for it in its]
+    items = [{**it, "w": w, **({"fit": True} if fit else {})} for w, its in enumerate(per) for it in its]
+    # the opener holds [0, hold] (opener_item, its own segment): the story's pictures go on from there
+    return after_opener(items, opener_hold(story, timing))
 
 
 def picture_warnings(story: dict) -> list[str]:
@@ -814,6 +821,8 @@ def tiktok_problems(story: dict) -> list[str]:
         out.append("the film opens on a TikTok piece — open on the post's or an agency's footage")
     if len(tt) > TT_MAX_SHOTS:
         out.append(f"{len(tt)} TikTok pieces, at most {TT_MAX_SHOTS}")
+    if any("/tt/" in f"/{s.get('src', '')}" or "/tt/" in f"/{s.get('src_orig', '')}" for s in opener_shots(story)):
+        out.append("the opener shows a TikTok piece — its first frame is the film's: the post's or an agency's footage")
     return out
 
 
@@ -936,6 +945,8 @@ def still_move(item: dict) -> str:
 
 
 def segment(item: dict, dst: Path) -> None:
+    if item.get("opener"):  # the first seconds: two halves (or one frame) under the opener's big text
+        return opener_segment(item, dst)
     src, d = item["path"], item["dur"]
     crop = item.get("crop")  # [x, y, w, h] of the source: another framing of the same picture — a detail, a wide view
     bw, bh, x0, y, cover = frame_box(item)
@@ -993,9 +1004,9 @@ def broll(proj: Path, items: list[dict]) -> list[Path]:
             if it["w"] == w:
                 seg = d / f"s{i:02d}.mp4"
                 stamp = seg.with_suffix(".sha256")
-                src = Path(it["path"])
-                key = hashlib.sha256((recipe + json.dumps(it, sort_keys=True, default=str)
-                                      + str(src.stat().st_size) + str(src.stat().st_mtime_ns)).encode()).hexdigest()
+                srcs = [Path(s["path"]) for s in it["opener"]["shots"]] if it.get("opener") else [Path(it["path"])]
+                key = hashlib.sha256((recipe + json.dumps(it, sort_keys=True, default=str) + "".join(
+                    str(src.stat().st_size) + str(src.stat().st_mtime_ns) for src in srcs)).encode()).hexdigest()
                 if not (seg.is_file() and stamp.is_file() and stamp.read_text() == key):
                     tmp = seg.with_name(seg.stem + ".tmp.mp4")
                     segment(it, tmp)
@@ -1038,7 +1049,7 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     snd, total = story.get("sound") or {}, timing["duration"]
     layers = []  # (input args, filter chain, start time)
 
-    def clip(src, start, dur, vol, offset=0.0, fade_in=0.05, fade_out=0.3, loop=False):
+    def clip(src, start, dur, vol, offset=0.0, fade_in=0.05, fade_out=0.3, loop=False, level=False):
         if dur <= 0.05:
             return
         if loop:  # finite repeat count: an endless -stream_loop -1 input breaks amix's end of stream
@@ -1048,6 +1059,7 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
         else:
             inp = ["-i", str(src)]
         chain = (f"atrim=start={offset:.3f}:duration={dur:.3f},asetpts=PTS-STARTPTS,"
+                 + ("loudnorm=I=-16:TP=-1.5:LRA=11," if level else "") +  # a source's own words: as loud as the voice
                  f"aformat=sample_rates=44100:channel_layouts=stereo,afade=t=in:d={fade_in},"
                  f"afade=t=out:st={max(0.0, dur - fade_out):.3f}:d={fade_out},volume={vol}")
         layers.append((inp, chain, start))
@@ -1055,6 +1067,13 @@ def sound_bed(proj: Path, story: dict, timing: dict, items: list[dict]) -> Optio
     if snd.get("sting"):
         x = snd["sting"]
         clip(find_sfx(x["src"]), float(x.get("at", 0.0)), float(x.get("dur", 3.5)), x.get("volume", 0.45), fade_out=0.8)
+    if oa := opener_audio(story):  # the source's own sound opens the film (the pilot's radio call); the voice waits
+        src = (proj / oa["src"]).resolve() if not Path(oa["src"]).is_absolute() else Path(oa["src"])
+        if src.is_file() and has_audio(src):
+            a0, a1 = float(oa["in"]), float(oa["out"])
+            clip(src, 0.0, a1 - a0, oa.get("volume", 1.0), a0, 0.02, 0.15, level=True)
+        else:
+            print(f"warning: opener audio {src} not found or silent — the voice still waits for it", flush=True)
     swept = set()  # without the cat one story's window ends where the next begins: one whoosh there, not two
     for s, (b0, b1) in zip(stories(story), windows(timing)):
         x = (s.get("sound") or {}).get("ambience") or snd.get("ambience")  # a digest story may bring its own place
@@ -1238,22 +1257,335 @@ def hook_text_bottom(story: dict) -> int:
     return SAFE_TOP + 64 + round(n * 46 * 1.3)
 
 
-def hook_html(story: dict, duration: float) -> tuple[str, str]:
+def hook_html(story: dict, duration: float, at: float = 0.0) -> tuple[str, str]:
     """A one-story film's hook (owner 2026-10-30, «вот пример хуков» — the ПОТОК cards): the whole headline as a
     title card over the top of the frame for the whole film — the brand and the date above, the headline in mono
-    capitals, its strongest part *starred* on the red marker. There from the first frame (the cover), no entrance."""
+    capitals, its strongest part *starred* on the red marker. There from the first frame (the cover), no entrance.
+    After an opener (at = its hold) the card slides in from the top as the opener goes and stays to the end."""
     if not story.get("hook"):
         return "", ""
     date = f'<i>{esc(story["date"])}</i>' if story.get("date") else ""
-    html = (f'    <div id="hook" class="clip" data-start="0" data-duration="{duration}" data-track-index="7">'
+    start, dur = (round(at, 3), round(duration - at, 3)) if at > 0 else (0, duration)
+    html = (f'    <div id="hook" class="clip" data-start="{start}" data-duration="{dur}" data-track-index="7">'
             f'<div class="brand"><span>{esc(story.get("tag", "ЧП"))}</span>{date}</div>'
             f'<div class="t">{thesis_markup(story["hook"])}</div></div>')
-    return html, ""
+    js = f'  tl.from("#hook", {{yPercent: -100, duration: {HOOK_IN}, ease: "power2.out"}}, {start});' if at > 0 else ""
+    return html, js
 
 
 def thesis_markup(text: str) -> str:
     """«Задержаны *трое* иностранцев» → the starred words on our red marker; «|» breaks the line by hand."""
     return "<br>".join(re.sub(r"\*([^*]+)\*", r"<em>\1</em>", esc(part.strip())) for part in text.split("|"))
+
+
+# -- the opener: the first ~3 s of a one-story film (owner 2026-11-08, layout B «сплит + вопрос»: «вот этот вариант»;
+# «1.5 секунды долго» — nothing waits: both halves, the big text, the chip and the note are there from frame 0, which is
+# also the cover). story["opener"] is written by addons/news/opener.py (README «Опенер»); build.py only renders it ----
+OPENER_MIN, OPENER_MAX = 1.8, 3.5  # s: the opener window taken from the words (the end of line2) stays in here
+OPENER_DEFAULT = 2.8      # s: no line1/line2 found in the words
+OPENER_GAP = 0.2          # s: between the opener's own sound and the voice
+OPENER_REMAIN = 1.0       # s: a picture with less than this left after the opener is dropped, the next one starts there
+OPENER_HALF = H // 2      # px: the height of each half of a split opener (1080 x 960)
+OPENER_SEAM = 10          # px: the dark line between the halves
+OPENER_PX, OPENER_PX_MIN = 160, 40  # the big text's size: every line one size, as large as the widest line allows
+OPENER_LH = 1.06          # line height (em)
+OPENER_STROKE = 0.1       # em: the black outline (painted under the fill: its outer half shows)
+OPENER_PAD = 0.14         # em: the red box's side padding around the key word
+OPENER_W = W - 2 * SAFE_X - 8  # px a line may take: the safe width, a few px for the outline
+OPENER_FULL_Y = 1150      # px: the text's centre on a one-frame opener (lower-middle); a split one centres on the seam
+OPENER_CHIP_Y = SAFE_TOP + 20  # px: the brand chip, near the top of the upper half
+OPENER_CHIP_H = 48        # px: the chip's height (30 px Montserrat Black + padding)
+OPENER_NOTE_PX, OPENER_NOTE_GAP = 40, 26  # the source line under the big text: its size, its gap
+OPENER_OUT = 0.2          # s: the opener's text fades out this long, ending at hold
+HOOK_IN = 0.3             # s: after an opener the hook card slides in from the top this long
+OPENER_FONT = HERE / "fonts" / "Montserrat-Black.ttf"  # the captions' font (CAP_FONT), SIL OFL, full Cyrillic
+OPENER_CSS = f"""
+    @font-face {{ font-family: "Montserrat Black"; src: url("assets/{OPENER_FONT.name}"); font-weight: 900; }}
+    @font-face {{ font-family: "PT Sans Narrow"; src: url("assets/{THESIS_FONT.name}"); font-weight: 700; }}
+    #opener {{ position: absolute; inset: 0; z-index: 8; }}
+    #opener .op-shade {{ position: absolute; inset: 0; }}
+    #opener .op-brand {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; top: {OPENER_CHIP_Y}px;
+                        text-align: center; }}
+    #opener .op-brand span {{ display: inline-block; background: #e3001b; color: #fff; font: 900 30px/1.2 "Montserrat Black",
+                             "Arial Black", sans-serif; letter-spacing: 3px; padding: 6px 16px 6px; border-radius: 6px;
+                             box-shadow: 0 4px 14px rgba(0,0,0,.45); }}
+    #opener .op-text {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; text-align: center;
+                       font-family: "Montserrat Black", "Arial Black", sans-serif; font-weight: 900;
+                       line-height: {OPENER_LH}; letter-spacing: 0; text-transform: uppercase; color: #fff; }}
+    #opener .op-text .ln {{ display: block; white-space: nowrap; -webkit-text-stroke: {OPENER_STROKE}em #000;
+                           paint-order: stroke fill; text-shadow: 0 .06em .22em rgba(0,0,0,.6); }}
+    #opener .op-text em {{ display: inline-block; font-style: normal; padding: 0 {OPENER_PAD}em; border-radius: .06em;
+                          background: #e3001b; -webkit-text-stroke: 0; text-shadow: none;
+                          box-shadow: 0 .06em .2em rgba(0,0,0,.45); }}
+    #opener .op-note {{ position: absolute; left: {SAFE_X}px; right: {SAFE_X}px; text-align: center; }}
+    #opener .op-note span {{ display: inline-block; max-width: 100%; box-sizing: border-box; color: #fff;
+                            font: 700 {OPENER_NOTE_PX}px/1.25 "PT Sans Narrow", sans-serif; background: rgba(0,0,0,.62);
+                            padding: 8px 18px; border-radius: 8px; }}"""
+_OP_FONTS: dict = {}
+
+
+def opener_of(story: dict) -> Optional[dict]:
+    """The story's opener when the film can open on it: a one-story film whose pictures start on the first frame (no
+    digest, no anchor's greeting) and an opener with its text and a picture. None otherwise (an old story: as before)."""
+    op = story.get("opener")
+    if not isinstance(op, dict) or not str(op.get("screen") or "").strip():
+        return None
+    if not any(isinstance(s, dict) and s.get("src") for s in op.get("shots") or []):
+        return None
+    a = story.get("anchor") or {}
+    if story.get("stories") or a.get("dir") or plain(a.get("intro", "")):
+        return None
+    return op
+
+
+def opener_shots(story: dict) -> list[dict]:
+    """The opener's pictures as story.json has them (top half first)."""
+    op = opener_of(story)
+    return [s for s in (op or {}).get("shots") or [] if isinstance(s, dict) and s.get("src")]
+
+
+def opener_layout(story: dict) -> str:
+    """"split" (two halves, the default) or "full" (one frame: asked for, or only one picture)."""
+    op = opener_of(story) or {}
+    return "full" if op.get("layout") == "full" or len(opener_shots(story)) < 2 else "split"
+
+
+def opener_audio(story: dict) -> Optional[dict]:
+    """The source's own sound that opens the film ({"src", "in", "out"}), if any."""
+    a = (opener_of(story) or {}).get("audio")
+    if isinstance(a, dict) and a.get("src") and float(a.get("out") or 0) > float(a.get("in") or 0):
+        return a
+    return None
+
+
+def voice_at(story: dict) -> float:
+    """When the voice starts: VOICE_AT, or after the opener's own sound (it plays from 0 for out − in seconds)."""
+    a = opener_audio(story)
+    return round(max(VOICE_AT, float(a["out"]) - float(a["in"]) + OPENER_GAP), 3) if a else VOICE_AT
+
+
+def opener_said_end(story: dict, timing: dict) -> Optional[float]:
+    """When line1 + line2 have been said: the end of their last word in the timing words, matched at the start of the
+    voice-over (the editor may have mended a word: the best match in order, the words after it counted on)."""
+    op = opener_of(story) or {}
+    want = [t for t in (norm(x) for x in plain(f'{op.get("line1", "")} {op.get("line2", "")}').split()) if t]
+    ws = (story_words(story, timing.get("words") or []) or [[]])[0]
+    idx = [i for i, w in enumerate(ws[:len(want) + 8]) if norm(w[0])]
+    if not want or not idx:
+        return None
+    got = [norm(ws[i][0]) for i in idx]
+    hit = [(b.a + b.size - 1, b.b + b.size - 1)
+           for b in difflib.SequenceMatcher(None, want, got, autojunk=False).get_matching_blocks() if b.size]
+    if not hit:
+        return None
+    a, b = hit[-1]
+    k = idx[min(b + len(want) - 1 - a, len(idx) - 1)]
+    ends = lambda w: str(w).rstrip("»\")")[-1:] in ".!?…"  # noqa: E731
+    if ends(plain(f'{op.get("line1", "")} {op.get("line2", "")}').split()[-1]):  # line2 ends a sentence: so does
+        k = next((j for j in range(k, min(k + 4, len(ws))) if ends(ws[j][0])), k)  # the voice (a word added at its end)
+    return float(ws[k][2])
+
+
+def opener_hold(story: dict, timing: dict) -> float:
+    """The opener's window [0, hold] in composition time, 0 without one: "hold" from story.json, else the end of
+    line2 in the words, kept in OPENER_MIN..OPENER_MAX; on a frame, and never past the film."""
+    op = opener_of(story)
+    if not op:
+        return 0.0
+    if op.get("hold"):
+        hold = min(max(float(op["hold"]), 1.0), 6.0)
+    else:
+        said = opener_said_end(story, timing)
+        hold = min(max(OPENER_DEFAULT if said is None else said, OPENER_MIN), OPENER_MAX)
+    if timing.get("duration"):
+        hold = min(hold, float(timing["duration"]) - 0.5)
+    return round(round(max(hold, 0.0) * FPS) / FPS, 3)
+
+
+def after_opener(items: list[dict], hold: float) -> list[dict]:
+    """The story's pictures after the opener: a piece under [0, hold] loses that part (a clip goes on from where it
+    would be at hold, so every picture stays on its phrase), a piece with less than OPENER_REMAIN left is dropped and
+    the next one starts at hold instead; a dropped piece's thesis goes on the next one (it says the first fact)."""
+    if not hold or not items:
+        return items
+    out, thesis = [], {}
+    for it in items:
+        end = round(it["start"] + it["dur"], 3)
+        if not out and it["start"] < hold - 1e-6:
+            if end - hold < OPENER_REMAIN and it is not items[-1]:
+                if it.get("thesis") and not thesis:
+                    thesis = {k: it[k] for k in ("thesis", "span") if k in it}
+                continue
+            it = {**it, "start": hold, "dur": round(max(end - hold, 1 / FPS), 3),
+                  **({"in": round(float(it.get("in") or 0) + hold - it["start"], 3)} if it.get("video") else {})}
+        elif not out:  # the pieces before it were dropped: it begins where the opener ends
+            it = {**it, "start": hold, "dur": round(end - hold, 3)}
+        if thesis and not out and not it.get("thesis"):
+            it = {**it, **thesis}
+        out.append(it)
+    return out
+
+
+def opener_item(proj: Path, story: dict, timing: dict, strict: bool = True) -> Optional[dict]:
+    """The opener's own cut, the film's first [0, hold]: its pictures ({"path", "video", "in", "focus"}, top half
+    first) under "opener"; "path"/"video"/"in" of the top one, for the storyboard and the QA tiles."""
+    hold = opener_hold(story, timing)
+    if not hold:
+        return None
+    shots = []
+    for s in opener_shots(story):
+        src = (proj / s["src"]).resolve() if not Path(s["src"]).is_absolute() else Path(s["src"])
+        if not src.is_file():
+            if strict:
+                sys.exit(f"opener: {src} not found")
+            print(f"warning: opener picture {src} not found", flush=True)
+            continue
+        video = src.suffix.lower() in VIDEO_EXT
+        fx, fy = (list(s.get("focus") or []) + [0.5, 0.5])[:2]
+        shots.append({"src": s["src"], "path": src, "video": video,
+                      "in": round(float(s.get("in") or 0), 3) if video else 0.0,
+                      "focus": [min(max(float(fx), 0.0), 1.0), min(max(float(fy), 0.0), 1.0)]})
+    if not shots:
+        return None
+    layout = "split" if opener_layout(story) == "split" and len(shots) >= 2 else "full"
+    if (opener_of(story) or {}).get("layout", "split") != "full" and layout == "full":
+        print("warning: opener: one usable picture — a one-frame opener (layout full)", flush=True)
+    shots = shots[:2] if layout == "split" else shots[:1]
+    return {"opener": {"layout": layout, "shots": shots}, "src": shots[0]["src"], "path": shots[0]["path"],
+            "video": shots[0]["video"], "in": shots[0]["in"], "start": 0.0, "dur": hold, "w": 0, "role": "opener"}
+
+
+def opener_crop(w: int, h: int, bw: int, bh: int, focus: list[float]) -> tuple[int, int, int, int]:
+    """A (w, h) picture covering a (bw, bh) box: its scaled size and the crop's corner that puts focus (x, y as
+    fractions of the picture) as near the box's centre as the picture allows."""
+    k = max(bw / w, bh / h)
+    sw, sh_ = max(bw, math.ceil(w * k / 2) * 2), max(bh, math.ceil(h * k / 2) * 2)
+    x = min(max(round(focus[0] * sw - bw / 2), 0), sw - bw)
+    y = min(max(round(focus[1] * sh_ - bh / 2), 0), sh_ - bh)
+    return sw, sh_, x, y
+
+
+def opener_segment(item: dict, dst: Path) -> None:
+    """The opener's picture: split — the top and bottom pictures, each cropped to 1080 x 960 around its focus, stacked
+    with a thin dark seam; full — one picture cropped to 1080 x 1920. Clips play from "in" (a short one holds its last
+    frame), stills stand still. Silent, like every b-roll piece."""
+    op, d = item["opener"], item["dur"]
+    split = op["layout"] == "split"
+    bw, bh = W, OPENER_HALF if split else H
+    inp, chains = [], []
+    for k, s in enumerate(op["shots"]):
+        w, h, _ = probe(s["path"])
+        sw, sh_, x, y = opener_crop(w, h, bw, bh, s["focus"])
+        if s["video"]:
+            inp += ["-ss", f'{s["in"]:.3f}', "-t", f"{d:.3f}", "-i", str(s["path"])]
+            pad = f"tpad=stop_mode=clone:stop_duration={d:.3f},"
+        else:
+            inp += ["-loop", "1", "-t", f"{d:.3f}", "-i", str(s["path"])]
+            pad = ""
+        chains.append(f"[{k}:v]fps={FPS},{pad}scale={sw}:{sh_},crop={bw}:{bh}:{x}:{y},setsar=1,"
+                      f"trim=duration={d:.3f},setpts=PTS-STARTPTS")
+    if split:
+        seam = f"drawbox=x=0:y={OPENER_HALF - OPENER_SEAM // 2}:w={W}:h={OPENER_SEAM}:color=black@0.9:t=fill"
+        flt = f"{chains[0]}[t];{chains[1]}[b];[t][b]vstack=inputs=2,{seam},format=yuv420p[v]"
+    else:
+        flt = f"{chains[0]},format=yuv420p[v]"
+    sh(["ffmpeg", "-v", "error", "-y", *inp, "-filter_complex", flt, "-map", "[v]", "-an", "-r", str(FPS),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "17", str(dst)])
+
+
+def _op_font(px: int):
+    if px not in _OP_FONTS:
+        from PIL import ImageFont
+
+        _OP_FONTS[px] = ImageFont.truetype(str(OPENER_FONT), px)
+    return _OP_FONTS[px]
+
+
+def opener_width(line: list[str], px: int) -> float:
+    """Pixels of a line of the big text: its words in capitals, the red box's padding, the outline's outer half."""
+    text = " ".join(line).replace("*", "").upper()
+    return (_op_font(px).getlength(text) + sum(2 * OPENER_PAD * px for u in line for _ in re.findall(r"\*[^*]+\*", u))
+            + OPENER_STROKE * px)
+
+
+def opener_fit(screen: str) -> tuple[list[list[str]], int]:
+    """The big text in lines (each a list of words, *key* ones starred) and its size: «|» breaks a line by hand, *…*
+    is the key word (never split, the punctuation on it stays with it); inside a part the words may break further.
+    Of the ways to make 2–3 lines (more only if «|» asks for it) the one with the largest size that fits the safe
+    width wins — a preposition never ends a line, fewer lines on a tie; every line is that one size."""
+    import itertools
+
+    parts = [u for u in (re.findall(r"[^\s*]*\*[^*]+\*[^\s*]*|[^\s*]+", plain(p)) for p in str(screen).split("|")) if u]
+    if not parts:
+        return [], OPENER_PX
+    most, best = max(3, len(parts)), None
+    for cuts in itertools.product(*[list(itertools.product((0, 1), repeat=len(p) - 1)) for p in parts]):
+        lines = []
+        for units, cut in zip(parts, cuts):
+            line = [units[0]]
+            for u, c in zip(units[1:], cut):
+                if c:
+                    lines.append(line)
+                    line = []
+                line.append(u)
+            lines.append(line)
+        if len(lines) > most:
+            continue
+        px = OPENER_PX
+        for line in lines:
+            while px > OPENER_PX_MIN and opener_width(line, px) > OPENER_W:
+                px -= 2
+        hangs = sum(1 for line in lines[:-1] if line[-1].strip("«»\"*").lower() in CAP_HANG)
+        key = (-hangs, px, -len(lines))
+        if best is None or key > best[0]:
+            best = (key, lines)
+    return best[1], best[0][1]
+
+
+def opener_note_lines(note: str) -> int:
+    """How many lines the note takes (PT Sans Narrow at OPENER_NOTE_PX in the safe width, its padding inside)."""
+    from PIL import ImageFont
+
+    font, n, line = ImageFont.truetype(str(THESIS_FONT), OPENER_NOTE_PX), 1, ""
+    for word in note.split():
+        if line and font.getlength(f"{line} {word}") > W - 2 * SAFE_X - 36 - 4:
+            n, line = n + 1, word
+        else:
+            line = f"{line} {word}".strip()
+    return n
+
+
+def opener_html(story: dict, hold: float) -> tuple[str, str]:
+    """The opener's text over its picture, on screen from frame 0 to hold (no entrance — frame 0 is the cover): the
+    tiny brand chip near the top of the upper half, the big white capitals with a black outline — on the seam
+    (split) or lower-middle (full) — the *key* word on our red box, the note (the source) on a dark strip under them;
+    a OPENER_OUT fade ending at hold. Everything inside the safe zone."""
+    op = opener_of(story)
+    if not op or not hold:
+        return "", ""
+    lines, px = opener_fit(op["screen"])
+    note = plain(str(op.get("note") or ""))
+    split = opener_layout(story) == "split"
+    block_h = round(len(lines) * px * OPENER_LH)
+    note_h = round(opener_note_lines(note) * OPENER_NOTE_PX * 1.25 + 16) if note else 0
+    below = OPENER_NOTE_GAP + note_h if note else 0
+    top = round((OPENER_HALF if split else OPENER_FULL_Y) - block_h / 2)
+    top = max(min(top, SAFE_BOTTOM - block_h - below), OPENER_CHIP_Y + OPENER_CHIP_H + 24)
+    mid = round(100 * (top + block_h / 2) / H)
+    shade = ("linear-gradient(to bottom, rgba(0,0,0,.42) 0, rgba(0,0,0,0) 17%, "
+             f"rgba(0,0,0,0) {max(18, mid - 17)}%, rgba(0,0,0,.5) {mid}%, rgba(0,0,0,0) {min(83, mid + 17)}%, "
+             "rgba(0,0,0,0) 84%, rgba(0,0,0,.45) 100%)")
+    # spans, not divs, inside the clip (as the captions): a clip with nested divs reads as a sub-composition (lint)
+    text = "".join(f'<span class="ln">{thesis_markup(" ".join(line))}</span>' for line in lines)
+    html = (f'    <div id="opener" class="clip" data-start="0" data-duration="{hold}" data-track-index="9">'
+            f'<span class="op-shade" style="background:{shade}"></span>'
+            f'<span class="op-brand"><span>{esc(story.get("tag", "ЧП"))}</span></span>'
+            f'<span class="op-text" style="top:{top}px;font-size:{px}px">{text}</span>'
+            + (f'<span class="op-note" style="top:{top + block_h + OPENER_NOTE_GAP}px"><span>{esc(note)}</span></span>'
+               if note else "") + "</div>")
+    js = (f'  tl.fromTo("#opener", {{opacity: 1}}, {{opacity: 0, duration: {OPENER_OUT}, ease: "none", '
+          f'immediateRender: false}}, {max(0.0, hold - OPENER_OUT):.3f});')
+    return html, js
 
 
 def thesis_bottom(it: dict) -> int:
@@ -1546,13 +1878,21 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
             for t, d in anc.blink_track(on_air):
                 js.append(f'  tl.set("#a_blink", {{opacity: 1}}, {t}); tl.set("#a_blink", {{opacity: 0}}, {t + d:.2f});')
         anchor_js = "\n".join(js + tv_js)
-    hook_div, hook_js = hook_html(story, duration)
+    # the opener holds [0, hold]: the hook card, the theses and the captions come after it (README «Как устроена
+    # сборка» → «Опенер на экране»); without one hold is 0 and all is as before
+    hold = opener_hold(story, timing)
+    opener_div, opener_js = opener_html(story, hold)
+    if opener_div:
+        shutil.copy2(OPENER_FONT, ws / "assets" / OPENER_FONT.name)
+        shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
+    hook_div, hook_js = hook_html(story, duration, hold)
     if hook_div:
         shutil.copy2(HOOK_FONT, ws / "assets" / HOOK_FONT.name)
-    thesis_html, thesis_js, spans = theses(items)
+    thesis_html, thesis_js, spans = theses(items, hold)
     if thesis_html:
         shutil.copy2(THESIS_FONT, ws / "assets" / THESIS_FONT.name)
-    caps = around(cap_chunks(sorted(timing["words"] + timing.get("bite_words", []), key=lambda w: w[1])), spans)
+    said = [w for w in timing["words"] + timing.get("bite_words", []) if float(w[1]) >= hold]
+    caps = around(cap_chunks(sorted(said, key=lambda w: w[1])), spans + ([(0.0, hold)] if hold else []))
     shutil.copy2(CAP_FONT, ws / "assets" / CAP_FONT.name)
     caps_html = "\n".join(cap_html(i, *c) for i, c in enumerate(caps))
     caps_js = "\n".join(cap_js(i, *c) for i, c in enumerate(caps))
@@ -1614,7 +1954,8 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     audio = (f'    <audio id="bgm" src="assets/music.mp3" data-start="0" data-duration="{duration}" '
              f'data-media-start="{music.get("offset", 0)}" data-track-index="10" data-volume="{music_vol}"></audio>\n'
              if found else "")
-    audio += '    <audio id="voice" src="assets/narration.mp3" data-start="0.3" data-track-index="11" data-volume="1"></audio>'
+    audio += (f'    <audio id="voice" src="assets/narration.mp3" data-start="{timing.get("voice_at", VOICE_AT):g}" '
+              'data-track-index="11" data-volume="1"></audio>')
     if (proj / "assets" / "sfx.wav").is_file():
         shutil.copy2(proj / "assets" / "sfx.wav", ws / "assets" / "sfx.wav")
         audio += (f'\n    <audio id="sfx" src="assets/sfx.wav" data-start="0" data-duration="{duration}" '
@@ -1699,7 +2040,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
     .chip.credit {{ left: 30px; font-size: 30px; background: rgba(0,0,0,.55); padding: 5px 12px; border-radius: 4px; }}
     .chip.tr {{ left: 120px; right: 120px; font-size: 34px; line-height: 1.25; color: #111; background: rgba(255,255,255,.94);
                padding: 14px 22px; border-radius: 10px; text-align: center; max-height: 150px; overflow: hidden; }}{CAP_CSS}
-    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}{quote_card.CSS if qc_html else ""}
+    #fade {{ position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 9; }}{THESIS_CSS if thesis_html else ""}{HOOK_CSS if hook_div else ""}{quote_card.CSS if qc_html else ""}{OPENER_CSS if opener_div else ""}
   </style>
 </head>
 <body>
@@ -1711,7 +2052,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {chr(10).join(chips)}
 {chr(10).join(thesis_html)}
 {hook_div}
-{caps_html}
+{caps_html}{chr(10) + opener_div if opener_div else ""}
     <div id="fade" class="clip" data-start="0" data-duration="{duration}" data-track-index="8"></div>
 {audio}
   </div>
@@ -1724,7 +2065,7 @@ def write_workspace(proj: Path, story: dict, timing: dict, items: list[dict]) ->
 {chr(10).join(thesis_js)}
 {chr(10).join(qc_js)}
 {hook_js}
-{caps_js}
+{caps_js}{chr(10) + opener_js if opener_js else ""}
 {audio_js}
 {"" if story.get("loop") else f'  tl.to("#fade", {{ opacity: 1, duration: 0.6, ease: "power1.in" }}, {duration - 0.6:.2f});'}
   window.__timelines["main"] = tl;
@@ -1829,7 +2170,7 @@ def unclean_footage(story: dict) -> list[str]:
     if story.get("footage_clean") is False:
         return []
     bad = []
-    for s in [{"shots": all_pieces(story)}]:
+    for s in [{"shots": all_pieces(story) + opener_shots(story)}]:  # the opener's pictures are cleaned too
         for sh_ in s.get("shots", []):
             src = sh_.get("src", "")
             # a TikTok piece is always cleaned — its author's burned-in titles and captions (owner 2026-11-02)
@@ -1882,8 +2223,13 @@ def main() -> None:
             "quote card: " + w for st in stories(story) for w in quote_card.problems(st.get("shots", []))] + [
             "TikTok: " + w for w in tiktok_problems(story) + reposted_tiktok(proj, story)]:
         print("warning:", warning, flush=True)
+    if story.get("opener") and not opener_of(story):
+        print("warning: opener ignored — it needs \"screen\" and a picture in \"shots\", in a one-story film without "
+              "the anchor's greeting", flush=True)
     if a.storyboard:
         items = film_items(proj, story, timing, phrases, strict=False)
+        if op := opener_item(proj, story, timing, strict=False):
+            items = [op, *items]
         print("storyboard:", " ".join(str(p.relative_to(proj)) for p in storyboard(proj, story, items, timing)))
         return
     if over:
@@ -1892,7 +2238,11 @@ def main() -> None:
         sys.exit("TikTok footage (README «Кадры из TikTok»): " + "; ".join(tt_bad))
     if bad := unclean_footage(story):
         sys.exit("post footage not cleaned of watermarks — run addons/news/clean_footage.py first: " + ", ".join(bad))
-    items = film_items(proj, story, timing, phrases)
+    items = film_items(proj, story, timing, phrases)  # with an opener: from its hold on
+    if op := opener_item(proj, story, timing):  # the opener's own cut, [0, hold], first in broll0
+        print(f"opener: {op['opener']['layout']}, 0–{op['dur']:.2f} s, voice from {timing.get('voice_at', VOICE_AT):g} s",
+              flush=True)
+        items = [op, *items]
     if a.split and a.retime and (proj / "renders" / "final.mp4").is_file():  # the digest is done: only the shorts
         for i in (range(len(stories(story))) if a.split == "all" else [int(x) - 1 for x in a.split.split(",")]):
             print("short:", split_story(proj, story, timing, items, i, a.cat), flush=True)

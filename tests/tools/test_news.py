@@ -2376,3 +2376,213 @@ def test_the_opener_is_drafted_by_the_pick_kept_in_the_base_and_proofread(tmp_pa
     assert json.loads(newsbase.listing(con=con)[0]["opener"])["kind"] == "paradox"
     scr = proofread.screen_texts({"opener": draft, "hook": "Курсы моделей"})
     assert scr["opener"] == "350 ТЫСЯЧ — РАБОТУ НЕ ГАРАНТИРУЮТ" and scr["opener_note"] == "«Москва 24»"
+
+
+# -- the opener (owner 2026-11-08: layout B «сплит + вопрос», «вот этот вариант»; «1.5 секунды долго») ---------------
+OPENER_TEXT = "Трампу грозит импичмент. Демократы взяли Палату. Теперь они могут начать процедуру против президента."
+
+
+def _opener_story(**op) -> dict:
+    return {"slug": "op", "headline": "Импичмент", "tag": "ЧП · США", "date": "8 ноября",
+            "hook": "Демократы взяли Палату — *Трампу грозит импичмент?*", "narration": {"text": OPENER_TEXT},
+            "shots": [{"src": "a.mp4", "thesis": "Палата — *за демократами*"}, {"src": "a.mp4"}, {"src": "a.mp4"}],
+            "opener": {"kind": "question", "screen": "ТРАМПУ ГРОЗИТ|*ИМПИЧМЕНТ?*", "note": "по прогнозам CNN и NBC",
+                       "line1": "Трампу грозит импичмент.", "line2": "Демократы взяли Палату.",
+                       "shots": [{"src": "top.mp4", "in": 2.4, "focus": [0.5, 0.4]},
+                                 {"src": "bottom.jpg", "focus": [0.5, 0.5]}], **op}}
+
+
+def _frame(t: float) -> float:
+    return round(round(t * build.FPS) / build.FPS, 3)
+
+
+def test_the_opener_holds_until_its_two_lines_are_said():
+    s = _opener_story()
+    words = _spoken(OPENER_TEXT, 0.3, 0.42)              # «Палату.» (the 6th word) ends the two lines
+    timing = {"words": words, "duration": 12.0}
+    assert build.opener_hold(s, timing) == _frame(words[5][2])                      # on a frame
+    assert build.opener_hold(s, {"words": _spoken(OPENER_TEXT, 0.3, 0.9), "duration": 20.0}) == build.OPENER_MAX
+    assert build.opener_hold(s, {"words": _spoken(OPENER_TEXT, 0.3, 0.2), "duration": 9.0}) == build.OPENER_MIN
+    text = OPENER_TEXT.replace("Палату.", "палату представителей.")                 # the editor mended a word
+    assert build.opener_hold({**s, "narration": {"text": text}}, {"words": _spoken(text, 0.3, 0.42),
+                                                                  "duration": 12.0}) == _frame(words[6][2])
+    assert build.opener_hold(_opener_story(hold=2.5), timing) == 2.5                 # story.json's own hold
+    assert build.opener_hold({k: v for k, v in s.items() if k != "opener"}, timing) == 0.0
+    assert build.opener_hold({**s, "stories": [s]}, timing) == 0.0                   # a digest: no opener
+    assert build.opener_hold({**s, "opener": {**s["opener"], "shots": []}}, timing) == 0.0
+
+
+def test_the_opener_text_is_fitted_into_the_safe_width_and_the_key_word_stays_whole():
+    lines, px = build.opener_fit("ТРАМПУ ГРОЗИТ|*ИМПИЧМЕНТ?*")
+    assert lines == [["ТРАМПУ"], ["ГРОЗИТ"], ["*ИМПИЧМЕНТ?*"]] and 80 <= px <= build.OPENER_PX   # 3 big lines, not 2
+    assert all(build.opener_width(x, px) <= build.OPENER_W for x in lines)
+    assert build.OPENER_W <= build.W - 2 * build.SAFE_X
+    lines, px = build.opener_fit("*12 ДЕТЕЙ* ОТРАВИЛИСЬ В ЛАГЕРЕ")
+    assert ["*12 ДЕТЕЙ*"] in lines and not any(x[-1] == "В" for x in lines[:-1])    # a preposition never ends a line
+    lines, _ = build.opener_fit("«МЫ ВАС *НАЙДЁМ*»")
+    assert lines[-1] == ["*НАЙДЁМ*»"]                                                  # the quote mark stays on it
+    assert 2 <= len(build.opener_fit("ВО ФЛОРИДЕ ГОРИТ ЗАВОД")[0]) <= 3
+
+
+def test_the_opener_segment_stacks_two_halves_or_crops_one(monkeypatch):
+    calls = []
+    monkeypatch.setattr(build, "probe", lambda p: (1920, 1080, 10.0) if str(p).endswith(".mp4") else (1280, 720, 0.04))
+    monkeypatch.setattr(build, "sh", lambda cmd: calls.append(cmd))
+    top = {"path": Path("media/top.mp4"), "video": True, "in": 2.4, "focus": [0.5, 0.4]}
+    bottom = {"path": Path("media/bottom.jpg"), "video": False, "in": 0.0, "focus": [0.2, 0.5]}
+    item = {"opener": {"layout": "split", "shots": [top, bottom]}, "path": top["path"], "video": True, "in": 2.4,
+            "start": 0.0, "dur": 2.8, "w": 0}
+    build.segment(item, Path("/tmp/op.mp4"))
+    cmd = calls[-1]
+    flt = cmd[cmd.index("-filter_complex") + 1]
+    assert cmd.count("-i") == 2 and cmd[cmd.index("-ss") + 1] == "2.400" and "-loop" in cmd  # the clip from "in", a still
+    assert "vstack=inputs=2" in flt and flt.count(f"crop={build.W}:{build.OPENER_HALF}:") == 2
+    assert build.opener_crop(1920, 1080, 1080, 960, [0.5, 0.4]) == (1708, 960, 314, 0)       # 16:9 -> 1080x960 around
+    assert build.opener_crop(1280, 720, 1080, 960, [0.2, 0.5])[2] == 0                       # its focus, kept inside
+    assert "drawbox" in flt and "tpad=stop_mode=clone" in flt                                  # the seam; a short clip holds
+    build.segment({**item, "opener": {"layout": "full", "shots": [top]}}, Path("/tmp/op.mp4"))
+    cmd = calls[-1]
+    flt = cmd[cmd.index("-filter_complex") + 1]
+    assert cmd.count("-i") == 1 and "vstack" not in flt and f"crop={build.W}:{build.H}:" in flt
+
+
+def test_the_story_pictures_go_on_after_the_opener_without_a_gap(tmp_path: Path):
+    items = [{"path": "a", "video": True, "in": 1.0, "start": 0.0, "dur": 1.9, "w": 0, "thesis": "Первый *факт*"},
+             {"path": "b", "video": True, "in": 5.0, "start": 1.9, "dur": 2.0, "w": 0},
+             {"path": "c", "video": False, "start": 3.9, "dur": 2.5, "w": 0},
+             {"path": "d", "video": True, "in": 0.0, "start": 6.4, "dur": 3.0, "w": 0}]
+    out = build.after_opener(items, 2.8)
+    assert [x["path"] for x in out] == ["b", "c", "d"]              # «a» is wholly under the opener
+    assert out[0]["start"] == 2.8 and abs(out[0]["dur"] - 1.1) < 1e-9 and abs(out[0]["in"] - 5.9) < 1e-9  # in sync
+    assert out[0]["thesis"] == "Первый *факт*"                       # the first fact still comes, after the opener
+    assert out[1:] == items[2:]                                        # nothing after the opener changes
+    out = build.after_opener(items, 3.3)                               # «b» would keep 0.6 s: a flash — dropped
+    assert [x["path"] for x in out] == ["c", "d"] and out[0]["start"] == 3.3 and abs(out[0]["dur"] - 3.1) < 1e-9
+    assert build.after_opener(items, 0.0) == items
+    # film_items does it on its own: the pictures start at hold; the opener's own cut comes from opener_item
+    _clip(tmp_path / "a.mp4", 12.0)
+    _clip(tmp_path / "top.mp4", 6.0)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360", "-frames:v", "1",
+                    str(tmp_path / "bottom.jpg")], check=True)
+    s = _opener_story()
+    timing = {"words": _spoken(OPENER_TEXT, 0.3, 0.42), "duration": 7.0, "windows": [[0.0, 7.0]]}
+    hold = build.opener_hold(s, timing)
+    got = build.film_items(tmp_path, s, timing, build.story_beats(s, timing))
+    assert got[0]["start"] == hold and abs(got[-1]["start"] + got[-1]["dur"] - 7.0) < 0.01
+    assert all(abs(a["start"] + a["dur"] - b["start"]) < 0.002 for a, b in zip(got, got[1:]))   # continuous
+    op = build.opener_item(tmp_path, s, timing)
+    assert op["start"] == 0.0 and op["dur"] == hold and op["opener"]["layout"] == "split"
+    assert [x["path"] for x in op["opener"]["shots"]] == [tmp_path / "top.mp4", tmp_path / "bottom.jpg"]
+    assert op["opener"]["shots"][0]["in"] == 2.4 and op["opener"]["shots"][1]["video"] is False
+    full = build.opener_item(tmp_path, _opener_story(layout="full"), timing)
+    assert full["opener"]["layout"] == "full" and len(full["opener"]["shots"]) == 1
+
+
+def _opener_page(tmp_path: Path, story: dict, timing: dict, items: list) -> str:
+    for f in ("assets/broll0.mp4", "assets/narration.mp3"):
+        (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / f).write_bytes(b"x")
+    return (build.write_workspace(tmp_path, story, timing, items) / "index.html").read_text(encoding="utf-8")
+
+
+def test_the_opener_is_on_screen_from_frame_0_and_the_hook_theses_and_captions_come_after(tmp_path: Path):
+    v = _clip(tmp_path / "v.mp4", 10.0)
+    s = _opener_story()
+    timing = {"words": _spoken(OPENER_TEXT, 0.3, 0.42), "duration": 7.0, "windows": [[0.0, 7.0]]}
+    hold = build.opener_hold(s, timing)
+    items = [{"path": v, "video": True, "in": 0.0, "start": 0.0, "dur": hold, "w": 0, "opener": {"layout": "split"}},
+             {"path": v, "video": True, "in": 3.0, "start": hold, "dur": 1.2, "w": 0, "fit": True,
+              "thesis": "Палата — *за демократами*", "span": 1},
+             {"path": v, "video": True, "in": 5.0, "start": round(hold + 1.2, 3), "dur": round(5.8 - hold, 3), "w": 0,
+              "fit": True}]
+    page = _opener_page(tmp_path, s, timing, items)
+    assert f'id="opener" class="clip" data-start="0" data-duration="{hold}"' in page              # from frame 0
+    assert '<span class="ln">ТРАМПУ</span><span class="ln">ГРОЗИТ</span>' in page
+    assert '<span class="ln"><em>ИМПИЧМЕНТ?</em></span>' in page                                  # the key word, red
+    assert '<span class="op-brand"><span>ЧП · США</span></span>' in page                          # the tiny chip
+    assert '<span>по прогнозам CNN и NBC</span>' in page                                           # the note
+    assert 'tl.from("#opener' not in page and "#opener .op-text" in page                          # no entrance
+    assert (f'tl.fromTo("#opener", {{opacity: 1}}, {{opacity: 0, duration: {build.OPENER_OUT}, ease: "none", '
+            f'immediateRender: false}}, {hold - build.OPENER_OUT:.3f});') in page                  # a quick exit
+    assert (tmp_path / "hyperframes" / "assets" / "Montserrat-Black.ttf").is_file()
+    assert (tmp_path / "hyperframes" / "assets" / "PTSansNarrow-Bold.ttf").is_file()
+    assert f'id="hook" class="clip" data-start="{hold}" data-duration="{round(7.0 - hold, 3)}"' in page
+    assert f'tl.from("#hook", {{yPercent: -100, duration: {build.HOOK_IN}, ease: "power2.out"}}, {hold});' in page
+    starts = [float(x.split('"')[0]) for x in page.split('class="clip cap" data-start="')[1:]]
+    assert starts and min(starts) >= hold                                                          # captions after it
+    assert ">Трампу</span>" not in page and ">Палату</span>" not in page   # its own lines are on the big text
+    assert ">Теперь</span>" not in page                                     # under the thesis, as always
+    assert ">президента.</span>" in page or ">президента</span>" in page
+    assert f'class="clip thesis" data-start="{hold}"' in page.replace("thesis over", "thesis")  # the thesis after it
+    # inside the safe zone: the chip under the app's top, the text and the note above the bottom, on the seam
+    top = int(page.split('class="op-text" style="top:')[1].split("px")[0])
+    px = int(page.split('class="op-text" style="top:')[1].split("font-size:")[1].split("px")[0])
+    note = int(page.split('class="op-note" style="top:')[1].split("px")[0])
+    assert build.OPENER_CHIP_Y >= 220 and top > build.OPENER_CHIP_Y + build.OPENER_CHIP_H
+    assert top < build.OPENER_HALF < top + 3 * px * build.OPENER_LH < note < build.SAFE_BOTTOM - 60
+    assert f"left: {build.SAFE_X}px; right: {build.SAFE_X}px" in build.OPENER_CSS
+    full = _opener_page(tmp_path, _opener_story(layout="full"), timing, items)
+    ftop = int(full.split('class="op-text" style="top:')[1].split("px")[0])
+    assert ftop > top and int(full.split('class="op-note" style="top:')[1].split("px")[0]) < build.SAFE_BOTTOM - 60
+
+
+def test_a_story_without_an_opener_builds_as_before(tmp_path: Path):
+    v = _clip(tmp_path / "v.mp4", 10.0)
+    s = {k: x for k, x in _opener_story().items() if k != "opener"}
+    timing = {"words": _spoken(OPENER_TEXT, 0.3, 0.42), "duration": 7.0, "windows": [[0.0, 7.0]]}
+    items = [{"path": v, "video": True, "in": 0.0, "start": 0.0, "dur": 7.0, "w": 0, "fit": True,
+              "thesis": "Палата — *за демократами*"}]
+    page = _opener_page(tmp_path, s, timing, items)
+    assert "opener" not in page and "op-text" not in page
+    assert 'id="hook" class="clip" data-start="0" data-duration="7.0"' in page and 'tl.from("#hook"' not in page
+    assert build.hook_html(s, 7.0) == build.hook_html(s, 7.0, 0.0) and build.hook_html(s, 7.0)[1] == ""
+    assert 'class="clip thesis" data-start="0.0"' in page.replace("thesis over", "thesis")
+    assert page.count('class="clip cap"') == len(build.around(build.cap_chunks(timing["words"]),
+                                                              build.theses(items)[2]))
+    assert '<audio id="voice" src="assets/narration.mp3" data-start="0.3" ' in page
+    assert build.voice_at(s) == build.VOICE_AT and build.opener_item(tmp_path, s, timing) is None
+    assert build.after_opener(items, build.opener_hold(s, timing)) == items
+    assert build.unclean_footage(s) == [] and build.tiktok_problems(s) == []
+
+
+def test_the_opener_can_open_on_the_source_own_sound_and_the_voice_waits(tmp_path: Path, monkeypatch):
+    s = _opener_story(audio={"src": "media/radio.mp4", "in": 430.55, "out": 433.15})
+    assert build.voice_at(s) == round(433.15 - 430.55 + build.OPENER_GAP, 3)            # the voice after the sound
+    assert build.voice_at(_opener_story()) == build.VOICE_AT
+    timing = {"words": _spoken(OPENER_TEXT, build.voice_at(s), 0.3), "duration": 9.0, "windows": [[0.0, 9.0]],
+              "voice_at": build.voice_at(s)}
+    page = _opener_page(tmp_path, s, timing, [])
+    assert f'<audio id="voice" src="assets/narration.mp3" data-start="{build.voice_at(s):g}" ' in page
+    # the sound itself: a layer of the bed from 0, as long as out − in, levelled like a sound bite
+    radio = tmp_path / "media" / "radio.mp4"
+    radio.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=440:d=2", "-f", "lavfi", "-i",
+                    "testsrc=size=160x90:rate=30:duration=2", "-shortest", "-pix_fmt", "yuv420p", str(radio)], check=True)
+    s = _opener_story(audio={"src": "media/radio.mp4", "in": 0.2, "out": 1.6})
+    calls = []
+    real_sh = build.sh
+    monkeypatch.setattr(build, "sh", lambda cmd: calls.append(cmd) or real_sh(cmd))
+    assert build.sound_bed(tmp_path, s, {"duration": 9.0, "windows": [[0.0, 9.0]]}, []).is_file()
+    mix = next(c for c in calls if "-filter_complex" in c)
+    flt = mix[mix.index("-filter_complex") + 1]
+    assert str(radio.resolve()) in mix and "atrim=start=0.200:duration=1.400" in flt and "loudnorm" in flt
+    assert "adelay=0|0" in flt
+
+
+def test_the_opener_pictures_are_cleaned_and_checked_like_any_shot(tmp_path: Path):
+    from addons.news import clean_footage as cf
+
+    s = _opener_story(shots=[{"src": "media/top.mp4", "in": 2.4}, {"src": "media/bottom.jpg"}])
+    s["shots"] = []
+    use = cf.footage(tmp_path, s)                                    # no timings yet: its longest possible window
+    assert use["media/top.mp4@2.4"]["len"] == round(build.OPENER_MAX + 0.3, 2) and "media/bottom.jpg@0" in use
+    (tmp_path / "assets").mkdir()
+    timing = {"words": _spoken(OPENER_TEXT, 0.3, 0.42), "duration": 7.0, "windows": [[0.0, 7.0]]}
+    (tmp_path / "assets" / "timing.json").write_text(json.dumps(timing))
+    assert cf.footage(tmp_path, s)["media/top.mp4@2.4"]["len"] == round(build.opener_hold(s, timing) + 0.3, 2)
+    assert build.unclean_footage(s) == ["media/bottom.jpg", "media/top.mp4"]   # build refuses them uncleaned
+    s["opener"]["shots"] = [{"src": "media/clean/top_2.4.clean.mp4", "src_orig": "media/top.mp4", "in": 0},
+                            {"src": "media/bottom.jpg", "clean": "none"}]
+    assert build.unclean_footage(s) == [] and "media/bottom.jpg@0" not in cf.footage(tmp_path, s)  # seen clean
+    s["opener"]["shots"][0]["src_orig"] = "media/tt/top.mp4"
+    assert any("opener shows a TikTok piece" in w for w in build.tiktok_problems(s))
