@@ -2400,13 +2400,16 @@ def test_the_opener_holds_until_its_two_lines_are_said():
     s = _opener_story()
     words = _spoken(OPENER_TEXT, 0.3, 0.42)              # «Палату.» (the 6th word) ends the two lines
     timing = {"words": words, "duration": 12.0}
-    assert build.opener_hold(s, timing) == _frame(words[5][2])                      # on a frame
+    # the opener is a sub-second flash (owner 2026-11-09), never the length of its two spoken lines
+    assert build.opener_hold(s, timing) == build.OPENER_MAX
     assert build.opener_hold(s, {"words": _spoken(OPENER_TEXT, 0.3, 0.9), "duration": 20.0}) == build.OPENER_MAX
-    assert build.opener_hold(s, {"words": _spoken(OPENER_TEXT, 0.3, 0.2), "duration": 9.0}) == build.OPENER_MIN
+    assert build.opener_hold(s, {"words": _spoken(OPENER_TEXT, 0.3, 0.2), "duration": 9.0}) == build.OPENER_MAX
     text = OPENER_TEXT.replace("Палату.", "палату представителей.")                 # the editor mended a word
     assert build.opener_hold({**s, "narration": {"text": text}}, {"words": _spoken(text, 0.3, 0.42),
-                                                                  "duration": 12.0}) == _frame(words[6][2])
-    assert build.opener_hold(_opener_story(hold=2.5), timing) == 2.5                 # story.json's own hold
+                                                                  "duration": 12.0}) == build.OPENER_MAX
+    assert build.opener_hold(_opener_story(hold=0.5), timing) == 0.5                 # story.json's own flash
+    assert build.opener_hold(_opener_story(hold=2.5), timing) == 1.2                 # an old long hold clamped
+    assert build.opener_hold(_opener_story(hold=0.2), timing) == 0.4                 # too short: the minimum
     assert build.opener_hold({k: v for k, v in s.items() if k != "opener"}, timing) == 0.0
     assert build.opener_hold({**s, "stories": [s]}, timing) == 0.0                   # a digest: no opener
     assert build.opener_hold({**s, "opener": {**s["opener"], "shots": []}}, timing) == 0.0
@@ -2456,8 +2459,11 @@ def test_the_story_pictures_go_on_after_the_opener_without_a_gap(tmp_path: Path)
     assert out[0]["start"] == 2.8 and abs(out[0]["dur"] - 1.1) < 1e-9 and abs(out[0]["in"] - 5.9) < 1e-9  # in sync
     assert out[0]["thesis"] == "Первый *факт*"                       # the first fact still comes, after the opener
     assert out[1:] == items[2:]                                        # nothing after the opener changes
-    out = build.after_opener(items, 3.3)                               # «b» would keep 0.6 s: a flash — dropped
-    assert [x["path"] for x in out] == ["c", "d"] and out[0]["start"] == 3.3 and abs(out[0]["dur"] - 3.1) < 1e-9
+    out = build.after_opener(items, 3.3)                               # «b» would keep 0.6 s < 0.3? no: kept
+    # with the sub-second opener REMAIN is 0.3: «b» keeps 0.6 s, more than 0.3 — it stays
+    assert [x["path"] for x in out] == ["b", "c", "d"] and out[0]["start"] == 3.3 and abs(out[0]["dur"] - 0.6) < 1e-9
+    out = build.after_opener(items, 3.7)                               # «b» would keep 0.2 s < 0.3 — dropped
+    assert [x["path"] for x in out] == ["c", "d"] and out[0]["start"] == 3.7 and abs(out[0]["dur"] - 2.7) < 1e-9
     assert build.after_opener(items, 0.0) == items
     # film_items does it on its own: the pictures start at hold; the opener's own cut comes from opener_item
     _clip(tmp_path / "a.mp4", 12.0)
@@ -2510,7 +2516,8 @@ def test_the_opener_is_on_screen_from_frame_0_and_the_hook_theses_and_captions_c
     assert f'tl.from("#hook", {{yPercent: -100, duration: {build.HOOK_IN}, ease: "power2.out"}}, {hold});' in page
     starts = [float(x.split('"')[0]) for x in page.split('class="clip cap" data-start="')[1:]]
     assert starts and min(starts) >= hold                                                          # captions after it
-    assert ">Трампу</span>" not in page and ">Палату</span>" not in page   # its own lines are on the big text
+    # with the sub-second flash (owner 2026-11-09) the opener no longer covers the whole of its two spoken
+    # lines: the captions of the words still being said run under it
     assert ">Теперь</span>" in page                       # under a thesis too (owner 2026-11-09: «субтитры не рисуются»)
     assert ">президента.</span>" in page or ">президента</span>" in page
     assert f'class="clip thesis" data-start="{hold}"' in page.replace("thesis over", "thesis")  # the thesis after it

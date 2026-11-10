@@ -44,7 +44,7 @@ FIELDS = ("kind", "screen", "note", "line1", "line2", "layout", "shots", "audio"
 # readable in under a second (owner 2026-11-08): 2–5 huge words in at most 3 lines; each spoken phrase ≤ 2.5 s
 MIN_WORDS, MAX_WORDS, MAX_LINES, LINE_WORDS = 2, 5, 3, 8
 SPLIT_GAP_S = 3.0      # two halves from one clip: moments at least this far apart (README «Оценка кадров»: no repeats)
-HOLD_S = 2.8           # how long the opener holds: the frames of each candidate piece are taken over this
+HOLD_S = 0.8           # the opener is a sub-second flash (owner 2026-11-09), not a wait: candidate frames are taken over this
 POOL_MAX = 10          # candidate shots shown to the AI
 WEIGHTS = {"loop": 25, "readable": 20, "stakes": 20, "match": 15, "turn": 10, "concrete": 10}
 REPEAT_PENALTY, RECENT_FILMS = 5, 2

@@ -1281,10 +1281,10 @@ def thesis_markup(text: str) -> str:
 # -- the opener: the first ~3 s of a one-story film (owner 2026-11-08, layout B «сплит + вопрос»: «вот этот вариант»;
 # «1.5 секунды долго» — nothing waits: both halves, the big text, the chip and the note are there from frame 0, which is
 # also the cover). story["opener"] is written by addons/news/opener.py (README «Опенер»); build.py only renders it ----
-OPENER_MIN, OPENER_MAX = 1.8, 3.5  # s: the opener window taken from the words (the end of line2) stays in here
-OPENER_DEFAULT = 2.8      # s: no line1/line2 found in the words
+OPENER_MIN, OPENER_MAX = 0.4, 0.9  # s: the opener is a flash, not a wait (owner 2026-11-09: «превью меньше секунды и дальше хук»)
+OPENER_DEFAULT = 0.8      # s: no line1/line2 found in the words — a sub-second flash too
 OPENER_GAP = 0.2          # s: between the opener's own sound and the voice
-OPENER_REMAIN = 1.0       # s: a picture with less than this left after the opener is dropped, the next one starts there
+OPENER_REMAIN = 1.0 if OPENER_MAX > 2.0 else 0.3  # a sub-second flash drops a picture only if under 0.3 s is left of it
 OPENER_HALF = H // 2      # px: the height of each half of a split opener (1080 x 960)
 OPENER_SEAM = 10          # px: the dark line between the halves
 OPENER_PX, OPENER_PX_MIN = 160, 40  # the big text's size: every line one size, as large as the widest line allows
@@ -1393,7 +1393,7 @@ def opener_hold(story: dict, timing: dict) -> float:
     if not op:
         return 0.0
     if op.get("hold"):
-        hold = min(max(float(op["hold"]), 1.0), 6.0)
+        hold = min(max(float(op["hold"]), 0.4), 1.2)  # an explicit "hold" also stays a flash (owner 2026-11-09)
     else:
         said = opener_said_end(story, timing)
         hold = min(max(OPENER_DEFAULT if said is None else said, OPENER_MIN), OPENER_MAX)
