@@ -626,8 +626,13 @@ def _group_simple(posts: list[dict]) -> list[dict]:
              "sig": {"s": sorted(g["terms"]), "n": [], "c": []}} for g in groups]
 
 
+CITY_REGIONS = ("moscow", "kazan", "spb", "sochi", "nn", "krasnodar", "regional")  # the cities (owner 2026-11-10: +sochi/krasnodar/nn)
+
+
 def region_of(story: dict) -> tuple[str, str]:
-    """(region, place): world + the country, a city (moscow / kazan / spb) or russia."""
+    """(region, place): world + the country, a city (moscow / kazan / spb / sochi / krasnodar / nn) or russia.
+    The new cities (owner 2026-11-10: «Сочи / Краснодар / Нижний Новгород / Питер») are checked by their own geo
+    first, so a Sochi story never lands in krasnodar's krai-wide regex."""
     geos = {p["geo"] for p in story["posts"] if p.get("src") == "google"}
     if story["seed"].get("src") == "google" and len(geos) == 1 and next(iter(geos)) in GEO_COUNTRY:
         return "world", dict((c, n) for c, n, _ in world.COUNTRIES).get(GEO_COUNTRY[next(iter(geos))], "мир")
@@ -635,7 +640,7 @@ def region_of(story: dict) -> tuple[str, str]:
     code = world.country_of(story["seed"]["text"])
     if code and codes.count(code) >= len(codes) / 2:  # one post's «в Белоруссии тоже» is not the place (01.11)
         return "world", dict((c, n) for c, n, _ in world.COUNTRIES)[code]
-    for city in ("moscow", "kazan", "spb"):
+    for city in ("moscow", "kazan", "spb", "sochi", "nn", "krasnodar"):
         c = pick.CITIES[city]
         local = {h for h, whole in c["channels"] if whole}
         chans = {p["channel"] for p in story["posts"]}
@@ -1200,7 +1205,7 @@ def fit(st: dict, acc: dict) -> float:
     if topic and topic in (acc.get("avoid_topics") or []):
         return 0.0
     if acc.get("regions") and st["region"] not in acc["regions"] and not (
-            st["region"] in ("moscow", "kazan", "spb", "regional") and "regional" in acc["regions"]):
+            st["region"] in CITY_REGIONS and "regional" in acc["regions"]):
         return 0.0
     if acc.get("topics") and topic not in acc["topics"]:
         return 0.75
@@ -1344,7 +1349,7 @@ def final_score(st: dict, weights: dict[str, float]) -> None:
     """The AI's own score when it scored the story (owner 2026-11-02: «выходной балл — ИИ»); the weighted formula
     ("formula", kept for the stats) only when the gateway gave none."""
     v = st.get("ai")
-    regional = st["region"] in ("moscow", "kazan", "spb", "regional")
+    regional = st["region"] in CITY_REGIONS
     st["features"] = {k: (v or st["h"])[k] for k in AI_FEATURES}
     st["score"] = score(st["features"], st["sigf"], st["signals"]["age_h"], weights, regional)
     if not v:  # without the AI's look a story waits behind every one it saw

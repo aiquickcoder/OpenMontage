@@ -8,27 +8,90 @@
   "base": "~/memes/msk_chp_base",
   "server_base": "/srv/factory/news_base",
   "sources": [
-   ["rutube", "23350159", false, true],
-   ["youtube", "@NAK_antiterror", false, true],
-   ["site", "https://sledcom.ru/news", false, false]
+   [
+    "rutube",
+    "23350159",
+    false,
+    true
+   ],
+   [
+    "youtube",
+    "@NAK_antiterror",
+    false,
+    true
+   ],
+   [
+    "site",
+    "https://sledcom.ru/news",
+    false,
+    false
+   ]
   ],
   "channels": [
-   ["moscowach", true],
-   ["moscowmap", true],
-   ["ostorozhno_moskva", true],
-   ["moscowcourts", true],
-   ["shot_shot", false],
-   ["mash", false],
-   ["bazabazon", false],
-   ["ostorozhno_novosti", false],
-   ["infomoscow24", false],
-   ["breakingmash", false],
-   ["skmoscowgsu", true],
-   ["moscowproc", true],
-   ["utcfo", false],
-   ["mediamvd", false],
-   ["IrinaVolk_MVD", false],
-   ["sledcom_press", false]
+   [
+    "moscowach",
+    true
+   ],
+   [
+    "moscowmap",
+    true
+   ],
+   [
+    "ostorozhno_moskva",
+    true
+   ],
+   [
+    "moscowcourts",
+    true
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "bazabazon",
+    false
+   ],
+   [
+    "ostorozhno_novosti",
+    false
+   ],
+   [
+    "infomoscow24",
+    false
+   ],
+   [
+    "breakingmash",
+    false
+   ],
+   [
+    "skmoscowgsu",
+    true
+   ],
+   [
+    "moscowproc",
+    true
+   ],
+   [
+    "utcfo",
+    false
+   ],
+   [
+    "mediamvd",
+    false
+   ],
+   [
+    "IrinaVolk_MVD",
+    false
+   ],
+   [
+    "sledcom_press",
+    false
+   ]
   ],
   "harvest_geo": "москв|москов|подмоск|мкад|\\bметро\\b|коммунарк|зеленоград|новой москв|новая москва|садов\\w+ кольц",
   "geo": "(?<!под)москв|(?<!под)москов(?!ск\\w*\\s+обл)|\\bметро\\b|мкад|зеленоград|коммунарк|новая москва|новой москв|садов\\w+ кольц",
@@ -43,30 +106,104 @@
   "base": "~/memes/kzn_chp_base",
   "server_base": "/srv/factory/news_base_kzn",
   "sources": [
-   ["site", "https://tnv.ru/news/the-incident/", false, false],
-   ["rutube", "23350159", false, true],
-   ["youtube", "@NAK_antiterror", false, true],
-   ["site", "https://sledcom.ru/news", false, false]
+   [
+    "site",
+    "https://tnv.ru/news/the-incident/",
+    false,
+    false
+   ],
+   [
+    "rutube",
+    "23350159",
+    false,
+    true
+   ],
+   [
+    "youtube",
+    "@NAK_antiterror",
+    false,
+    true
+   ],
+   [
+    "site",
+    "https://sledcom.ru/news",
+    false,
+    false
+   ]
   ],
   "channels": [
-   ["tatarstansos", true],
-   ["incident_kazan", true],
-   ["mash_iptash", true],
-   ["tatar_news", true],
-   ["kazan_chs_1", true],
-   ["zhest_dtp16", true],
-   ["kazancity", true],
-   ["shot_shot", false],
-   ["mash", false],
-   ["bazabazon", false],
-   ["ostorozhno_novosti", false],
-   ["su_skr16", true],
-   ["prokrt", true],
-   ["pristav_tatarstan", true],
-   ["gibddtatarstan", true],
-   ["mediamvd", false],
-   ["IrinaVolk_MVD", false],
-   ["sledcom_press", false]
+   [
+    "tatarstansos",
+    true
+   ],
+   [
+    "incident_kazan",
+    true
+   ],
+   [
+    "mash_iptash",
+    true
+   ],
+   [
+    "tatar_news",
+    true
+   ],
+   [
+    "kazan_chs_1",
+    true
+   ],
+   [
+    "zhest_dtp16",
+    true
+   ],
+   [
+    "kazancity",
+    true
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "bazabazon",
+    false
+   ],
+   [
+    "ostorozhno_novosti",
+    false
+   ],
+   [
+    "su_skr16",
+    true
+   ],
+   [
+    "prokrt",
+    true
+   ],
+   [
+    "pristav_tatarstan",
+    true
+   ],
+   [
+    "gibddtatarstan",
+    true
+   ],
+   [
+    "mediamvd",
+    false
+   ],
+   [
+    "IrinaVolk_MVD",
+    false
+   ],
+   [
+    "sledcom_press",
+    false
+   ]
   ],
   "harvest_geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
   "geo": "\\b(?:казан|татарстан|рт\\b|челн|нижнекамск|зеленодольск|альметьевск|бугульм|чистопол|елабуг|нурлат|лениногорск|заинск|менделеевск|буинск|арск|мамадыш|тетюш)",
@@ -81,32 +218,110 @@
   "base": "~/memes/spb_chp_base",
   "server_base": "/srv/factory/news_base_spb",
   "sources": [
-   ["rutube", "23350159", false, true],
-   ["youtube", "@NAK_antiterror", false, true],
-   ["site", "https://sledcom.ru/news", false, false]
+   [
+    "rutube",
+    "23350159",
+    false,
+    true
+   ],
+   [
+    "youtube",
+    "@NAK_antiterror",
+    false,
+    true
+   ],
+   [
+    "site",
+    "https://sledcom.ru/news",
+    false,
+    false
+   ]
   ],
   "channels": [
-   ["fontankaspb", true],
-   ["dtp_spb78", true],
-   ["incident_spb", true],
-   ["Megapolisonline", true],
-   ["nevnov", true],
-   ["nevskie_novosti", true],
-   ["rotondamedia", true],
-   ["chp_piter", true],
-   ["shot_shot", false],
-   ["mash", false],
-   ["bazabazon", false],
-   ["ostorozhno_novosti", false],
-   ["mchspetersburg", true],
-   ["gsuskrf_spb", true],
-   ["procspb", true],
-   ["SPbGS", true],
-   ["spb_police78", false],
-   ["ugibdd78", false],
-   ["mediamvd", false],
-   ["IrinaVolk_MVD", false],
-   ["sledcom_press", false]
+   [
+    "fontankaspb",
+    true
+   ],
+   [
+    "dtp_spb78",
+    true
+   ],
+   [
+    "incident_spb",
+    true
+   ],
+   [
+    "Megapolisonline",
+    true
+   ],
+   [
+    "nevnov",
+    true
+   ],
+   [
+    "nevskie_novosti",
+    true
+   ],
+   [
+    "rotondamedia",
+    true
+   ],
+   [
+    "chp_piter",
+    true
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "bazabazon",
+    false
+   ],
+   [
+    "ostorozhno_novosti",
+    false
+   ],
+   [
+    "mchspetersburg",
+    true
+   ],
+   [
+    "gsuskrf_spb",
+    true
+   ],
+   [
+    "procspb",
+    true
+   ],
+   [
+    "SPbGS",
+    true
+   ],
+   [
+    "spb_police78",
+    false
+   ],
+   [
+    "ugibdd78",
+    false
+   ],
+   [
+    "mediamvd",
+    false
+   ],
+   [
+    "IrinaVolk_MVD",
+    false
+   ],
+   [
+    "sledcom_press",
+    false
+   ]
   ],
   "harvest_geo": "петербур|\\bспб\\b|\\bпитер|ленинградск\\w* облас|ленобласт|петроград|кронштадт|колпино|петергоф|пулково|купчино|девяткино|гатчин|всеволожск|\\bвыборг",
   "geo": "петербур|\\bспб\\b|\\bпитер|петроград|кронштадт|колпино|петергоф|пулково|купчино|сестрорецк|зеленогорск|невск\\w* проспект",
@@ -127,30 +342,238 @@
   "stories": 7,
   "max_seconds": 120,
   "sources": [
-   ["rutube", "23350159", false, true],
-   ["youtube", "@NAK_antiterror", false, true],
-   ["site", "https://sledcom.ru/news", false, false]
+   [
+    "rutube",
+    "23350159",
+    false,
+    true
+   ],
+   [
+    "youtube",
+    "@NAK_antiterror",
+    false,
+    true
+   ],
+   [
+    "site",
+    "https://sledcom.ru/news",
+    false,
+    false
+   ]
   ],
   "channels": [
-   ["readovkanews", true],
-   ["toporlive", true],
-   ["mash", true],
-   ["bbbreaking", true],
-   ["bazabazon", true],
-   ["ostorozhno_novosti", true],
-   ["shot_shot", true],
-   ["topor", true],
-   ["rbc_news", true],
-   ["tass_agency", true],
-   ["mediamvd", true],
-   ["IrinaVolk_MVD", true],
-   ["mchs_official", true],
-   ["sledcom_press", true],
-   ["genprocrf", true],
-   ["fssp_gov", true]
+   [
+    "readovkanews",
+    true
+   ],
+   [
+    "toporlive",
+    true
+   ],
+   [
+    "mash",
+    true
+   ],
+   [
+    "bbbreaking",
+    true
+   ],
+   [
+    "bazabazon",
+    true
+   ],
+   [
+    "ostorozhno_novosti",
+    true
+   ],
+   [
+    "shot_shot",
+    true
+   ],
+   [
+    "topor",
+    true
+   ],
+   [
+    "rbc_news",
+    true
+   ],
+   [
+    "tass_agency",
+    true
+   ],
+   [
+    "mediamvd",
+    true
+   ],
+   [
+    "IrinaVolk_MVD",
+    true
+   ],
+   [
+    "mchs_official",
+    true
+   ],
+   [
+    "sledcom_press",
+    true
+   ],
+   [
+    "genprocrf",
+    true
+   ],
+   [
+    "fssp_gov",
+    true
+   ]
   ],
   "harvest_geo": ".",
   "geo": ".",
   "_note": "owner's daily top of Russian hype (2026-10-28): the owner's harvest_top.py ranks by views x channels; hybrid scope — incidents, crime, weird, celebs, prices, laws; never war or politics. A story that only Topor carries needs a second source"
+ },
+ "sochi": {
+  "name": "Сочи",
+  "show": "ЧП Сочи",
+  "tag": "ЧП · СОЧИ",
+  "ai_max_share": 0,
+  "anchor": "addons/news/anchor_cat",
+  "base": "~/memes/sochi_chp_base",
+  "server_base": "/srv/factory/news_base_sochi",
+  "sources": [],
+  "channels": [
+   [
+    "sochi_online",
+    true
+   ],
+   [
+    "sochi_today",
+    true
+   ],
+   [
+    "adler_today",
+    true
+   ],
+   [
+    "dtp_sochi",
+    true
+   ],
+   [
+    "chp_sochi",
+    false
+   ],
+   [
+    "sochi_incident",
+    false
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "readovkanews",
+    false
+   ],
+   [
+    "toporlive",
+    false
+   ]
+  ],
+  "harvest_geo": "сочи\\b|адлер\\w*|хост\\w*|мацест\\w*|лазаревск\\w*|красн\\w* полян\\w*|эсто-садк\\w*|дагомыс\\w*|кудепст\\w*|аэропорт сочи|центральн\\w* сочи|красн\\w* полян\\w*",
+  "geo": "сочи\\b|адлер\\w*|лазаревск\\w*|красн\\w* полян\\w*|дагомыс\\w*|мацест\\w*|хост\\w*|эсто-садк\\w*",
+  "_note": "checked 2026-11-10 via t.me/s: sochi_online, sochi_today, adler_today alive (news/weather/lifestyle); dtp_sochi last post 2026-09-29; sochi_incident died 2026-05-11, chp_sochi is rescuers-adjacent — kept as federal (false). Sochi's own incident channels are weak: the federal aggregators (mash, shot, readovka, topor) + geo regex are the main source. Krasnodar krai stories are NOT Sochi: krd channels live in 'krasnodar'."
+ },
+ "krasnodar": {
+  "name": "Краснодар",
+  "show": "ЧП Краснодар",
+  "tag": "ЧП · КРАСНОДАР",
+  "ai_max_share": 0,
+  "anchor": "addons/news/anchor_cat",
+  "base": "~/memes/krd_chp_base",
+  "server_base": "/srv/factory/news_base_krd",
+  "sources": [],
+  "channels": [
+   [
+    "chp_krd",
+    true
+   ],
+   [
+    "krd_chp",
+    false
+   ],
+   [
+    "chp_krasnodar_krai",
+    false
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "readovkanews",
+    false
+   ],
+   [
+    "toporlive",
+    false
+   ]
+  ],
+  "harvest_geo": "краснодар\\w*|\\bкубан\\w*|кубанск\\w*|анап\\w*|новороссийск\\w*|геленджик\\w*|ейск\\w*|туапс\\w*|армавир\\w*|тимашевск\\w*|славянск-на-кубан\\w*|полтавск\\w*|апшеронск\\w*|горяч\\w* ключ|хадыженск\\w*|лабинск\\w*|кропоткин\\w*|тихорецк\\w*|белореченск\\w*|ус\\w*-лабинск\\w*",
+  "geo": "краснодар\\w*|\\bкубан\\w*|анап\\w*|новороссийск\\w*|геленджик\\w*|ейск\\w*|туапс\\w*|армавир\\w*",
+  "_note": "checked 2026-11-10: chp_krd alive (Krasnodar city + Kuban incidents, daily); krd_chp last 2026-02-11, chp_krasnodar_krai last 2025-09-24 — kept for archive depth. NB: 'Сочи' is also Krasnodar krai — a Sochi story is routed to 'sochi' by its own geo first (order matters in region_of); the krd geo regex deliberately has no 'сочи'."
+ },
+ "nn": {
+  "name": "Нижний Новгород",
+  "show": "ЧП Нижний Новгород",
+  "tag": "ЧП · НИЖНИЙ",
+  "ai_max_share": 0,
+  "anchor": "addons/news/anchor_cat",
+  "base": "~/memes/nn_chp_base",
+  "server_base": "/srv/factory/news_base_nn",
+  "sources": [],
+  "channels": [
+   [
+    "dtp_nn",
+    true
+   ],
+   [
+    "nn_now",
+    true
+   ],
+   [
+    "gtrk_nn",
+    false
+   ],
+   [
+    "sledcom_nn",
+    true
+   ],
+   [
+    "shot_shot",
+    false
+   ],
+   [
+    "mash",
+    false
+   ],
+   [
+    "readovkanews",
+    false
+   ],
+   [
+    "toporlive",
+    false
+   ]
+  ],
+  "harvest_geo": "нижн\\w* новгород\\w*|\\bнн\\b|нижегородск\\w* облас\\w*|кстов\\w*|дзержинск\\w*|арзамас\\w*|городец\\w*|семёнов\\w*|шахунь\\w*|выкс\\w*|кулебак\\w*|павлов\\w*|вач\\w*|арзамас\\w*|борск\\w*|васильсурск\\w*|ветлуг\\w*|урен\\w*|шахунь\\w*",
+  "geo": "нижн\\w* новгород\\w*|\\bнн\\b|нижегородск\\w* облас\\w*|кстов\\w*|дзержинск\\w*|арзамас\\w*",
+  "_note": "checked 2026-11-10: dtp_nn alive (incidents/DTP NN daily), nn_now alive (city news), gtrk_nn alive (regional TV), sledcom_nn (SK regional, official, true=city channel for the source card). 'Нижний Новгород' must be matched before kazan's 'нижнекамск': different word, fine. WARNING: nn geo regex has '\\bнн\\b' which may collide with abbreviations in federal posts — pick.CITIES geo applies to seed text only."
  }
 }

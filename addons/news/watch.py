@@ -138,7 +138,11 @@ def note_for(st: dict) -> str:
 def queue(st: dict, n: int) -> Path:
     QUEUE.mkdir(parents=True, exist_ok=True)
     day = datetime.now(viral.MSK).strftime("%d-%m")
-    item = {"slug": f"news-hot-{day}-{n}", "key": st["key"], "note": note_for(st), "t": time.time()}
+    city = st.get("region") if st.get("region") in viral.CITY_REGIONS[:6] else None  # a city story runs on its city
+    tag = f"{city}-" if city else ""
+    item = {"slug": f"news-hot{'-' + city if city else ''}{day}-{n}", "key": st["key"], "note": note_for(st), "t": time.time()}
+    if city:
+        item["city"] = city
     dst = QUEUE / f"{int(time.time())}-{n}.json"
     dst.write_text(json.dumps(item, ensure_ascii=False, indent=1), encoding="utf-8")
     return dst
@@ -210,7 +214,8 @@ def viral_telegram(text: str) -> None:
 
 def run_queue() -> None:
     """news-hot.service: the oldest queued hot film, made on lane 2 (one agent there at a time; the heavy work is
-    one at a time anyway)."""
+    one at a time anyway). A city story (owner 2026-11-10: «пусть сервер собирает видео как только вирусная новость
+    выйдет») runs on its own city: --city sochi/krasnodar/nn/…, the viral agent under the city's tag and sources."""
     items = sorted(QUEUE.glob("*.json")) if QUEUE.is_dir() else []
     if not items:
         return
@@ -220,8 +225,8 @@ def run_queue() -> None:
     f.rename(QUEUE / "done" / f.name)
     deadline = f"{min(23, datetime.now(viral.MSK).hour + 5):02d}:50"
     os.execv("/usr/bin/flock", ["flock", LANE, str(REPO / ".venv" / "bin" / "python"), "addons/news/morning.py",
-                                "--city", "world", "--slug", item["slug"], "--deadline", deadline,
-                                "--note", item["note"]])
+                                "--city", item.get("city") or "world", "--slug", item["slug"],
+                                "--deadline", deadline, "--note", item["note"]])
 
 
 def main() -> None:

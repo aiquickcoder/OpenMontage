@@ -37,8 +37,11 @@ sys.path.insert(0, str(REPO / "addons" / "news"))  # viral.py, viral_stats.py
 from factory import agent_cli  # noqa: E402  (Codex by default since 2026-11-01, FACTORY_AGENT=claude for the old run)
 MSK = timezone(timedelta(hours=3))
 AGENTS = {"russia": "news-chp-russia", "moscow": "news-chp", "kazan": "news-chp-kazan", "spb": "news-chp-spb",
+          "sochi": "news-viral", "krasnodar": "news-viral", "nn": "news-viral",
           "world": "news-world", "viral": "news-viral"}
+# the new cities (owner 2026-11-10) ride the viral agent: one story — one film, no city anchor cat
 SLUG = {"russia": "news-ru-{d}", "moscow": "news-msk-{d}", "kazan": "news-kzn-{d}", "spb": "news-spb-{d}",
+        "sochi": "news-sochi-{d}", "krasnodar": "news-krd-{d}", "nn": "news-nn-{d}",
         "world": "news-world-{d}"}
 VIDEOS = 2  # one story, one film (owner 2026-10-30: «1 ролик на 1 новость», «2 лучших новости» a run)
 # the day's big story abroad (owner 2026-10-31, after Poland: «далее нужно нам начать собирать такие ролики»): one
