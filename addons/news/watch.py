@@ -44,6 +44,16 @@ STATE = viral.DATA / "watch.json"
 QUEUE = viral.DATA / "hot"
 LANE = "/tmp/news_lane2.lock"
 
+# the regional pick (owner 2026-11-10: «нужно дополнительно по каждому городу еще одну региональную топ новость
+# делать» — Казань, СПБ, Москва, Нижний, Краснодар, Сочи; «отбирать виральные региональные новости по методике,
+# адаптировать, не сломав федеральную»): the same methodology — viral.citypick reads the city's channels with the
+# federal ones, rank/ai_score/score are the same, only the lens changes (region == the city, local_only kept, the
+# federal dedup and claims shared, so a story is one film). Each city gets one film a day: the best city story of
+# the day by the AI's score, queued by CITY_TOP_BY_H so the film is out in the evening. A city story already taking
+# off lands in the same queue through the federal watch as before (news-hot with a city) — then the city's own pick
+# sees it claimed and takes the next best.
+CITY_PICK_H, CITY_TOP_AI, CITY_TOP_BY_H = 20.0, 65.0, 14
+
 
 def msk_hour() -> int:
     return datetime.now(viral.MSK).hour
@@ -212,6 +222,71 @@ def viral_telegram(text: str) -> None:
                    env={**os.environ, "PYTHONPATH": str(REPO)}, check=False)
 
 
+def city_top(dry: bool = False) -> list[str]:
+    """The day's one regional film per city (owner 2026-11-10: «нужно дополнительно по каждому городу еще одну
+    региональную топ новость делать» — Казань, СПБ, Москва, Нижний, Краснодар, Сочи). Runs inside the watch once an
+    hour (every CITY_EVERY_Nth tick): for every city whose film is not queued today (STATE: city_top {city: date}) —
+    viral.citypick, and its #1 with the AI's score >= CITY_TOP_AI goes into the hot queue with a city, like a hot
+    story. Before CITY_TOP_BY_H only: after that the day's film is out or missed — it waits for tomorrow, so a late
+    run never keeps the lane busy overnight."""
+    state = load_state()
+    top_state = state.get("city_top") or {}
+    today = datetime.now(viral.MSK).strftime("%Y-%m-%d")
+    done = [c for c, d in top_state.items() if d == today]
+    todo = [c for c in viral.CITY_PICK_KEYS if c not in done]
+    if not todo or msk_hour() >= CITY_TOP_BY_H:
+        return []
+    queued: list[str] = []
+    for city in todo:
+        try:
+            cands = viral.citypick(city, CITY_PICK_H, top=3, ai=12)
+        except Exception as e:  # noqa: BLE001 — one city failing never stops the others
+            print(f"  {city}: citypick {type(e).__name__}: {e}", file=sys.stderr)
+            continue
+        best = cands[0] if cands else None
+        if not best or (best.get("ai_score") or best.get("score") or 0) < CITY_TOP_AI:
+            print(f"  {city}: нет городской истории на {CITY_TOP_AI:g}+", file=sys.stderr)
+            continue
+        st = {"region": city, "key": best["key"], "posts": best["posts"]}
+        day = datetime.now(viral.MSK).strftime("%d-%m")
+        item = {"slug": f"news-{city}-{day}-top", "key": best["key"], "note": city_note_for(city, best), "t": time.time(),
+                "city": city}
+        if not dry:
+            QUEUE.mkdir(parents=True, exist_ok=True)
+            dst = QUEUE / f"{int(time.time())}-top{city}.json"
+            dst.write_text(json.dumps(item, ensure_ascii=False, indent=1), encoding="utf-8")
+            top_state[city] = today
+            try:  # the news base (owner 04.11: «запоминай новости… в базу класть»)
+                import newsbase
+
+                newsbase.mark(best["key"], "queued", item["slug"])
+            except Exception as e:  # noqa: BLE001
+                print(f"  база новостей: {type(e).__name__}: {e}", file=sys.stderr)
+        queued.append(city)
+        text = f"🏙 {viral.pick.CITIES[city]['name']}: региональный топ дня — ставлю ролик в очередь"
+        print(text, flush=True)
+        if not dry and not (QUIET_TO <= msk_hour() < QUIET_FROM):
+            viral_telegram(text)
+    if not dry and queued:
+        state["city_top"] = top_state
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    return queued
+
+
+def city_note_for(city: str, best: dict) -> str:
+    """The morning note for a city's top film: the city's brand, the story's numbers and posts, the AI's drafts."""
+    v = best.get("ai") or {}
+    posts = "\n".join(f"- {p['link']} ({p['views']:,} просм.): {(p.get('plain') or '')[:300]}".replace(",", " ")
+                      for p in sorted(best["posts"], key=lambda p: -p["views"])[:5])
+    return (f"Региональный топ дня по городу {viral.pick.CITIES[city]['name']} (владелец 2026-11-10: «по каждому городу "
+            f"еще одну региональную топ новость»). Это лучшая городская история дня по отбору — балл "
+            f"{best.get('ai_score') or best.get('score')}. Сделай ролик города по всем правилам README (сильнейший "
+            f"кадр первым, «почему так вышло», цитаты карточкой и редко, вопрос «А или Б»), плашка {viral.pick.CITIES[city]['tag']!r}. "
+            f"Черновик ИИ: хук — {v.get('hook')}; почему — {v.get('why')}; вопрос — {v.get('question')}. "
+            f"Посты:\n{posts}")
+
+
 def run_queue() -> None:
     """news-hot.service: the oldest queued hot film, made on lane 2 (one agent there at a time; the heavy work is
     one at a time anyway). A city story (owner 2026-11-10: «пусть сервер собирает видео как только вирусная новость
@@ -231,13 +306,18 @@ def run_queue() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", nargs="?", default="look", choices=["look", "run-queue"])
+    ap.add_argument("cmd", nargs="?", default="look", choices=["look", "run-queue", "city-top"])
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args()
     if a.cmd == "run-queue":
         run_queue()
+    elif a.cmd == "city-top":
+        city_top(a.dry)
     else:
         look(a.dry)
+        # the regional top rides the watch: once an hour (every 4th 15-minute tick) the cities get their film
+        if datetime.now(viral.MSK).minute < 15:
+            city_top(a.dry)
 
 
 if __name__ == "__main__":

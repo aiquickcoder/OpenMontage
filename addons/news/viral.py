@@ -627,6 +627,7 @@ def _group_simple(posts: list[dict]) -> list[dict]:
 
 
 CITY_REGIONS = ("moscow", "kazan", "spb", "sochi", "nn", "krasnodar", "regional")  # the cities (owner 2026-11-10: +sochi/krasnodar/nn)
+CITY_PICK_KEYS = ("moscow", "kazan", "spb", "sochi", "nn", "krasnodar")  # every watched city gets one regional film a day (owner 2026-11-10)  # noqa: C408
 
 
 def region_of(story: dict) -> tuple[str, str]:
@@ -1443,6 +1444,29 @@ def gather(hours: float, per: int = 400) -> list[dict]:
     return merge(tg, db) + trends + gn
 
 
+# the city channels (owner 2026-11-10: the regional pick reads them so a city story's take-off is measured against
+# its own channels' usual — the norms are saved by the same run and the federal pick reuses them)
+def city_channels(cities: Iterable[str] | None = None) -> list[str]:
+    """Every channel of the given cities (or of all watched cities) from cities.json, federal ones included."""
+    names = list(cities) if cities else [c for c in CITY_REGIONS if c in pick.CITIES]
+    out: list[str] = []
+    for city in names:
+        out += [h for h, _ in (pick.CITIES.get(city) or {}).get("channels", [])]
+    return list(dict.fromkeys(out))
+
+
+def gather_city(city: str, hours: float, per: int = 400) -> list[dict]:
+    """A city's posts for the regional pick: its own channels (the local ones first) plus the federal set, so a
+    city story that the aggregators carried too is one story with both carriers, and the city channels' norms are
+    measured in the same read."""
+    c = pick.CITIES[city]
+    chans = list(dict.fromkeys([h for h, whole in c.get("channels", []) if whole]
+                                + [h for h, _ in c.get("channels", [])] + CHANNELS + engine_channels()))
+    print(f"  {city}: читаю {len(chans)} каналов за {hours:g} ч", file=sys.stderr)
+    tg = asyncio.run(read(chans, hours, per))
+    return merge(tg, engine_posts(hours))
+
+
 def engine_channels() -> list[str]:
     """The engine's federal aggregators and media (its sources table, read-only)."""
     cfg = _channels_mod("config")
@@ -1522,9 +1546,73 @@ def describe(b: dict) -> str:
     return "\n".join(lines)
 
 
+def citypick(city: str, hours: float, top: int = 6, ai: int = 20, use_ai: bool = True,
+             claim: str | None = None, json_path: Path | None = None) -> list[dict]:
+    """The regional pick (owner 2026-11-10: «отбирать виральные региональные новости по методике, адаптировать,
+    не сломав федеральную»): the same rank/ai_score/score methodology over the city's channels, with a city lens:
+    - gather_city reads the city's channels with the federal set, so the norms cover the city channels and a story
+      carried by both is one story;
+    - only stories of this city (region == city);
+    - local_only without common_hook is KEPT (a city film is for the city's audience) — the federal pick keeps
+      dropping them, untouched;
+    - the dedup is the same taken() by key/links/cluster: a story already made or claimed federally is out, and
+      the city claim (the same claims.json) keeps the federal slots from taking it later;
+    - the flag gates (war, ru_politics, risky, ad) cut the same way.
+    Returns the city's live stories, best first (brief() shaped); with claim, the #1 is claimed for the film."""
+    if city not in pick.CITIES:
+        sys.exit(f"citypick: unknown city {city!r} (cities.json)")
+    now = time.time()
+    posts = gather_city(city, hours)
+    made = made_texts(REPO)
+    links, keys = pick.made_already(REPO)
+    claims = [c for c in load_claims() if c.get("film") != claim]
+    ranked = rank(posts, now, load_weights(), made, claims, links, keys, ai=ai if use_ai else 0, max_age_h=hours)
+    # a city film is of the city: local_only is fine, and the federal pick's drop of it must not stop us
+    for st in ranked:
+        if "только местное — в Telegram-канал города" in (st.get("skip") or []):
+            st["skip"] = [r for r in st["skip"] if r != "только местное — в Telegram-канал города"]
+    live = [s for s in ranked if not s["skip"] and s["region"] == city]
+    try:
+        import newsbase
+
+        newsbase.save(live[:100], "citypick")
+    except Exception as e:  # noqa: BLE001 — the base never stops a pick
+        print(f"  база новостей: {type(e).__name__}: {e}", file=sys.stderr)
+    out = [brief(st, i) for i, st in enumerate(live[:top], 1)]
+    print(f"\nгород {pick.CITIES[city]['name']} ({city}): сюжетов {len(ranked)}, городских живут {len(live)}")
+    for o in out:
+        print(f"\n{o['rank']}. " + describe(o))
+    print("\nне подошли (лучшие по баллу):")
+    for st in [s for s in ranked if s["region"] == city and s["skip"]][:8]:
+        print(f"   — [{st['score']:5.1f}] {', '.join(st['skip'])}: {st['seed']['plain'][:90]}")
+    if claim and out:
+        acc = {"key": f"city-{city}", "name": pick.CITIES[city]["name"]}
+        save_claim(claim_of(claim, acc, out[0], out[0]["sig"]))
+        try:
+            import newsbase
+
+            newsbase.mark(out[0]["key"], "queued", claim)
+        except Exception as e:  # noqa: BLE001
+            print(f"  база новостей: {type(e).__name__}: {e}", file=sys.stderr)
+    if json_path:
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(json.dumps({"generated_at": datetime.now(MSK).isoformat(timespec="seconds"),
+                                         "city": city, "candidates": out}, ensure_ascii=False, indent=1),
+                             encoding="utf-8")
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
+    cp = sub.add_parser("citypick")
+    cp.add_argument("--city", required=True, help="the city key from cities.json (sochi, nn, krasnodar, moscow…)")
+    cp.add_argument("--hours", type=float, default=20, help="how far back the city's posts are read")
+    cp.add_argument("--ai", type=int, default=20)
+    cp.add_argument("--no-ai", action="store_true")
+    cp.add_argument("--json", type=Path)
+    cp.add_argument("--top", type=int, default=6)
+    cp.add_argument("--claim", help="the film this pick is for: its #1 is claimed for it")
     for name in ("pick", "plan"):
         s = sub.add_parser(name)
         s.add_argument("--hours", type=float, default=48, help="how far back the posts are read")
@@ -1543,6 +1631,9 @@ def main() -> None:
     a = ap.parse_args()
     if a.cmd == "windows":
         windows(a.days, a.channels.split(","))
+        return
+    if a.cmd == "citypick":
+        citypick(a.city, a.hours, top=a.top, ai=a.ai, use_ai=not a.no_ai, claim=a.claim, json_path=a.json)
         return
     now = time.time()
     day = datetime.now(MSK).date()
